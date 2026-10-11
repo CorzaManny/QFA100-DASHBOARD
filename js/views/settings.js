@@ -94,7 +94,7 @@ export const actions = {
   reset() {
     if (!confirm('Erase all QFA100 Ops data on this device? This cannot be undone.')) return;
     resetAll();
-    message = 'All data erased. A sample schedule has been loaded.';
+    message = 'All data erased. The official WorldFlight schedule has been reloaded.';
     rerender();
   },
 };

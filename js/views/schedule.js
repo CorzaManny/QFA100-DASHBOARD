@@ -1,7 +1,7 @@
 // Sector schedule: list, and an add/edit form (times in UTC).
 
-import { state, save, uid } from '../store.js';
-import { esc, zulu, zdate, span, isoDate, isoTime, icao, icon, rerender } from '../ui.js';
+import { state, save, uid, loadOfficialSchedule } from '../store.js';
+import { esc, zulu, zdate, span, depWindow, isoDate, isoTime, icao, icon, rerender } from '../ui.js';
 import { sortedSectors, currentSector, isMine, crewNames, simbriefPlanUrl } from '../ops.js';
 
 function list() {
@@ -29,7 +29,7 @@ function list() {
           </div>
           <div class="right">
             <div class="row-t">${zulu(s.std)}</div>
-            <div class="sub">${zulu(s.sta)} · ${span(new Date(s.sta) - new Date(s.std))}</div>
+            <div class="sub">${s.window ? `${depWindow(s)} · ` : `${zulu(s.sta)} · `}${span(new Date(s.sta) - new Date(s.std))}</div>
           </div>
         </a>`;
     })
@@ -38,14 +38,9 @@ function list() {
   return `
     <div class="page-head"><h1>Schedule</h1>
       <a class="btn primary" href="#/schedule/new">${icon('plus')} Add sector</a></div>
-    ${
-      state.sectors.some((s) => s.sample)
-        ? `<div class="banner info"><span><strong>Sample schedule.</strong> These sectors are placeholders. Replace them with your team's real WorldFlight legs.</span>
-           <button class="btn ghost" data-act="clearSample">Clear</button></div>`
-        : ''
-    }
     <section class="card list">${rows || '<p class="note">No sectors yet. Add your first one.</p>'}</section>
-    <p class="tiny center">All times UTC. Departure → arrival · block time.</p>`;
+    <p class="tiny center">All times UTC. WorldFlight sectors show the middle of the departure window, then the window and block time.</p>
+    <div class="btn-row"><button class="btn ghost" data-act="official">Reload official WorldFlight schedule</button></div>`;
 }
 
 function form(id) {
@@ -61,6 +56,7 @@ function form(id) {
     <div class="page-head"><a class="back" href="#/schedule">${icon('back')} Schedule</a></div>
     <form class="card form" data-form="sector">
       <h2>${existing ? `${esc(s.dep)} → ${esc(s.arr)}` : 'New sector'}</h2>
+      ${existing?.window ? `<p class="note">Official departure window <strong>${depWindow(s)}</strong>. The time below is the middle of it.</p>` : ''}
       <div class="grid2">
         <label class="field">Departure (ICAO)<input name="dep" required maxlength="4" autocapitalize="characters" value="${esc(s.dep)}" placeholder="YSSY"></label>
         <label class="field">Arrival (ICAO)<input name="arr" required maxlength="4" autocapitalize="characters" value="${esc(s.arr)}" placeholder="YBBN"></label>
@@ -74,6 +70,7 @@ function form(id) {
       </div>
       <label class="field">Crew (comma separated)<input name="crew" list="crew-names" value="${esc(s.crew.join(', '))}" placeholder="Corey, Sam"></label>
       <datalist id="crew-names">${crewNames().map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+      <label class="field">Route<textarea name="route" rows="2" autocapitalize="characters" placeholder="Optional. Sent to SimBrief when you plan the sector.">${esc(s.route || '')}</textarea></label>
       <label class="field">Handover / sector notes<textarea name="notes" rows="3" placeholder="Anything the next crew should know">${esc(s.notes)}</textarea></label>
       <p class="form-error" hidden></p>
       <div class="btn-row">
@@ -133,8 +130,8 @@ export const forms = {
         .split(',')
         .map((c) => c.trim())
         .filter(Boolean),
+      route: String(data.get('route')).trim().toUpperCase(),
       notes: String(data.get('notes')).trim(),
-      sample: false,
     });
     if (!state.sectors.includes(sector)) state.sectors.push(sector);
     save();
@@ -149,10 +146,9 @@ export const actions = {
     save();
     location.hash = '#/schedule';
   },
-  clearSample() {
-    if (!confirm('Remove the sample sectors?')) return;
-    state.sectors = state.sectors.filter((s) => !s.sample);
-    save();
+  official() {
+    if (!confirm('Reload the official WorldFlight schedule? Times and routes are reset to the published ones. Crew, notes and any sectors you added are kept.')) return;
+    loadOfficialSchedule();
     rerender();
   },
 };

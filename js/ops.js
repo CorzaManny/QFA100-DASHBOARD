@@ -195,6 +195,7 @@ export function simbriefPlanUrl(sector) {
     q.set('airline', m[1]);
     q.set('fltnum', m[2]);
   }
+  if (sector.route) q.set('route', sector.route);
   return `https://dispatch.simbrief.com/options/custom?${q}`;
 }
 

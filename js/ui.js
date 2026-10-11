@@ -20,6 +20,13 @@ export function zdate(t) {
 export const isoDate = (t) => new Date(t).toISOString().slice(0, 10);
 export const isoTime = (t) => new Date(t).toISOString().slice(11, 16);
 
+// "2000Z–2200Z" for sectors that have a departure window rather than a fixed time.
+export function depWindow(sector) {
+  if (!sector.window) return '';
+  const t = new Date(sector.std).getTime();
+  return `${zulu(t - sector.window * 60000)}–${zulu(t + sector.window * 60000)}`;
+}
+
 export function span(ms) {
   const m = Math.round(Math.abs(ms) / 60000);
   const h = Math.floor(m / 60);

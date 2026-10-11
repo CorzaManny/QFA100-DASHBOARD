@@ -3,7 +3,7 @@
 // so edits you publish show up on the next load. Live data (VATSIM, METAR,
 // SimBrief) always goes straight to the network.
 
-const CACHE = 'qfa100-ops-v1';
+const CACHE = 'qfa100-ops-v2';
 const SHELL = [
   './',
   'index.html',
@@ -14,6 +14,7 @@ const SHELL = [
   'js/ui.js',
   'js/ops.js',
   'js/data/checklists.js',
+  'js/data/schedule.js',
   'js/data/airports.json',
   'js/views/dash.js',
   'js/views/checklists.js',

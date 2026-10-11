@@ -1,7 +1,7 @@
 // Flight Deck: live aircraft position, your next sector, aircraft status.
 
 import { state } from '../store.js';
-import { esc, zulu, zdate, span, ago, icon, rerender } from '../ui.js';
+import { esc, zulu, zdate, span, ago, depWindow, icon, rerender } from '../ui.js';
 import { currentSector, nextSector, turnaroundRisk, refreshTrack, airport, isMine } from '../ops.js';
 import { nextIncomplete } from './checklists.js';
 
@@ -137,6 +137,7 @@ function sectorCard(now) {
           ? `<p class="note warn">${icon('alert')} Aircraft ETA ${zulu(state.track.eta)} plus a ${state.profile.turnaround} min turnaround puts departure at about ${zulu(risk.earliest)}, ${span(risk.late)} late.</p>`
           : ''
       }
+      ${s.window ? `<div class="tiny">DEPARTURE WINDOW ${depWindow(s)}</div>` : ''}
       ${s.notes ? `<p class="note"><strong>Handover notes:</strong> ${esc(s.notes)}</p>` : ''}
       ${
         hasName
