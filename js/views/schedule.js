@@ -1,10 +1,10 @@
 // Sector schedule: the flying programme. Who flies each sector lives in the Roster.
-// Sectors are stored in the team database; only admins can change them.
+// Sectors are stored in the team database; admins and dispatchers can change them.
 
 import { state } from '../store.js';
 import { saveSector, deleteSector } from '../api.js';
 import { esc, zulu, zdate, span, depWindow, isoDate, isoTime, icao, icon } from '../ui.js';
-import { sortedSectors, currentSector, isMine, isAdmin, crewLabel, simbriefPlanUrl, syncTeam } from '../ops.js';
+import { sortedSectors, currentSector, isMine, canEdit, crewLabel, simbriefPlanUrl, syncTeam } from '../ops.js';
 
 function list() {
   const now = Date.now();
@@ -38,14 +38,14 @@ function list() {
 
   return `
     <div class="page-head"><h1>Schedule</h1>
-      ${isAdmin() ? `<a class="btn primary" href="#/schedule/new">${icon('plus')} Add sector</a>` : ''}</div>
+      ${canEdit() ? `<a class="btn primary" href="#/schedule/new">${icon('plus')} Add sector</a>` : ''}</div>
     <section class="card list">${rows || '<p class="note">No sectors in the schedule yet.</p>'}</section>
-    <p class="tiny center">All times UTC. WorldFlight sectors show the middle of the departure window, then the window and block time.</p>`;
+    <p class="tiny center">All times UTC. WorldFlight sectors show when the departure window opens, then the window and block time.</p>`;
 }
 
 function detail(id) {
   const existing = state.sectors.find((s) => s.id === id);
-  const admin = isAdmin();
+  const admin = canEdit();
   if (!existing && !(id === 'new' && admin)) {
     return `<p class="note">Sector not found.</p><a class="btn ghost" href="#/schedule">Back</a>`;
   }
@@ -60,7 +60,7 @@ function detail(id) {
     <div class="page-head"><a class="back" href="#/schedule">${icon('back')} Schedule</a></div>
     <form class="card form" data-form="sector">
       <h2>${existing ? `${esc(s.dep)} → ${esc(s.arr)}` : 'New sector'}</h2>
-      ${existing?.window ? `<p class="note">Official departure window <strong>${depWindow(s)}</strong>. The time below is the middle of it.</p>` : ''}
+      ${existing?.window ? `<p class="note">Official departure window <strong>${depWindow(s)}</strong>. The time below is when it opens.</p>` : ''}
       <fieldset ${lock}>
         <div class="grid2">
           <label class="field">Departure (ICAO)<input name="dep" required maxlength="4" autocapitalize="characters" value="${esc(s.dep)}" placeholder="YSSY"></label>
@@ -83,7 +83,7 @@ function detail(id) {
               <button class="btn primary" type="submit">Save sector</button>
               ${existing ? '<button class="btn danger" type="button" data-act="remove">Delete</button>' : ''}
             </div>`
-          : '<p class="tiny">Only team admins can change the schedule.</p>'
+          : '<p class="tiny">Only admins and dispatchers can change the schedule.</p>'
       }
     </form>
     ${

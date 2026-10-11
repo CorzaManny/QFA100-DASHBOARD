@@ -17,7 +17,7 @@ export function officialSectors() {
 
 function defaults() {
   return {
-    profile: { callsign: 'QFA100', simbrief: '', statusUrl: '', turnaround: 45, reportLead: 60, aircraft: 'B738' },
+    profile: { callsign: 'QFA100', simbrief: '', statusUrl: '', turnaround: 45, aircraft: 'B738' },
     preview: false, // using the app without accounts because no database is connected
     sectors: officialSectors(), // copy of the team database's sectors
     roster: [], // copy of the team database's roster: { id, sector_id, user_id, duty, report_at, notes }

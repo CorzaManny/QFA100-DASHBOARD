@@ -1,9 +1,9 @@
 // Settings: your account, the team's accounts, and this device's options.
 
 import { state, save, exportData, importData, resetAll } from '../store.js';
-import { configured, getSession, signOut, updateProfile, setRole } from '../api.js';
+import { configured, getSession, signOut, updateProfile } from '../api.js';
 import { esc, icon, rerender } from '../ui.js';
-import { me, isAdmin, syncTeam } from '../ops.js';
+import { me, isAdmin, canEdit, roleName, syncTeam } from '../ops.js';
 
 let message = '';
 let problem = '';
@@ -17,7 +17,7 @@ function account() {
   return `
     <form class="card form" data-form="account">
       <div class="card-head"><h2>Your account</h2>
-        <span class="badge ${p?.role === 'admin' ? 'warn' : 'info'}">${esc((p?.role || 'pilot').toUpperCase())}</span></div>
+        <span class="badge ${p?.role === 'admin' ? 'warn' : 'info'}">${esc(roleName(p?.role).toUpperCase())}</span></div>
       <p class="note">Signed in as <strong>${esc(getSession()?.email || '')}</strong></p>
       <div class="grid2">
         <label class="field">Name on the roster<input name="name" required maxlength="60" value="${esc(p?.display_name || '')}"></label>
@@ -30,30 +30,13 @@ function account() {
     </form>`;
 }
 
-function team() {
-  if (!configured || !isAdmin()) return '';
-  const myId = me()?.id;
-  const rows = state.people
-    .map(
-      (p) => `
-      <div class="row">
-        <div class="row-main">
-          <div class="row-t">${esc(p.display_name)} ${p.role === 'admin' ? '<span class="badge warn">ADMIN</span>' : ''}</div>
-          ${p.vatsim_cid ? `<div class="sub">CID ${esc(p.vatsim_cid)}</div>` : ''}
-        </div>
-        ${
-          p.id === myId
-            ? '<span class="tiny">YOU</span>'
-            : `<button class="btn ghost small" data-act="role" data-id="${esc(p.id)}" data-role="${p.role === 'admin' ? 'pilot' : 'admin'}">${p.role === 'admin' ? 'Remove admin' : 'Make admin'}</button>`
-        }
-      </div>`,
-    )
-    .join('');
+function adminLink() {
+  if (!configured || !canEdit()) return '';
   return `
-    <section class="card list">
-      <div class="card-head"><h2>Team accounts</h2><span class="badge mute">${state.people.length}</span></div>
-      ${rows}
-      <p class="tiny">Admins can change the schedule and build the roster.</p>
+    <section class="card">
+      <h2>Admin</h2>
+      <p class="note">Build the roster${isAdmin() ? ' and manage team roles' : ''}.</p>
+      <a class="btn ghost" href="#/admin">Open the Admin section</a>
     </section>`;
 }
 
@@ -64,7 +47,7 @@ export function render() {
     ${message ? `<p class="note ok">${esc(message)}</p>` : ''}
     ${problem ? `<p class="note warn">${icon('alert')} ${esc(problem)}</p>` : ''}
     ${account()}
-    ${team()}
+    ${adminLink()}
     <form class="card form" data-form="profile">
       <h2>This device</h2>
       <div class="grid2">
@@ -162,11 +145,6 @@ export const actions = {
   async signout() {
     await signOut();
     rerender();
-  },
-  role(el) {
-    const admin = el.dataset.role === 'admin';
-    if (!confirm(admin ? 'Give this person admin rights?' : "Remove this person's admin rights?")) return;
-    return attempt(() => setRole(el.dataset.id, el.dataset.role), 'Role updated.');
   },
   export() {
     const url = URL.createObjectURL(new Blob([exportData()], { type: 'application/json' }));

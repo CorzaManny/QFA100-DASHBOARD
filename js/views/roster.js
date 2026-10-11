@@ -1,15 +1,19 @@
 // Roster: which accounts fly which sectors, their duty and report time.
-// Everyone can read it; admins build it.
+// Read-only here; admins and dispatchers build it in the Admin section.
 
 import { state } from '../store.js';
-import { saveRoster, deleteRoster, configured } from '../api.js';
-import { esc, zulu, zdate, depWindow, isoDate, isoTime, icon, rerender } from '../ui.js';
-import { sortedSectors, crewOf, person, me, isAdmin, DUTIES, syncTeam } from '../ops.js';
-
-let error = '';
+import { configured } from '../api.js';
+import { esc, zulu, zdate, depWindow, icon } from '../ui.js';
+import { sortedSectors, crewOf, person, me, canEdit, pilotsShort, MIN_PILOTS } from '../ops.js';
 
 const name = (id) => esc(person(id)?.display_name || 'Unknown');
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
+
+function needBadge(s) {
+  const short = pilotsShort(s);
+  if (!short) return '';
+  return `<span class="badge ${short === MIN_PILOTS ? 'bad' : 'warn'}">NEEDS ${short} PILOT${short === 1 ? '' : 'S'}</span>`;
+}
 
 function noAccounts() {
   return `
@@ -51,22 +55,24 @@ function list() {
     .map((s) => {
       const d = zdate(s.std);
       const header = d !== day ? `<div class="list-day">${(day = d)}</div>` : '';
-      const crew = crewOf(s);
       return `${header}
         <a class="row ${new Date(s.sta) < now ? 'past' : ''}" href="#/roster/${esc(s.id)}">
           <div class="row-main">
             <div class="row-t">${esc(s.dep)} → ${esc(s.arr)}</div>
             <div class="sub">${esc(s.flight)} · ${zulu(s.std)}</div>
-            ${crew.map((r) => `<div class="sub crew-line">${name(r.user_id)} · ${esc(r.duty)} · report ${zulu(r.report_at)}</div>`).join('')}
+            ${crewOf(s)
+              .map((r) => `<div class="sub crew-line">${name(r.user_id)} · ${esc(r.duty)} · report ${zulu(r.report_at)}</div>`)
+              .join('')}
           </div>
-          <div class="right">${crew.length ? '' : '<span class="badge bad">NO CREW</span>'} ${icon('chevron')}</div>
+          <div class="right">${needBadge(s)} ${icon('chevron')}</div>
         </a>`;
     })
     .join('');
 
-  const uncrewed = sectors.filter((s) => new Date(s.sta) > now && !crewOf(s).length).length;
+  const short = sectors.filter((s) => new Date(s.sta) > now && pilotsShort(s)).length;
   return `
-    <div class="page-head"><h1>Roster</h1></div>
+    <div class="page-head"><h1>Roster</h1>
+      ${canEdit() ? '<a class="btn primary" href="#/admin">Edit roster</a>' : ''}</div>
     <section class="card list">
       <div class="card-head"><div class="tiny">MY ROSTER · ${esc((me()?.display_name || '').toUpperCase())}</div>
         <span class="badge ${mine.length ? 'info' : 'mute'}">${mine.length} SECTOR${mine.length === 1 ? '' : 'S'}</span></div>
@@ -74,20 +80,16 @@ function list() {
     </section>
     <section class="card list">
       <div class="card-head"><div class="tiny">FULL ROSTER</div>
-        ${uncrewed ? `<span class="badge warn">${uncrewed} WITHOUT CREW</span>` : '<span class="badge ok">ALL CREWED</span>'}</div>
+        ${short ? `<span class="badge warn">${short} NEED PILOTS</span>` : '<span class="badge ok">ALL CREWED</span>'}</div>
       ${allRows || '<p class="note">No sectors in the schedule yet.</p>'}
     </section>
-    <p class="tiny center">All times UTC. ${isAdmin() ? 'Open a sector to roster crew.' : 'Team admins build the roster.'}</p>`;
+    <p class="tiny center">All times UTC. Every sector needs at least ${MIN_PILOTS} pilots.</p>`;
 }
 
 function detail(id) {
   const s = state.sectors.find((x) => x.id === id);
   if (!s) return `<p class="note">Sector not found.</p><a class="btn ghost" href="#/roster">Back</a>`;
-  const admin = isAdmin();
-  const crew = crewOf(s);
-  const report = new Date(new Date(s.std).getTime() - state.profile.reportLead * 60000);
-
-  const rows = crew
+  const rows = crewOf(s)
     .map(
       (r) => `
       <div class="row">
@@ -95,83 +97,24 @@ function detail(id) {
           <div class="row-t">${name(r.user_id)} <span class="badge warn">${esc(r.duty.toUpperCase())}</span></div>
           <div class="sub">Report <strong>${when(r.report_at)}</strong>${r.notes ? ` · ${esc(r.notes)}` : ''}</div>
         </div>
-        ${admin ? `<button class="btn danger small" data-act="remove" data-id="${esc(r.id)}">Remove</button>` : ''}
       </div>`,
     )
     .join('');
-
-  const options = state.people
-    .map((p) => `<option value="${esc(p.id)}">${esc(p.display_name)}${crew.some((r) => r.user_id === p.id) ? ' (already rostered)' : ''}</option>`)
-    .join('');
-
   return `
     <div class="page-head"><a class="back" href="#/roster">${icon('back')} Roster</a></div>
     <section class="card list">
       <div class="card-head"><div>
         <div class="big">${esc(s.dep)} → ${esc(s.arr)}</div>
         <div class="sub">${esc(s.flight)} · Departs ${when(s.std)}${s.window ? ` · window ${depWindow(s)}` : ''}</div>
-      </div></div>
+      </div>${needBadge(s)}</div>
       ${rows || '<p class="note">No crew rostered on this sector yet.</p>'}
     </section>
-    ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
-    ${
-      admin
-        ? `<form class="card form" data-form="assign">
-            <h2>Roster someone on this sector</h2>
-            <label class="field">Team member<select name="user" required><option value="">Select…</option>${options}</select></label>
-            <label class="field">Duty<select name="duty">${DUTIES.map((d) => `<option>${d}</option>`).join('')}</select></label>
-            <div class="grid2">
-              <label class="field">Report date (UTC)<input type="date" name="date" required value="${isoDate(report)}"></label>
-              <label class="field">Report time (UTC)<input type="time" name="time" required value="${isoTime(report)}"></label>
-            </div>
-            <label class="field">Note for this person (optional)<input name="notes" maxlength="200" placeholder="e.g. Taking over mid-flight at top of descent"></label>
-            <p class="tiny">Report time starts ${state.profile.reportLead} minutes before departure. Rostering someone who is already on this sector updates their entry.</p>
-            <div class="btn-row"><button class="btn primary" type="submit">Add to roster</button></div>
-          </form>`
-        : '<p class="tiny center">Team admins build the roster.</p>'
-    }
-    <a class="btn ghost" href="#/schedule/${esc(s.id)}">Sector details</a>`;
+    <div class="btn-col">
+      ${canEdit() ? `<a class="btn primary" href="#/admin/sector/${esc(s.id)}">Edit this sector's crew</a>` : ''}
+      <a class="btn ghost" href="#/schedule/${esc(s.id)}">Sector details</a>
+    </div>`;
 }
 
 export function render(args) {
-  const out = !configured ? noAccounts() : args[0] ? detail(args[0]) : list();
-  error = '';
-  return out;
+  return !configured ? noAccounts() : args[0] ? detail(args[0]) : list();
 }
-
-const currentId = () => decodeURIComponent(location.hash.split('/')[2] || '');
-
-async function change(work) {
-  try {
-    await work();
-    await syncTeam();
-  } catch (err) {
-    error = err.message;
-  }
-  if (location.hash.startsWith('#/roster')) rerender();
-}
-
-export const forms = {
-  assign(data, formEl) {
-    const report = new Date(`${data.get('date')}T${data.get('time')}:00Z`);
-    if (isNaN(report)) return;
-    formEl.querySelector('[type=submit]').disabled = true;
-    return change(() =>
-      saveRoster({
-        sector_id: currentId(),
-        user_id: data.get('user'),
-        duty: data.get('duty'),
-        report_at: report.toISOString(),
-        notes: String(data.get('notes')).trim(),
-      }),
-    );
-  },
-};
-
-export const actions = {
-  remove(el) {
-    if (!confirm('Remove this person from the sector?')) return;
-    el.disabled = true;
-    return change(() => deleteRoster(el.dataset.id));
-  },
-};

@@ -45,7 +45,16 @@ export function sortedSectors() {
 export const DUTIES = ['Captain', 'First Officer', 'Relief Pilot', 'Observer'];
 
 export const me = () => state.people.find((p) => p.id === getSession()?.userId) || null;
+// What each role may do is enforced by the database; these only decide what to show.
+export const ROLES = {
+  admin: ['Admin', 'Everything, including changing roles'],
+  dispatcher: ['Dispatcher', 'Edits the schedule and the roster'],
+  pilot: ['Pilot', 'Can be rostered to fly'],
+  observer: ['Observer', 'Read only; can only be rostered as an observer'],
+};
+export const roleName = (role) => (ROLES[role] || ROLES.pilot)[0];
 export const isAdmin = () => me()?.role === 'admin';
+export const canEdit = () => ['admin', 'dispatcher'].includes(me()?.role);
 export const person = (id) => state.people.find((p) => p.id === id) || null;
 
 // Everyone rostered on a sector, in seat order.
@@ -53,6 +62,23 @@ export function crewOf(sector) {
   return state.roster
     .filter((r) => r.sector_id === sector.id)
     .sort((a, b) => DUTIES.indexOf(a.duty) - DUTIES.indexOf(b.duty));
+}
+
+// Every sector needs at least this many pilots on the roster.
+export const MIN_PILOTS = 2;
+const PILOT_DUTIES = ['Captain', 'First Officer', 'Relief Pilot'];
+export const pilotsShort = (sector) =>
+  Math.max(0, MIN_PILOTS - crewOf(sector).filter((r) => PILOT_DUTIES.includes(r.duty)).length);
+
+// Report time offered when rostering, in minutes before the departure window
+// opens. The first sector of the event gets longer, for setting up.
+export const REPORT_LEAD = 45;
+export const FIRST_REPORT_LEAD = 60;
+
+export function defaultReport(sector) {
+  const first = sortedSectors()[0];
+  const lead = first && first.id === sector.id ? FIRST_REPORT_LEAD : REPORT_LEAD;
+  return new Date(new Date(sector.std).getTime() - lead * 60000);
 }
 
 export function crewLabel(sector) {

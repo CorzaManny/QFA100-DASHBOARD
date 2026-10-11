@@ -845,3 +845,85 @@ fieldset:disabled textarea {
 .sub strong {
   color: var(--text);
 }
+
+/* ---- Admin ---- */
+
+.admin-link {
+  display: none;
+}
+.editor .admin-link {
+  display: inline-flex;
+  color: var(--warn);
+}
+.seg a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.seg a.on {
+  background: var(--card2);
+  color: var(--text);
+}
+.seg.on-card {
+  background: var(--card);
+}
+.slot-card {
+  gap: 10px;
+}
+.slot-card.short {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+.slot-card.ok {
+  box-shadow: inset 3px 0 0 var(--ok);
+}
+.slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.crew-edit {
+  padding: 12px 0;
+  border-top: 1px solid var(--card2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.crew-edit:first-of-type {
+  border-top: 0;
+}
+.legend {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 0.85rem;
+}
+.legend dt {
+  font-weight: 600;
+}
+.legend dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+.role-select {
+  flex: none;
+  width: auto;
+  max-width: 46%;
+}
+
+.brand {
+  min-width: 0;
+}
+.brand .tiny {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.top-right {
+  flex: none;
+}

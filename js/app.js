@@ -3,9 +3,10 @@
 import { zulu } from './ui.js';
 import { state } from './store.js';
 import { configured, getSession } from './api.js';
-import { loadAirports, syncTeam } from './ops.js';
+import { loadAirports, syncTeam, canEdit } from './ops.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
+import * as admin from './views/admin.js';
 import * as dash from './views/dash.js';
 import * as checklists from './views/checklists.js';
 import * as schedule from './views/schedule.js';
@@ -14,7 +15,7 @@ import * as airports from './views/airports.js';
 import * as dispatch from './views/dispatch.js';
 import * as settings from './views/settings.js';
 
-const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, dispatch, settings };
+const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, dispatch, settings, admin };
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
 let route = { name: 'dashboard', args: [], view: dash };
@@ -40,6 +41,7 @@ const locked = () => (configured ? !getSession() : !state.preview);
 function render() {
   const gate = locked();
   document.body.classList.toggle('locked', gate);
+  document.body.classList.toggle('editor', !gate && canEdit());
   route = gate ? { name: 'login', args: [], view: login } : parse();
   root.innerHTML = route.view.render(route.args);
   for (const tab of document.querySelectorAll('[data-tab]')) {
@@ -52,6 +54,11 @@ function render() {
 root.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]');
   if (el) route.view.actions?.[el.dataset.act]?.(el, e);
+});
+
+root.addEventListener('change', (e) => {
+  const el = e.target.closest('[data-change]');
+  if (el) route.view.changes?.[el.dataset.change]?.(el, e);
 });
 
 root.addEventListener('submit', (e) => {
@@ -104,7 +111,7 @@ document.addEventListener('visibilitychange', () => {
 
 // Don't redraw underneath someone who has already started typing.
 const quietRender = () => {
-  if (!root.querySelector('form:focus-within')) render();
+  if (!root.querySelector('form:focus-within, select:focus')) render();
 };
 
 // Keep the schedule and roster in step with the team database.

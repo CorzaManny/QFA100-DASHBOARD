@@ -7,8 +7,9 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **Login** – everyone signs in with their own account. The first page is the login page.
 - **Dashboard** – shows where the aircraft is, its altitude, ground speed, distance to go and estimated arrival, read from the simulator's status API or from VATSIM. Shows your next rostered sector with your duty, report time and a countdown, and warns when a late arrival will push back the following departure.
 - **737 Checklists** – tap-through normal checklists from Preflight to Secure, with a "CHECKLIST COMPLETE" footer and a Next button. Works with no connection and keeps the screen awake.
-- **Schedule** – the official WorldFlight 2026 schedule, with departure windows (UTC), block times and validated routes. Admins can add, edit or delete sectors.
-- **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster; admins build it.
+- **Schedule** – the official WorldFlight 2026 schedule. Each sector shows when its departure window opens (UTC), the window, block time and validated route. Admins and dispatchers can add, edit or delete sectors.
+- **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with sectors that have fewer than two pilots flagged.
+- **Admin** (shield icon, top right) – where the roster is built: pick a Captain and First Officer for each sector from a dropdown and it saves straight away. Admins also set each person's role here.
 - **Tech Log** – report defects, defer them with a simulated MEL category and restriction, or mark them rectified. Defects stay with the aircraft between sectors and show as a banner on the Dashboard.
 - **Airport Briefings** – runways, elevation, live METAR, your team's own notes, and links to Navigraph Charts and ChartFox for every airport on the schedule (or any ICAO code).
 - **SimBrief** – opens SimBrief with the next sector filled in, then imports your latest OFP (route, fuel, weights, times).
@@ -40,17 +41,22 @@ Then send the link to the team. Each person presses **Create account**; by defau
 
 Worth doing once everyone has joined: **Authentication → Sign In / Providers**, turn off **Allow new users to sign up**, so nobody else with the link can create an account and read the roster.
 
-### Who can do what
+### Roles
 
-| | Pilot | Admin |
-|---|---|---|
-| See the schedule, the full roster and their own roster | yes | yes |
-| Change their own name and VATSIM CID | yes | yes |
-| Add, edit and delete sectors | | yes |
-| Roster people, set duties and report times | | yes |
-| Make other people admins (Settings → Team accounts) | | yes |
+| | Observer | Pilot | Dispatcher | Admin |
+|---|---|---|---|---|
+| See the schedule, the full roster and their own roster | yes | yes | yes | yes |
+| Change their own name and VATSIM CID | yes | yes | yes | yes |
+| Be rostered as a pilot | | yes | yes | yes |
+| Add, edit and delete sectors | | | yes | yes |
+| Build the roster, set duties and report times | | | yes | yes |
+| Change other people's roles | | | | yes |
 
-These rules are enforced by the database, not just by hiding buttons. A forgotten password is reset from **Authentication → Users** in Supabase.
+New accounts start as Pilot. An admin changes roles in **Admin → People and roles**. These rules are enforced by the database, not just by hiding buttons. A forgotten password is reset from **Authentication → Users** in Supabase.
+
+### After updating the app
+
+When a new version changes the database (new roles, new schedule times), run `supabase/schema.sql` and then `supabase/schedule.sql` again in the SQL Editor. Both are safe to re-run and keep your accounts and roster.
 
 ### If the WorldFlight schedule changes
 
@@ -87,7 +93,8 @@ These are still saved on each person's own device, not in the database. To share
 |---|---|
 | Checklist items and wording | `js/data/checklists.js` |
 | Colours and layout | `css/app.css` |
-| Default callsign, aircraft type, report time before departure | `js/store.js` |
+| Default callsign and aircraft type | `js/store.js` |
+| Default report times (`REPORT_LEAD`, `FIRST_REPORT_LEAD`) and minimum pilots (`MIN_PILOTS`) | `js/ops.js` |
 | Tech log system list | `js/views/techlog.js` |
 | Database connection | `js/config.js` |
 

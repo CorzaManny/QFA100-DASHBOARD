@@ -9,9 +9,18 @@ create table if not exists public.profiles (
   id           uuid primary key references auth.users (id) on delete cascade,
   display_name text not null,
   vatsim_cid   text,
-  role         text not null default 'pilot' check (role in ('pilot', 'admin')),
+  role         text not null default 'pilot',
   created_at   timestamptz not null default now()
 );
+
+-- Roles:
+--   admin       everything, including changing other people's roles
+--   dispatcher  edits the schedule and the roster
+--   pilot       can be rostered to fly; reads everything
+--   observer    reads everything; can only be rostered as an observer
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check
+  check (role in ('admin', 'dispatcher', 'pilot', 'observer'));
 
 -- Every sector the aircraft flies.
 create table if not exists public.sectors (
@@ -21,7 +30,7 @@ create table if not exists public.sectors (
   arr            text not null check (arr ~ '^[A-Z0-9]{4}$'),
   std            timestamptz not null,
   sta            timestamptz not null check (sta > std),
-  dep_window_min integer,          -- minutes either side of std that departure is allowed
+  dep_window_min integer,          -- how long after std the departure window stays open
   route          text not null default '',
   notes          text not null default ''
 );
@@ -46,6 +55,12 @@ create index if not exists roster_user_idx on public.roster (user_id);
 create or replace function public.is_admin()
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin');
+$$;
+
+-- Admins and dispatchers may change the schedule and roster.
+create or replace function public.can_edit()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'dispatcher'));
 $$;
 
 -- Creates the profile when an account is created. The very first account
@@ -75,7 +90,7 @@ begin
   if not public.is_admin() then
     raise exception 'Only admins can change roles';
   end if;
-  if new_role not in ('pilot', 'admin') then
+  if new_role not in ('admin', 'dispatcher', 'pilot', 'observer') then
     raise exception 'Unknown role';
   end if;
   if target = auth.uid() and new_role <> 'admin' then
@@ -89,8 +104,9 @@ revoke execute on function public.set_role(uuid, text) from anon, public;
 grant execute on function public.set_role(uuid, text) to authenticated;
 
 -- ---------- Who may do what ----------
--- Signed-in members can read everything. Only admins change the schedule and
--- roster. Members can edit their own name and VATSIM CID, but not their role.
+-- Signed-in members can read everything. Admins and dispatchers change the
+-- schedule and roster. Members can edit their own name and VATSIM CID, but
+-- not their role; only admins change roles, through set_role().
 
 alter table public.profiles enable row level security;
 alter table public.sectors  enable row level security;
@@ -117,13 +133,15 @@ create policy "members read sectors" on public.sectors
   for select to authenticated using (true);
 
 drop policy if exists "admins write sectors" on public.sectors;
-create policy "admins write sectors" on public.sectors
-  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "editors write sectors" on public.sectors;
+create policy "editors write sectors" on public.sectors
+  for all to authenticated using (public.can_edit()) with check (public.can_edit());
 
 drop policy if exists "members read roster" on public.roster;
 create policy "members read roster" on public.roster
   for select to authenticated using (true);
 
 drop policy if exists "admins write roster" on public.roster;
-create policy "admins write roster" on public.roster
-  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "editors write roster" on public.roster;
+create policy "editors write roster" on public.roster
+  for all to authenticated using (public.can_edit()) with check (public.can_edit());
