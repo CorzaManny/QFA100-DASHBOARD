@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-01T01:12:30Z",
+  "callsign": "QFA100",
+  "crew": {
+    "pilotFlying": "Corey"
+  },
+  "sector": {
+    "flight": "WF2601",
+    "departure": "YSSY",
+    "arrival": "WAAA",
+    "alternate": "WADD"
+  },
+  "phase": "CRUISE",
+  "position": {
+    "latitude": -14.8512,
+    "longitude": 131.2904,
+    "altitudeFt": 36000,
+    "headingDeg": 302,
+    "groundSpeedKt": 452,
+    "indicatedAirspeedKt": 272,
+    "mach": 0.78,
+    "verticalSpeedFpm": 0,
+    "onGround": false
+  },
+  "progress": {
+    "distanceFlownNm": 1840,
+    "distanceRemainingNm": 1065,
+    "eta": "2026-11-01T03:34:00Z"
+  },
+  "fuel": {
+    "onBoardKg": 9450
+  }
+}

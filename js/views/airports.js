@@ -2,10 +2,10 @@
 
 import { state, save } from '../store.js';
 import { esc, ago, icao, icon } from '../ui.js';
-import { airport, sortedSectors, nextSector, fetchMetar } from '../ops.js';
+import { airport, sortedSectors, upcomingSector, fetchMetar } from '../ops.js';
 
 function list() {
-  const next = nextSector(Date.now(), !!state.profile.name.trim()) || nextSector();
+  const next = upcomingSector();
   const codes = [...new Set(sortedSectors().flatMap((s) => [s.dep, s.arr]))];
   const rows = codes
     .map((code) => {

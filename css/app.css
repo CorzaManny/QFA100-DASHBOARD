@@ -755,3 +755,93 @@ button:focus-visible {
   flex: none;
   white-space: nowrap;
 }
+
+/* ---- Sign-in ---- */
+
+.locked .tabs,
+.locked .top-right .icon-btn {
+  display: none;
+}
+.locked main {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-bottom: 32px;
+  max-width: 460px;
+}
+.login {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 4vh;
+}
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.login-brand img {
+  border-radius: 18px;
+}
+.seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+.seg button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.seg button.on {
+  background: var(--card2);
+  color: var(--text);
+}
+
+/* ---- Roster ---- */
+
+fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+fieldset:disabled input,
+fieldset:disabled textarea {
+  opacity: 0.75;
+}
+.btn.small {
+  flex: none;
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.8rem;
+}
+.report {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--card2);
+}
+.report > span:last-child {
+  display: flex;
+  flex-direction: column;
+}
+.crew-line {
+  color: var(--text);
+}
+.sub strong {
+  color: var(--text);
+}

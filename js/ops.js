@@ -1,6 +1,7 @@
 // Operational logic: airports, distances, the VATSIM feed, schedule maths.
 
 import { state, save } from './store.js';
+import { configured, getSession, loadAll } from './api.js';
 
 const VATSIM_FEED = 'https://data.vatsim.net/v3/vatsim-data.json';
 const EARTH_NM = 3440.065;
@@ -39,13 +40,45 @@ export function sortedSectors() {
   return [...state.sectors].sort(byStd);
 }
 
-export function isMine(sector) {
-  const me = state.profile.name.trim().toLowerCase();
-  return !!me && sector.crew.some((c) => c.trim().toLowerCase() === me);
+// ---- Accounts and roster ----
+
+export const DUTIES = ['Captain', 'First Officer', 'Relief Pilot', 'Observer'];
+
+export const me = () => state.people.find((p) => p.id === getSession()?.userId) || null;
+export const isAdmin = () => me()?.role === 'admin';
+export const person = (id) => state.people.find((p) => p.id === id) || null;
+
+// Everyone rostered on a sector, in seat order.
+export function crewOf(sector) {
+  return state.roster
+    .filter((r) => r.sector_id === sector.id)
+    .sort((a, b) => DUTIES.indexOf(a.duty) - DUTIES.indexOf(b.duty));
 }
 
-export function crewNames() {
-  return [...new Set(state.sectors.flatMap((s) => s.crew))].filter(Boolean).sort();
+export function crewLabel(sector) {
+  const crew = crewOf(sector);
+  return crew.length ? crew.map((r) => person(r.user_id)?.display_name || 'Unknown').join(', ') : 'No crew rostered';
+}
+
+// My roster entry for a sector, or null if I'm not on it.
+export function myDuty(sector) {
+  const id = getSession()?.userId;
+  return (id && state.roster.find((r) => r.sector_id === sector.id && r.user_id === id)) || null;
+}
+
+export const isMine = (sector) => !!myDuty(sector);
+
+// Pull the latest schedule, roster and accounts from the team database.
+// On failure the copy already on the device stays in use.
+export async function syncTeam() {
+  if (!configured || !getSession()) return false;
+  try {
+    Object.assign(state, await loadAll());
+    save();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // The sector being flown now: the one the live aircraft has filed if we can
@@ -71,6 +104,9 @@ export function nextSector(now = Date.now(), mineOnly = false) {
 
 // If the aircraft's estimated arrival plus the team's minimum turnaround runs
 // past the following sector's scheduled departure, that departure is at risk.
+// The sector to prepare for: my next rostered one, else the team's next.
+export const upcomingSector = (now = Date.now()) => nextSector(now, true) || nextSector(now);
+
 export function turnaroundRisk(now = Date.now()) {
   const t = state.track;
   const cur = currentSector(now);
@@ -98,7 +134,123 @@ function phaseOf(sample, depApt, arrApt, vs) {
   return 'CRUISE';
 }
 
+// ---- Simulator status API (see docs/API.md) ----
+
+export const SIM_PHASES = [
+  'PREFLIGHT', 'TAXI_OUT', 'TAKEOFF', 'CLIMB', 'CRUISE', 'DESCENT', 'APPROACH', 'LANDING', 'TAXI_IN', 'ARRIVED',
+];
+// A simulator report older than this is shown as stale rather than live.
+const SIM_STALE_MS = 2 * 60000;
+
+const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+const time = (v) => (typeof v === 'string' && !isNaN(Date.parse(v)) ? Date.parse(v) : null);
+const code = (v) => (typeof v === 'string' ? v.trim().toUpperCase().slice(0, 4) : '');
+
+async function simTrack(url) {
+  const now = Date.now();
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const d = await res.json().catch(() => {
+    throw new Error('response is not JSON');
+  });
+  const p = d?.position || {};
+  const at = time(d?.updatedAt);
+  const lat = num(p.latitude);
+  const lon = num(p.longitude);
+  if (at == null) throw new Error('response has no valid updatedAt');
+  if (lat == null || lon == null) throw new Error('response has no position');
+
+  await loadAirports();
+  const cur = currentSector(now);
+  const dep = code(d.sector?.departure) || cur?.dep || '';
+  const arr = code(d.sector?.arrival) || cur?.arr || '';
+  const depApt = airport(dep);
+  const arrApt = airport(arr);
+  const gs = num(p.groundSpeedKt) ?? 0;
+  const vs = num(p.verticalSpeedFpm);
+
+  // Use the simulator's own figures when it sends them, otherwise estimate.
+  let remaining = num(d.progress?.distanceRemainingNm);
+  let estimated = false;
+  if (remaining == null && arrApt) remaining = distNm(lat, lon, arrApt.lat, arrApt.lon);
+  const flown = num(d.progress?.distanceFlownNm);
+  const total =
+    flown != null && remaining != null
+      ? flown + remaining
+      : depApt && arrApt
+        ? distNm(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon)
+        : null;
+  let eta = time(d.progress?.eta);
+  if (eta == null && remaining != null && gs >= 80) {
+    eta = at + (remaining / gs) * 3600000;
+    estimated = true;
+  }
+
+  const onGround = typeof p.onGround === 'boolean' ? p.onGround : gs < 40;
+  state.track = {
+    source: 'SIM',
+    callsign: typeof d.callsign === 'string' ? d.callsign.toUpperCase() : state.profile.callsign,
+    // Also catches a timestamp from the future (a wrong clock or leftover test data).
+    online: Math.abs(now - at) < SIM_STALE_MS,
+    prefiled: false,
+    error: null,
+    simError: null,
+    at,
+    checkedAt: now,
+    pilotName: typeof d.crew?.pilotFlying === 'string' ? d.crew.pilotFlying : '',
+    lat,
+    lon,
+    alt: num(p.altitudeFt),
+    gs: num(p.groundSpeedKt),
+    hdg: num(p.headingDeg),
+    vs,
+    ias: num(p.indicatedAirspeedKt),
+    mach: num(p.mach),
+    fuelKg: num(d.fuel?.onBoardKg),
+    dep,
+    arr,
+    altn: code(d.sector?.alternate),
+    flight: typeof d.sector?.flight === 'string' ? d.sector.flight : '',
+    route: '',
+    acft: typeof d.aircraft?.type === 'string' ? d.aircraft.type : '',
+    total,
+    remaining,
+    eta,
+    etaEstimated: estimated,
+    phase: SIM_PHASES.includes(d.phase)
+      ? d.phase.replace('_', ' ')
+      : num(p.groundSpeedKt) == null && typeof p.onGround !== 'boolean'
+        ? 'PHASE UNKNOWN'
+        : phaseOf({ latitude: lat, longitude: lon, groundspeed: onGround ? 0 : Math.max(gs, 40) }, depApt, arrApt, vs),
+  };
+  save();
+  return state.track;
+}
+
+// The simulator's own API is the first choice; VATSIM is the fallback.
 export async function refreshTrack() {
+  const url = state.profile.statusUrl.trim();
+  if (!url) return vatsimTrack();
+  let sim = null;
+  let problem = 'the last simulator report is out of date';
+  try {
+    sim = await simTrack(url);
+    if (sim.online) return sim;
+  } catch (err) {
+    problem = err.message;
+  }
+  const track = await vatsimTrack();
+  if (sim && !track.online) {
+    // Nothing live anywhere: the simulator's last report is the best we have.
+    state.track = sim;
+    save();
+    return sim;
+  }
+  track.simError = problem;
+  return track;
+}
+
+async function vatsimTrack() {
   const callsign = state.profile.callsign.trim().toUpperCase();
   const prev = state.track;
   const now = Date.now();
@@ -117,7 +269,7 @@ export async function refreshTrack() {
     const prefiled = feed.prefiles?.some((p) => p.callsign?.toUpperCase() === callsign);
     // Keep the last known position so a disconnect reads as "stale", not "landed".
     const last = prev?.callsign === callsign ? prev : {};
-    state.track = { ...last, callsign, online: false, prefiled, error: null, checkedAt: now };
+    state.track = { ...last, callsign, online: false, prefiled, error: null, simError: null, checkedAt: now };
     save();
     return state.track;
   }
@@ -131,7 +283,7 @@ export async function refreshTrack() {
   const arrApt = airport(arr);
 
   let vs = null;
-  if (prev?.online && prev.callsign === callsign && prev.at && now - prev.at < 5 * 60000 && now - prev.at > 20000) {
+  if (prev?.online && prev.source === 'VATSIM' && prev.callsign === callsign && prev.at && now - prev.at < 5 * 60000 && now - prev.at > 20000) {
     vs = ((pilot.altitude - prev.alt) / (now - prev.at)) * 60000;
   } else if (prev?.callsign === callsign && now - (prev?.at || 0) <= 20000) {
     vs = prev.vs ?? null;
@@ -147,6 +299,7 @@ export async function refreshTrack() {
   }
 
   state.track = {
+    source: 'VATSIM',
     callsign,
     online: true,
     prefiled: false,

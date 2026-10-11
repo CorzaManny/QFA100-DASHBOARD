@@ -2,7 +2,7 @@
 
 Usage:
   curl -sL https://planning.worldflight.center/schedule -o schedule.html
-  python3 tools/build_schedule.py schedule.html 2026 js/data/schedule.js
+  python3 tools/build_schedule.py schedule.html 2026 js/data/schedule.js supabase/schedule.sql
 
 The page publishes a two-hour departure window per sector rather than a fixed
 time. Each sector's std is the middle of that window, sta is std + block time,
@@ -70,4 +70,17 @@ with open(out_path, "w", encoding="utf-8") as f:
     for s in sectors:
         f.write("  " + json.dumps(s, ensure_ascii=False) + ",\n")
     f.write("];\n")
+# Optional 4th argument: SQL that loads the same schedule into the database.
+if len(sys.argv) > 4:
+    q = lambda v: "'" + str(v).replace("'", "''") + "'"
+    with open(sys.argv[4], "w", encoding="utf-8") as f:
+        f.write("-- Official WorldFlight %d schedule. Run after schema.sql in the Supabase SQL Editor.\n" % year)
+        f.write("-- Safe to run again: it updates times and routes and keeps the roster.\n\n")
+        f.write("insert into public.sectors (flight, dep, arr, std, sta, dep_window_min, route) values\n")
+        f.write(",\n".join(
+            "  (%s, %s, %s, %s, %s, %d, %s)" % (q(s["flight"]), q(s["dep"]), q(s["arr"]), q(s["std"]), q(s["sta"]), s["window"], q(s["route"]))
+            for s in sectors
+        ))
+        f.write("\non conflict (flight) do update set\n  dep = excluded.dep, arr = excluded.arr, std = excluded.std, sta = excluded.sta,\n  dep_window_min = excluded.dep_window_min, route = excluded.route;\n")
+
 print(len(sectors), "sectors", sectors[0]["std"], "->", sectors[-1]["sta"])

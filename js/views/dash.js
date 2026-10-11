@@ -1,32 +1,45 @@
-// Flight Deck: live aircraft position, your next sector, aircraft status.
+// Dashboard: current flight status, your next sector, aircraft status.
 
 import { state } from '../store.js';
 import { esc, zulu, zdate, span, ago, depWindow, icon, rerender } from '../ui.js';
-import { currentSector, nextSector, turnaroundRisk, refreshTrack, airport, isMine } from '../ops.js';
+import {
+  currentSector,
+  nextSector,
+  upcomingSector,
+  turnaroundRisk,
+  refreshTrack,
+  airport,
+  isMine,
+  myDuty,
+  crewLabel,
+} from '../ops.js';
 import { nextIncomplete } from './checklists.js';
 
-const POLL_MS = 60000;
+// The simulator API is cheap to read; the VATSIM feed is large, so poll it less.
+const pollMs = () => (state.profile.statusUrl.trim() ? 15000 : 60000);
 let busy = false;
 let lastPoll = 0;
 
-const onDeck = () => !/^#\/(checklists|schedule|techlog|airports|dispatch|settings)/.test(location.hash);
+const onDashboard = () => !location.hash || location.hash.startsWith('#/dashboard');
 
 export async function poll(force = false) {
-  if (busy || (!force && Date.now() - lastPoll < POLL_MS - 5000)) return;
+  if (busy || (!force && Date.now() - lastPoll < pollMs() - 5000)) return;
   busy = true;
   lastPoll = Date.now();
   if (force) rerender();
   await refreshTrack();
   busy = false;
-  if (onDeck()) rerender();
+  if (onDashboard()) rerender();
 }
 
-const level = (alt) => (alt >= 10000 ? `FL${Math.round(alt / 100)}` : `${Math.round(alt / 10) * 10} FT`);
+const knots = (gs) => (gs == null ? '—' : `${Math.round(gs)} KT`);
+const level = (alt) => (alt == null ? '—' : alt >= 10000 ? `FL${Math.round(alt / 100)}` : `${Math.round(alt / 10) * 10} FT`);
 const city = (code) => esc(airport(code)?.city || airport(code)?.name || '');
 
-export function countdown(iso, now = Date.now()) {
+export function countdown(iso, now = Date.now(), verb = 'Departs') {
   const d = new Date(iso) - now;
-  return d >= 0 ? `Departs in ${span(d)}` : `Scheduled ${span(d)} ago`;
+  if (d >= 0) return `${verb} in ${span(d)}`;
+  return verb === 'Report' ? `Report time was ${span(d)} ago` : `Scheduled ${span(d)} ago`;
 }
 
 function routeRow(dep, arr, pct) {
@@ -49,49 +62,72 @@ function metric(label, value) {
 function liveCard(now) {
   const t = state.track;
   const cs = esc(state.profile.callsign);
+  const sim = t?.source === 'SIM';
+  const usingApi = !!state.profile.statusUrl.trim();
   const head = (badge) => `
     <div class="card-head">
-      <div class="tiny">AIRCRAFT POSITION · ${cs}</div>
+      <div class="tiny">CURRENT FLIGHT STATUS · ${esc(t?.callsign || state.profile.callsign)}</div>
       <div class="head-right">${badge}
-        <button class="icon-btn ${busy ? 'spin' : ''}" data-act="refresh" aria-label="Refresh VATSIM data">${icon('refresh')}</button>
+        <button class="icon-btn ${busy ? 'spin' : ''}" data-act="refresh" aria-label="Refresh flight status">${icon('refresh')}</button>
       </div>
     </div>`;
+  // Shown when the simulator API is configured but VATSIM had to stand in for it.
+  const fallback = t?.simError
+    ? `<p class="note warn">${icon('alert')} Simulator API problem (${esc(t.simError)}). Showing VATSIM instead.</p>`
+    : '';
 
   if (t?.online) {
     const pct = t.total ? Math.max(0, Math.min(100, Math.round((1 - t.remaining / t.total) * 100))) : null;
     const cur = currentSector(now);
+    const extra = [
+      t.hdg != null ? metric('HEADING', `${String(Math.round(t.hdg) % 360).padStart(3, '0')}°`) : '',
+      t.vs != null ? metric('VERTICAL SPEED', `${t.vs > 0 ? '+' : ''}${Math.round(t.vs / 50) * 50} FPM`) : '',
+      t.ias != null ? metric('AIRSPEED', `${Math.round(t.ias)} KT${t.mach ? ` · M${t.mach.toFixed(2).replace(/^0/, '')}` : ''}`) : '',
+      t.fuelKg != null ? metric('FUEL ON BOARD', `${Math.round(t.fuelKg).toLocaleString('en-AU')} KG`) : '',
+    ].join('');
+    const etaNote = !t.eta
+      ? 'No ETA yet'
+      : sim && !t.etaEstimated
+        ? 'ETA from the simulator'
+        : 'ETA is a straight-line estimate from ground speed';
     return `
       <section class="card">
-        ${head(`<span class="badge ok">VATSIM ONLINE</span>`)}
+        ${head(`<span class="badge ok">${sim ? 'SIMULATOR LIVE' : 'VATSIM ONLINE'}</span>`)}
         <div class="chips"><span class="badge info">${esc(t.phase)}</span>${
-          cur && isMine(cur) ? '<span class="badge warn">YOUR SECTOR</span>' : ''
-        }</div>
+          t.flight ? `<span class="badge mute">${esc(t.flight)}</span>` : ''
+        }${cur && isMine(cur) ? '<span class="badge warn">YOUR SECTOR</span>' : ''}</div>
         ${routeRow(t.dep, t.arr, pct)}
         <div class="metrics">
           ${metric('ALTITUDE', level(t.alt))}
-          ${metric('GROUND SPEED', `${t.gs} KT`)}
+          ${metric('GROUND SPEED', knots(t.gs))}
           ${metric('EST. ARRIVAL', t.eta ? zulu(t.eta) : '—')}
           ${metric('TO GO', t.remaining != null ? `${Math.round(t.remaining)} NM` : '—')}
+          ${extra}
         </div>
-        <div class="tiny">Updated ${ago(t.at)} · ETA is a straight-line estimate from VATSIM ground speed${
-          t.pilotName ? ` · Flown by ${esc(t.pilotName)}` : ''
-        }</div>
+        ${fallback}
+        <div class="tiny">Updated ${ago(t.at)} · ${etaNote}${t.pilotName ? ` · Flown by ${esc(t.pilotName)}` : ''}</div>
       </section>`;
   }
 
   if (t?.at) {
+    const why = sim
+      ? t.at > now
+        ? 'The simulator report is dated in the future, so it cannot be trusted as live.'
+        : `The simulator has not reported since ${zdate(t.at)} ${zulu(t.at)} (${ago(t.at)}).`
+      : `${cs} is no longer on VATSIM. Last seen ${ago(t.at)}.`;
     return `
       <section class="card">
         ${head(`<span class="badge warn">POSITION STALE</span>`)}
         ${routeRow(t.dep, t.arr, null)}
-        <p class="note warn">${icon('alert')} ${cs} is no longer on VATSIM. Last seen ${ago(t.at)} at ${level(t.alt)}, ${t.gs} kt${
+        <p class="note warn">${icon('alert')} ${why} Last position ${level(t.alt)}, ${knots(t.gs)}${
           t.remaining != null ? `, ${Math.round(t.remaining)} NM from ${esc(t.arr)}` : ''
         }. This may be a disconnect, not a landing.</p>
+        ${fallback}
       </section>`;
   }
 
   const msg = !t
-    ? 'Checking VATSIM…'
+    ? 'Checking for the aircraft…'
     : t.error
       ? esc(t.error)
       : t.prefiled
@@ -101,37 +137,49 @@ function liveCard(now) {
     <section class="card">
       ${head(`<span class="badge mute">${!t ? 'CHECKING' : t.error ? 'NO DATA' : 'OFFLINE'}</span>`)}
       <p class="note">${msg}</p>
-      <div class="tiny">Tracking callsign ${cs}. Change it in Settings.</div>
+      ${fallback}
+      <div class="tiny">${
+        usingApi ? 'Reading the simulator status API, with VATSIM as backup.' : `Tracking callsign ${cs} on VATSIM.`
+      } Change this in <a href="#/settings">Settings</a>.</div>
     </section>`;
 }
 
 function sectorCard(now) {
-  const hasName = !!state.profile.name.trim();
-  const mine = hasName ? nextSector(now, true) : null;
+  const mine = nextSector(now, true);
   const s = mine || nextSector(now);
   if (!s) {
     return `<section class="card"><div class="card-head"><h2>Next sector</h2></div>
       <p class="note">No upcoming sectors in the schedule.</p>
       <a class="btn ghost" href="#/schedule">Open schedule</a></section>`;
   }
+  const duty = mine ? myDuty(mine) : null;
   const risk = turnaroundRisk(now);
   const atRisk = risk && risk.sector === s;
   return `
     <section class="card">
       <div class="card-head">
-        <h2>${mine ? 'Your next sector' : 'Next sector'}</h2>
+        <h2>${mine ? 'Your next rostered sector' : 'Next sector'}</h2>
         ${atRisk ? '<span class="badge bad">DELAY LIKELY</span>' : `<span class="badge info">${zdate(s.std)}</span>`}
       </div>
       <a class="sector-link" href="#/schedule/${esc(s.id)}">
         <div>
           <div class="big">${esc(s.dep)} → ${esc(s.arr)}</div>
-          <div class="sub">${esc(s.flight)} · ${esc(s.crew.join(', ') || 'Crew not assigned')}</div>
+          <div class="sub">${esc(s.flight)} · ${esc(crewLabel(s))}</div>
         </div>
         <div class="right">
           <div class="big">${zulu(s.std)}</div>
           <div class="sub" data-until="${esc(s.std)}">${countdown(s.std, now)}</div>
         </div>
       </a>
+      ${
+        duty
+          ? `<div class="report">
+              <span class="badge warn">${esc(duty.duty.toUpperCase())}</span>
+              <span><strong>Report ${zdate(duty.report_at)} ${zulu(duty.report_at)}</strong>
+                <span class="sub" data-until="${esc(duty.report_at)}" data-verb="Report">${countdown(duty.report_at, now, 'Report')}</span></span>
+            </div>${duty.notes ? `<p class="note"><strong>Roster note:</strong> ${esc(duty.notes)}</p>` : ''}`
+          : ''
+      }
       ${
         atRisk
           ? `<p class="note warn">${icon('alert')} Aircraft ETA ${zulu(state.track.eta)} plus a ${state.profile.turnaround} min turnaround puts departure at about ${zulu(risk.earliest)}, ${span(risk.late)} late.</p>`
@@ -140,11 +188,11 @@ function sectorCard(now) {
       ${s.window ? `<div class="tiny">DEPARTURE WINDOW ${depWindow(s)}</div>` : ''}
       ${s.notes ? `<p class="note"><strong>Handover notes:</strong> ${esc(s.notes)}</p>` : ''}
       ${
-        hasName
-          ? mine
-            ? ''
-            : '<div class="tiny">You have no upcoming sectors assigned, so this is the team\'s next one.</div>'
-          : '<div class="tiny">Set your name in <a href="#/settings">Settings</a> to see your own sectors here.</div>'
+        mine
+          ? ''
+          : state.preview
+            ? '<div class="tiny">Accounts are not set up yet, so this is the team\'s next sector.</div>'
+            : '<div class="tiny">You are not rostered on an upcoming sector, so this is the team\'s next one. See the <a href="#/roster">Roster</a>.</div>'
       }
     </section>`;
 }
@@ -167,7 +215,7 @@ function tile(href, ic, title, sub) {
 
 export function render() {
   const now = Date.now();
-  const next = nextSector(now, !!state.profile.name.trim()) || nextSector(now);
+  const next = upcomingSector(now);
   const resume = nextIncomplete();
   const open = state.defects.filter((d) => d.status !== 'RECTIFIED').length;
   const o = state.ofp;

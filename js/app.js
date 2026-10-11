@@ -1,7 +1,11 @@
-// App shell: hash routing, event delegation, clock, screen wake lock.
+// App shell: sign-in gate, hash routing, event delegation, clock, screen wake lock.
 
 import { zulu } from './ui.js';
-import { loadAirports } from './ops.js';
+import { state } from './store.js';
+import { configured, getSession } from './api.js';
+import { loadAirports, syncTeam } from './ops.js';
+import * as login from './views/login.js';
+import * as roster from './views/roster.js';
 import * as dash from './views/dash.js';
 import * as checklists from './views/checklists.js';
 import * as schedule from './views/schedule.js';
@@ -10,10 +14,10 @@ import * as airports from './views/airports.js';
 import * as dispatch from './views/dispatch.js';
 import * as settings from './views/settings.js';
 
-const ROUTES = { deck: dash, checklists, schedule, techlog, airports, dispatch, settings };
+const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, dispatch, settings };
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
-let route = { name: 'deck', args: [], view: dash };
+let route = { name: 'dashboard', args: [], view: dash };
 
 function safeDecode(part) {
   try {
@@ -25,12 +29,18 @@ function safeDecode(part) {
 
 function parse() {
   const [name, ...args] = location.hash.replace(/^#\/?/, '').split('/').map(safeDecode);
-  const key = ROUTES[name] ? name : 'deck';
+  const key = ROUTES[name] ? name : 'dashboard';
   return { name: key, args, view: ROUTES[key] };
 }
 
+// With a database connected everyone signs in first. Without one, the login
+// page explains that and offers a preview on this device.
+const locked = () => (configured ? !getSession() : !state.preview);
+
 function render() {
-  route = parse();
+  const gate = locked();
+  document.body.classList.toggle('locked', gate);
+  route = gate ? { name: 'login', args: [], view: login } : parse();
   root.innerHTML = route.view.render(route.args);
   for (const tab of document.querySelectorAll('[data-tab]')) {
     tab.classList.toggle('on', tab.dataset.tab === route.name);
@@ -77,26 +87,40 @@ function tick() {
   const now = Date.now();
   clock.textContent = zulu(now);
   for (const el of root.querySelectorAll('[data-until]')) {
-    el.textContent = dash.countdown(el.dataset.until, now);
+    el.textContent = dash.countdown(el.dataset.until, now, el.dataset.verb);
   }
 }
 
 setInterval(tick, 1000);
 setInterval(() => {
-  if (route.name === 'deck' && document.visibilityState === 'visible') dash.poll();
+  if (route.name === 'dashboard' && !locked() && document.visibilityState === 'visible') dash.poll();
 }, 15000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   wakeLock();
-  if (route.name === 'deck') dash.poll();
+  sync();
+  if (route.name === 'dashboard') dash.poll();
 });
+
+// Don't redraw underneath someone who has already started typing.
+const quietRender = () => {
+  if (!root.querySelector('form:focus-within')) render();
+};
+
+// Keep the schedule and roster in step with the team database.
+async function sync() {
+  if (locked() || document.visibilityState !== 'visible') return;
+  await syncTeam();
+  // A sign-in that has ended sends the user back to the login page.
+  if (locked()) render();
+  else quietRender();
+}
 
 render();
 tick();
-loadAirports().then(() => {
-  // Don't redraw underneath someone who has already started typing.
-  if (!root.querySelector('form:focus-within')) render();
-});
+loadAirports().then(quietRender);
+sync();
+setInterval(sync, 2 * 60000);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});

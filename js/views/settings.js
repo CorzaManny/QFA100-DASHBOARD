@@ -1,21 +1,72 @@
-// Settings: who you are, which aircraft to track, and moving data between devices.
+// Settings: your account, the team's accounts, and this device's options.
 
 import { state, save, exportData, importData, resetAll } from '../store.js';
+import { configured, getSession, signOut, updateProfile, setRole } from '../api.js';
 import { esc, icon, rerender } from '../ui.js';
-import { crewNames } from '../ops.js';
+import { me, isAdmin, syncTeam } from '../ops.js';
 
 let message = '';
+let problem = '';
+
+function account() {
+  if (!configured) {
+    return `<section class="card"><h2>Account</h2>
+      <p class="note">Accounts are not connected yet, so this device is in preview mode. See "Set up accounts" in the README.</p></section>`;
+  }
+  const p = me();
+  return `
+    <form class="card form" data-form="account">
+      <div class="card-head"><h2>Your account</h2>
+        <span class="badge ${p?.role === 'admin' ? 'warn' : 'info'}">${esc((p?.role || 'pilot').toUpperCase())}</span></div>
+      <p class="note">Signed in as <strong>${esc(getSession()?.email || '')}</strong></p>
+      <div class="grid2">
+        <label class="field">Name on the roster<input name="name" required maxlength="60" value="${esc(p?.display_name || '')}"></label>
+        <label class="field">VATSIM CID (optional)<input name="cid" inputmode="numeric" maxlength="10" value="${esc(p?.vatsim_cid || '')}"></label>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" type="submit">Save account</button>
+        <button class="btn ghost" type="button" data-act="signout">Sign out</button>
+      </div>
+    </form>`;
+}
+
+function team() {
+  if (!configured || !isAdmin()) return '';
+  const myId = me()?.id;
+  const rows = state.people
+    .map(
+      (p) => `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-t">${esc(p.display_name)} ${p.role === 'admin' ? '<span class="badge warn">ADMIN</span>' : ''}</div>
+          ${p.vatsim_cid ? `<div class="sub">CID ${esc(p.vatsim_cid)}</div>` : ''}
+        </div>
+        ${
+          p.id === myId
+            ? '<span class="tiny">YOU</span>'
+            : `<button class="btn ghost small" data-act="role" data-id="${esc(p.id)}" data-role="${p.role === 'admin' ? 'pilot' : 'admin'}">${p.role === 'admin' ? 'Remove admin' : 'Make admin'}</button>`
+        }
+      </div>`,
+    )
+    .join('');
+  return `
+    <section class="card list">
+      <div class="card-head"><h2>Team accounts</h2><span class="badge mute">${state.people.length}</span></div>
+      ${rows}
+      <p class="tiny">Admins can change the schedule and build the roster.</p>
+    </section>`;
+}
 
 export function render() {
   const p = state.profile;
-  const out = message;
-  message = '';
-  return `
+  const out = `
     <div class="page-head"><h1>Settings</h1></div>
+    ${message ? `<p class="note ok">${esc(message)}</p>` : ''}
+    ${problem ? `<p class="note warn">${icon('alert')} ${esc(problem)}</p>` : ''}
+    ${account()}
+    ${team()}
     <form class="card form" data-form="profile">
-      <h2>You and the aircraft</h2>
-      <label class="field">Your name (as written on the schedule)<input name="name" list="crew-names" value="${esc(p.name)}" placeholder="e.g. Corey"></label>
-      <datalist id="crew-names">${crewNames().map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+      <h2>This device</h2>
       <div class="grid2">
         <label class="field">VATSIM callsign to track<input name="callsign" required autocapitalize="characters" value="${esc(p.callsign)}"></label>
         <label class="field">Aircraft type (ICAO)<input name="aircraft" required autocapitalize="characters" maxlength="4" value="${esc(p.aircraft)}"></label>
@@ -24,15 +75,16 @@ export function render() {
         <label class="field">SimBrief username or Pilot ID<input name="simbrief" autocapitalize="none" autocorrect="off" value="${esc(p.simbrief)}"></label>
         <label class="field">Minimum turnaround (minutes)<input name="turnaround" type="number" min="0" max="600" required value="${esc(p.turnaround)}"></label>
       </div>
-      <div class="btn-row"><button class="btn primary" type="submit">Save settings</button></div>
+      <label class="field">Simulator status API address (optional)<input name="statusUrl" type="url" inputmode="url" autocapitalize="none" autocorrect="off" value="${esc(p.statusUrl)}" placeholder="https://…/status"></label>
+      <p class="tiny">When set, the Dashboard reads the aircraft's position straight from the simulator and only falls back to VATSIM if that fails. Leave blank to use VATSIM.</p>
+      <div class="btn-row"><button class="btn primary" type="submit">Save device settings</button></div>
     </form>
-    ${out ? `<p class="note ok">${esc(out)}</p>` : ''}
     <section class="card">
-      <h2>Share with the team</h2>
-      <p class="note">The schedule, tech log and airport notes are stored on this device. Export them to a file and have teammates import it to get the same data.</p>
+      <h2>Tech log and airport notes</h2>
+      <p class="note">These are still stored on each device. Export them to a file and have teammates import it to get the same data. The schedule and roster sync automatically.</p>
       <div class="btn-row">
-        <button class="btn ghost" data-act="export">Export team data</button>
-        <label class="btn ghost">Import team data<input type="file" accept="application/json,.json" data-file="import" hidden></label>
+        <button class="btn ghost" data-act="export">Export</button>
+        <label class="btn ghost">Import<input type="file" accept="application/json,.json" data-file="import" hidden></label>
       </div>
     </section>
     <section class="card">
@@ -42,46 +94,80 @@ export function render() {
       <p class="note">Once installed it opens full screen and the checklists work without a connection.</p>
     </section>
     <section class="card">
-      <h2>Reset</h2>
-      <p class="note">Erases everything stored on this device, including the schedule, tech log, notes and checklist progress.</p>
-      <button class="btn danger" data-act="reset">${icon('alert')} Erase all data on this device</button>
+      <h2>Reset this device</h2>
+      <p class="note">Erases the tech log, airport notes, checklist progress and device settings stored here. Your account, the schedule and the roster are not affected.</p>
+      <button class="btn danger" data-act="reset">${icon('alert')} Erase data on this device</button>
     </section>`;
+  message = '';
+  problem = '';
+  return out;
 }
 
 export function mounted(root) {
   root.querySelector('[data-file="import"]').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!confirm('Importing replaces the schedule, tech log and airport notes on this device. Continue?')) return;
+    if (!confirm('Importing replaces the tech log and airport notes on this device. Continue?')) return;
     try {
       importData(await file.text());
-      message = 'Team data imported.';
+      message = 'Tech log and notes imported.';
     } catch (err) {
-      message = `Import failed: ${err.message}`;
+      problem = `Import failed: ${err.message}`;
     }
     rerender();
   });
 }
 
+async function attempt(work, done) {
+  try {
+    await work();
+    await syncTeam();
+    message = done;
+  } catch (err) {
+    problem = err.message;
+  }
+  if (location.hash.startsWith('#/settings')) rerender();
+}
+
 export const forms = {
+  account(data) {
+    return attempt(
+      () =>
+        updateProfile(me().id, {
+          display_name: String(data.get('name')).trim(),
+          vatsim_cid: String(data.get('cid')).trim() || null,
+        }),
+      'Account saved.',
+    );
+  },
   profile(data) {
     const p = state.profile;
     const callsign = String(data.get('callsign')).trim().toUpperCase();
-    if (callsign !== p.callsign) state.track = null;
+    const statusUrl = String(data.get('statusUrl')).trim();
+    if (callsign !== p.callsign || statusUrl !== p.statusUrl) state.track = null;
     Object.assign(p, {
-      name: String(data.get('name')).trim(),
       callsign,
       aircraft: String(data.get('aircraft')).trim().toUpperCase(),
       simbrief: String(data.get('simbrief')).trim(),
+      statusUrl,
       turnaround: Math.max(0, Number(data.get('turnaround')) || 0),
     });
     save();
-    message = 'Settings saved.';
+    message = 'Device settings saved.';
     rerender();
   },
 };
 
 export const actions = {
+  async signout() {
+    await signOut();
+    rerender();
+  },
+  role(el) {
+    const admin = el.dataset.role === 'admin';
+    if (!confirm(admin ? 'Give this person admin rights?' : "Remove this person's admin rights?")) return;
+    return attempt(() => setRole(el.dataset.id, el.dataset.role), 'Role updated.');
+  },
   export() {
     const url = URL.createObjectURL(new Blob([exportData()], { type: 'application/json' }));
     const a = Object.assign(document.createElement('a'), {
@@ -91,10 +177,14 @@ export const actions = {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
-  reset() {
-    if (!confirm('Erase all QFA100 Ops data on this device? This cannot be undone.')) return;
+  async reset() {
+    if (!confirm('Erase the data stored on this device? This cannot be undone.')) return;
+    const preview = state.preview;
     resetAll();
-    message = 'All data erased. The official WorldFlight schedule has been reloaded.';
+    state.preview = preview;
+    save();
+    await syncTeam();
+    message = 'Device data erased.';
     rerender();
   },
 };

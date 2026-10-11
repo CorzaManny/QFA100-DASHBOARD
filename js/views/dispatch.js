@@ -2,7 +2,7 @@
 
 import { state } from '../store.js';
 import { esc, zulu, zdate, ago, icon, rerender } from '../ui.js';
-import { nextSector, currentSector, simbriefPlanUrl, fetchOfp } from '../ops.js';
+import { upcomingSector, currentSector, simbriefPlanUrl, fetchOfp } from '../ops.js';
 
 let busy = false;
 let error = '';
@@ -48,7 +48,7 @@ function ofpCard(o) {
 }
 
 export function render() {
-  const target = nextSector(Date.now(), !!state.profile.name.trim()) || nextSector() || currentSector();
+  const target = upcomingSector() || currentSector();
   const id = state.profile.simbrief.trim();
   const o = state.ofp;
   const mismatch = o && target && (o.dep !== target.dep || o.arr !== target.arr);

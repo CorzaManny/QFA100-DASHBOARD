@@ -3,7 +3,7 @@
 
 import { state, save, uid } from '../store.js';
 import { esc, zulu, zdate, icon } from '../ui.js';
-import { currentSector } from '../ops.js';
+import { currentSector, me } from '../ops.js';
 
 const SYSTEMS = [
   'Air conditioning / Pressurization',
@@ -64,7 +64,7 @@ function form(id) {
   const d = existing || {
     system: '',
     desc: '',
-    by: state.profile.name,
+    by: me()?.display_name || '',
     sector: cur ? `${cur.dep}-${cur.arr}` : '',
     status: 'OPEN',
     mel: '',
