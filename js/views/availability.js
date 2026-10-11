@@ -76,7 +76,7 @@ export function render(args) {
       ${!isDraft() ? '<p class="tiny">The roster has been published. Changes here only matter if an admin runs Auto roster again.</p>' : ''}
     </section>
     <section class="card list">${rows || '<p class="note">No upcoming sectors.</p>'}</section>
-    <p class="tiny center">Times are Zulu and sim local (Sydney). Back of clock is ${String(r.bocStart).padStart(2, '0')}00 to ${String(r.bocEnd).padStart(2, '0')}00 local.</p>`;
+    <p class="tiny center">Times are Zulu and sim local (Sydney). Back of clock is ${String(r.bocStart).padStart(2, '0')}00 to ${String(r.bocEnd).padStart(2, '0')}00 local${r.maxBoc ? `, and nobody is rostered on more than ${r.maxBoc} of those` : ''}.</p>`;
   error = '';
   return out;
 }

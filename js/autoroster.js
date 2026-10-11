@@ -11,11 +11,11 @@ const PILOT_ROLES = ['admin', 'dispatcher', 'pilot'];
 // The team's rules, editable in Admin → Rules. These are the starting values.
 export const DEFAULT_RULES = {
   restHours: 6, // a break at least this long ends a duty
-  maxSectorsPerDuty: 3, // sectors flown before a rest is required
+  maxSectorsPerDuty: 1, // sectors flown before a rest is required
   maxDutyHours: 12, // report to the end of the last sector
   bocStart: 0, // back of the clock: sim local hour it starts...
   bocEnd: 5, // ...and ends
-  maxConsecutiveBoc: 2, // back-of-clock sectors in a row
+  maxBoc: 2, // back-of-clock sectors per person for the whole event; 0 = no limit
   maxSectors: 0, // per person for the whole event; 0 = no limit
   unmarkedAvailable: false, // treat sectors someone has not answered as available
   reportLeadMinutes: 45, // report this long before the departure window opens
@@ -46,7 +46,6 @@ export function problems(sectors, rules) {
   const list = [...sectors].sort(byStd);
   const out = [];
   let duty = [];
-  let bocRun = 0;
 
   const endDuty = () => {
     if (!duty.length) return;
@@ -69,16 +68,13 @@ export function problems(sectors, rules) {
       if (gap >= rules.restHours * HOUR) endDuty();
     }
     duty.push(s);
-    if (isBoc(s, rules)) {
-      bocRun += 1;
-      if (bocRun === rules.maxConsecutiveBoc + 1) {
-        out.push(`more than ${rules.maxConsecutiveBoc} back-of-clock sectors in a row at ${s.flight}`);
-      }
-    } else {
-      bocRun = 0;
-    }
   });
   endDuty();
+
+  const boc = list.filter((s) => isBoc(s, rules)).length;
+  if (rules.maxBoc > 0 && boc > rules.maxBoc) {
+    out.push(`${boc} back-of-clock sectors (limit ${rules.maxBoc})`);
+  }
 
   if (rules.maxSectors > 0 && list.length > rules.maxSectors) {
     out.push(`${list.length} sectors in total (limit ${rules.maxSectors})`);
@@ -123,8 +119,9 @@ export function planRoster({ sectors, roster, people, prefs, rules, now, reportF
         const want = choice.get(`${p.id}|${s.id}`);
         if (want === 'unavailable' || (!want && !rules.unmarkedAvailable)) continue;
         const mine = flying.get(p.id);
-        // Adding this sector must not break a rule that was not already broken.
-        if (problems([...mine, s], rules).length > problems(mine, rules).length) continue;
+        // Adding this sector must not break a rule, or make a break worse.
+        const before = problems(mine, rules);
+        if (problems([...mine, s], rules).some((text) => !before.includes(text))) continue;
 
         // Lower is better. Share the flying evenly, honour requests, and keep
         // a crew together across back-to-back sectors to cut down handovers.

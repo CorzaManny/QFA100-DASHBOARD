@@ -62,7 +62,7 @@ New accounts start as **Awaiting approval** and see nothing; approving one makes
 4. **Auto roster.** **Admin → Auto roster → Auto roster the gaps** fills the empty Captain and First Officer seats. It never moves anyone already rostered, never uses someone who marked Can't, and stays inside the duty rules. Seats it cannot fill are listed. **Clear auto-rostered** removes only what it placed, so you can adjust and run it again.
 5. **Check and publish.** The rule check lists anyone whose roster breaks a rule (including people you pinned). **Publish roster** makes it visible to everyone.
 
-The duty rules are edited in **Admin → Rules** and apply to the whole team: minimum rest, sectors per duty, longest duty, sectors per person, the back-of-clock window and how many back-of-clock sectors in a row, report times, and whether sectors a pilot left blank count as available. Sectors with less than the minimum rest between them count as one duty.
+The duty rules are edited in **Admin → Rules** and apply to the whole team: minimum rest, sectors per duty (one, so everyone rests between sectors), longest duty, sectors per person, the back-of-clock window and how many back-of-clock sectors each person may fly in the event (two), report times, and whether sectors a pilot left blank count as available. Sectors with less than the minimum rest between them count as one duty.
 
 Auto roster is a sensible-rules fill, not a perfect optimiser: it works through the sectors in order, sharing the flying evenly, favouring sectors people asked for and keeping a crew together on back-to-back sectors. Expect to adjust a few by hand.
 
