@@ -3,7 +3,7 @@
 
 import { state } from '../store.js';
 import { saveSector, deleteSector } from '../api.js';
-import { esc, zulu, zdate, span, depWindow, isoDate, isoTime, icao, icon } from '../ui.js';
+import { esc, zulu, zdate, span, depWindow, simLocal, isoDate, isoTime, icao, icon } from '../ui.js';
 import { sortedSectors, currentSector, isMine, canEdit, crewLabel, simbriefPlanUrl, syncTeam } from '../ops.js';
 
 function list() {
@@ -26,7 +26,8 @@ function list() {
         <a class="row ${new Date(s.sta) < now && s !== cur ? 'past' : ''}" href="#/schedule/${esc(s.id)}">
           <div class="row-main">
             <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${status}</div>
-            <div class="sub">${esc(s.flight)} · ${esc(crewLabel(s))}</div>
+            <div class="sub">${esc(s.flight)} · ${simLocal(s.std)}</div>
+            <div class="sub">${esc(crewLabel(s))}</div>
           </div>
           <div class="right">
             <div class="row-t">${zulu(s.std)}</div>
@@ -40,7 +41,7 @@ function list() {
     <div class="page-head"><h1>Schedule</h1>
       ${canEdit() ? `<a class="btn primary" href="#/schedule/new">${icon('plus')} Add sector</a>` : ''}</div>
     <section class="card list">${rows || '<p class="note">No sectors in the schedule yet.</p>'}</section>
-    <p class="tiny center">All times UTC. WorldFlight sectors show when the departure window opens, then the window and block time.</p>`;
+    <p class="tiny center">Times are Zulu, with sim local (Sydney) time under each sector. WorldFlight sectors show when the departure window opens, then the window and block time.</p>`;
 }
 
 function detail(id) {

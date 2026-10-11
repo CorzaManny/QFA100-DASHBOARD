@@ -927,3 +927,46 @@ fieldset:disabled textarea {
 .top-right {
   flex: none;
 }
+
+.form .list {
+  padding: 0;
+}
+
+/* ---- Availability and auto roster ---- */
+
+.seg.tabs4 {
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+}
+.seg.tabs4 a {
+  font-size: 0.82rem;
+  padding: 0 4px;
+  text-align: center;
+}
+.seg.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.seg button.on.prefer {
+  background: rgba(91, 212, 154, 0.22);
+  color: var(--ok);
+}
+.seg button.on.available {
+  background: rgba(98, 185, 244, 0.22);
+  color: var(--accent);
+}
+.seg button.on.unavailable {
+  background: rgba(245, 138, 138, 0.22);
+  color: var(--bad);
+}
+.avail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--card2);
+}
+.avail:first-child {
+  border-top: 0;
+}
+.field .tiny {
+  letter-spacing: 0;
+}

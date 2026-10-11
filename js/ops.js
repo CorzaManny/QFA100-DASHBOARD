@@ -2,6 +2,7 @@
 
 import { state, save } from './store.js';
 import { configured, getSession, loadAll } from './api.js';
+import { rulesOf } from './autoroster.js';
 
 const VATSIM_FEED = 'https://data.vatsim.net/v3/vatsim-data.json';
 const EARTH_NM = 3440.065;
@@ -47,6 +48,7 @@ export const DUTIES = ['Captain', 'First Officer', 'Relief Pilot', 'Observer'];
 export const me = () => state.people.find((p) => p.id === getSession()?.userId) || null;
 // What each role may do is enforced by the database; these only decide what to show.
 export const ROLES = {
+  pending: ['Awaiting approval', 'A new account; sees nothing until an admin approves it'],
   admin: ['Admin', 'Everything, including changing roles'],
   dispatcher: ['Dispatcher', 'Edits the schedule and the roster'],
   pilot: ['Pilot', 'Can be rostered to fly'],
@@ -54,6 +56,8 @@ export const ROLES = {
 };
 export const roleName = (role) => (ROLES[role] || ROLES.pilot)[0];
 export const isAdmin = () => me()?.role === 'admin';
+export const isPending = () => me()?.role === 'pending';
+export const pendingPeople = () => state.people.filter((p) => p.role === 'pending');
 export const canEdit = () => ['admin', 'dispatcher'].includes(me()?.role);
 export const person = (id) => state.people.find((p) => p.id === id) || null;
 
@@ -66,18 +70,16 @@ export function crewOf(sector) {
 
 // Every sector needs at least this many pilots on the roster.
 export const MIN_PILOTS = 2;
-const PILOT_DUTIES = ['Captain', 'First Officer', 'Relief Pilot'];
+export const PILOT_DUTIES = ['Captain', 'First Officer', 'Relief Pilot'];
 export const pilotsShort = (sector) =>
   Math.max(0, MIN_PILOTS - crewOf(sector).filter((r) => PILOT_DUTIES.includes(r.duty)).length);
 
-// Report time offered when rostering, in minutes before the departure window
-// opens. The first sector of the event gets longer, for setting up.
-export const REPORT_LEAD = 45;
-export const FIRST_REPORT_LEAD = 60;
-
+// Report time offered when rostering: a set time before the departure window
+// opens, longer for the first sector of the event. Both are team rules.
 export function defaultReport(sector) {
   const first = sortedSectors()[0];
-  const lead = first && first.id === sector.id ? FIRST_REPORT_LEAD : REPORT_LEAD;
+  const r = rules();
+  const lead = first && first.id === sector.id ? r.firstReportLeadMinutes : r.reportLeadMinutes;
   return new Date(new Date(sector.std).getTime() - lead * 60000);
 }
 
@@ -93,6 +95,20 @@ export function myDuty(sector) {
 }
 
 export const isMine = (sector) => !!myDuty(sector);
+
+// Duty rules and roster state, shared by the whole team.
+export const rules = () => rulesOf(state.settings);
+export const isDraft = () => state.settings?.roster_state === 'draft';
+
+// Someone's availability choice for a sector: 'prefer', 'available', 'unavailable' or undefined.
+export const prefOf = (userId, sectorId) =>
+  state.prefs.find((p) => p.user_id === userId && p.sector_id === sectorId)?.choice;
+
+// Forget the team's data on this device when someone signs out.
+export function clearTeam() {
+  Object.assign(state, { roster: [], people: [], prefs: [] });
+  save();
+}
 
 // Pull the latest schedule, roster and accounts from the team database.
 // On failure the copy already on the device stays in use.

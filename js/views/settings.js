@@ -3,7 +3,7 @@
 import { state, save, exportData, importData, resetAll } from '../store.js';
 import { configured, getSession, signOut, updateProfile } from '../api.js';
 import { esc, icon, rerender } from '../ui.js';
-import { me, isAdmin, canEdit, roleName, syncTeam } from '../ops.js';
+import { me, isAdmin, canEdit, roleName, syncTeam, clearTeam } from '../ops.js';
 
 let message = '';
 let problem = '';
@@ -144,6 +144,7 @@ export const forms = {
 export const actions = {
   async signout() {
     await signOut();
+    clearTeam();
     rerender();
   },
   export() {

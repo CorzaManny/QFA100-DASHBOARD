@@ -3,8 +3,8 @@
 
 import { state } from '../store.js';
 import { configured } from '../api.js';
-import { esc, zulu, zdate, depWindow, icon } from '../ui.js';
-import { sortedSectors, crewOf, person, me, canEdit, pilotsShort, MIN_PILOTS } from '../ops.js';
+import { esc, zulu, zdate, depWindow, simLocal, icon } from '../ui.js';
+import { sortedSectors, crewOf, person, me, canEdit, pilotsShort, isDraft, MIN_PILOTS } from '../ops.js';
 
 const name = (id) => esc(person(id)?.display_name || 'Unknown');
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
@@ -20,6 +20,17 @@ function noAccounts() {
     <div class="page-head"><h1>Roster</h1></div>
     <section class="card">
       <p class="note">The roster is linked to user accounts, and this app is not connected to its database yet. Follow "Set up accounts" in the README, then everyone signs in and can be rostered here.</p>
+    </section>`;
+}
+
+// While the roster is a draft, pilots only get the availability page.
+function draft() {
+  return `
+    <div class="page-head"><h1>Roster</h1><span class="badge warn">DRAFT</span></div>
+    <section class="card">
+      <h2>The roster is being put together</h2>
+      <p class="note">Tell the team which sectors you would like and which you cannot fly. The roster appears here once it is published.</p>
+      <a class="btn primary" href="#/availability">Set my availability</a>
     </section>`;
 }
 
@@ -39,7 +50,7 @@ function list() {
       <a class="row ${new Date(s.sta) < now ? 'past' : ''}" href="#/roster/${esc(s.id)}">
         <div class="row-main">
           <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} <span class="badge warn">${esc(r.duty.toUpperCase())}</span></div>
-          <div class="sub">${esc(s.flight)} · Report <strong>${when(r.report_at)}</strong></div>
+          <div class="sub">${esc(s.flight)} · Report <strong>${when(r.report_at)}</strong> · ${simLocal(r.report_at)}</div>
           ${r.notes ? `<div class="sub">${esc(r.notes)}</div>` : ''}
         </div>
         <div class="right">
@@ -72,7 +83,11 @@ function list() {
   const short = sectors.filter((s) => new Date(s.sta) > now && pilotsShort(s)).length;
   return `
     <div class="page-head"><h1>Roster</h1>
-      ${canEdit() ? '<a class="btn primary" href="#/admin">Edit roster</a>' : ''}</div>
+      ${isDraft() ? '<span class="badge warn">DRAFT · NOT VISIBLE TO PILOTS</span>' : ''}</div>
+    <div class="btn-row">
+      <a class="btn ghost" href="#/availability">My availability</a>
+      ${canEdit() ? '<a class="btn primary" href="#/admin">Edit roster</a>' : ''}
+    </div>
     <section class="card list">
       <div class="card-head"><div class="tiny">MY ROSTER · ${esc((me()?.display_name || '').toUpperCase())}</div>
         <span class="badge ${mine.length ? 'info' : 'mute'}">${mine.length} SECTOR${mine.length === 1 ? '' : 'S'}</span></div>
@@ -116,5 +131,7 @@ function detail(id) {
 }
 
 export function render(args) {
-  return !configured ? noAccounts() : args[0] ? detail(args[0]) : list();
+  if (!configured) return noAccounts();
+  if (isDraft() && !canEdit()) return draft();
+  return args[0] ? detail(args[0]) : list();
 }

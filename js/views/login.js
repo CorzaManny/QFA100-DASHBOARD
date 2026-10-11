@@ -1,9 +1,9 @@
 // The first page: sign in or create an account.
 
 import { state, save } from '../store.js';
-import { configured, signIn, signUp } from '../api.js';
+import { configured, signIn, signUp, signOut, getSession } from '../api.js';
 import { esc, icon, rerender } from '../ui.js';
-import { syncTeam } from '../ops.js';
+import { syncTeam, clearTeam, isPending, me } from '../ops.js';
 
 let mode = 'signin';
 let error = '';
@@ -18,6 +18,19 @@ function notConnected() {
       <p class="note">Sign-in needs the team's database. Whoever looks after this app follows "Set up accounts" in the README (about ten minutes, free), and this page becomes the login.</p>
       <p class="note">Until then you can use the app on this device without an account. The roster is not available in this mode.</p>
       <button class="btn primary" data-act="preview">Continue without an account</button>
+    </section>`;
+}
+
+function awaitingApproval() {
+  return `
+    <section class="card">
+      <div><span class="badge warn">AWAITING APPROVAL</span></div>
+      <h2>Thanks, ${esc(me()?.display_name || '')}. Your account is waiting for an admin.</h2>
+      <p class="note">A team admin needs to approve <strong>${esc(getSession()?.email || '')}</strong> before you can see the schedule and roster. Let them know you have signed up; this page updates by itself once you are approved.</p>
+      <div class="btn-row">
+        <button class="btn primary" data-act="recheck" ${busy ? 'disabled' : ''}>${busy ? 'Checking…' : 'Check again'}</button>
+        <button class="btn ghost" data-act="signout">Sign out</button>
+      </div>
     </section>`;
 }
 
@@ -39,7 +52,7 @@ function form() {
       ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
       ${notice ? `<p class="note ok">${esc(notice)}</p>` : ''}
       <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Please wait…' : signup ? 'Create account' : 'Sign in'}</button>
-      ${signup ? '<p class="tiny">Use at least 8 characters. A team admin rosters you once your account exists.</p>' : ''}
+      ${signup ? '<p class="tiny">Use at least 8 characters. A team admin has to approve your account before you can use the app.</p>' : ''}
     </form>`;
 }
 
@@ -51,7 +64,7 @@ export function render() {
         <h1>QFA100 Ops</h1>
         <div class="tiny">WORLDFLIGHT · 737 OPERATIONS</div>
       </div>
-      ${configured ? form() : notConnected()}
+      ${!configured ? notConnected() : getSession() && isPending() ? awaitingApproval() : form()}
     </div>`;
 }
 
@@ -69,12 +82,14 @@ export const forms = {
         const signedIn = await signUp(email, password, String(data.get('name')).trim());
         if (!signedIn) {
           mode = 'signin';
-          notice = 'Account created. Check your email for a confirmation link, then sign in here.';
+          notice = 'Account created. Check your email for a confirmation link, then sign in here. A team admin then approves your account.';
         }
       } else {
         await signIn(email, password);
       }
       await syncTeam();
+      // Whoever uses this page next starts from Sign in.
+      mode = 'signin';
     } catch (err) {
       error = err.message;
     }
@@ -85,6 +100,18 @@ export const forms = {
 };
 
 export const actions = {
+  async recheck() {
+    busy = true;
+    rerender();
+    await syncTeam();
+    busy = false;
+    rerender();
+  },
+  async signout() {
+    await signOut();
+    clearTeam();
+    rerender();
+  },
   mode(el) {
     mode = el.dataset.mode;
     error = '';

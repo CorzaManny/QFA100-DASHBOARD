@@ -37,9 +37,9 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 6. Push the change to GitHub.
 7. Open the app and **create your own account first**. The first account becomes the admin.
 
-Then send the link to the team. Each person presses **Create account**; by default Supabase emails them a confirmation link before they can sign in. Once they have an account you can roster them.
+Then send the link to the team. Each person presses **Create account**; by default Supabase emails them a confirmation link before they can sign in. A new account then waits on an "Awaiting approval" page and can see nothing until an admin approves it in **Admin → People and roles**. Admins get a banner on the Dashboard when someone is waiting.
 
-Worth doing once everyone has joined: **Authentication → Sign In / Providers**, turn off **Allow new users to sign up**, so nobody else with the link can create an account and read the roster.
+Optional once everyone has joined: **Authentication → Sign In / Providers**, turn off **Allow new users to sign up**, so strangers with the link cannot create accounts at all.
 
 ### Roles
 
@@ -52,7 +52,23 @@ Worth doing once everyone has joined: **Authentication → Sign In / Providers**
 | Build the roster, set duties and report times | | | yes | yes |
 | Change other people's roles | | | | yes |
 
-New accounts start as Pilot. An admin changes roles in **Admin → People and roles**. These rules are enforced by the database, not just by hiding buttons. A forgotten password is reset from **Authentication → Users** in Supabase.
+New accounts start as **Awaiting approval** and see nothing; approving one makes it a Pilot. An admin changes roles, or sets someone back to Awaiting approval to remove their access, in **Admin → People and roles**. These rules are enforced by the database, not just by hiding buttons. A forgotten password is reset from **Authentication → Users** in Supabase.
+
+### Building the roster with Auto roster
+
+1. **Draft.** The roster starts as a draft. Pilots cannot see it; their Roster tab only offers **Set my availability**.
+2. **Availability.** Each pilot marks every sector Prefer, Available or Can't. Times are shown in Zulu and sim local (Sydney) time, and back-of-clock sectors are flagged. Admins and dispatchers can fill it in for someone from **Admin → Auto roster**.
+3. **Pin people.** On **Admin → Roster**, put anyone who must fly a particular sector on it by hand.
+4. **Auto roster.** **Admin → Auto roster → Auto roster the gaps** fills the empty Captain and First Officer seats. It never moves anyone already rostered, never uses someone who marked Can't, and stays inside the duty rules. Seats it cannot fill are listed. **Clear auto-rostered** removes only what it placed, so you can adjust and run it again.
+5. **Check and publish.** The rule check lists anyone whose roster breaks a rule (including people you pinned). **Publish roster** makes it visible to everyone.
+
+The duty rules are edited in **Admin → Rules** and apply to the whole team: minimum rest, sectors per duty, longest duty, sectors per person, the back-of-clock window and how many back-of-clock sectors in a row, report times, and whether sectors a pilot left blank count as available. Sectors with less than the minimum rest between them count as one duty.
+
+Auto roster is a sensible-rules fill, not a perfect optimiser: it works through the sectors in order, sharing the flying evenly, favouring sectors people asked for and keeping a crew together on back-to-back sectors. Expect to adjust a few by hand.
+
+### Test accounts
+
+To try out the roster without waiting for real people to sign up, an admin can add stand-in team members in **Admin → People and roles → Test accounts**. They can be rostered and given roles like anyone else, they are marked TEST, and nobody can sign in as one. Everyone on the team sees them until you remove them, which also removes their roster entries.
 
 ### After updating the app
 
@@ -94,7 +110,8 @@ These are still saved on each person's own device, not in the database. To share
 | Checklist items and wording | `js/data/checklists.js` |
 | Colours and layout | `css/app.css` |
 | Default callsign and aircraft type | `js/store.js` |
-| Default report times (`REPORT_LEAD`, `FIRST_REPORT_LEAD`) and minimum pilots (`MIN_PILOTS`) | `js/ops.js` |
+| Duty rules and report times | in the app: **Admin → Rules** (starting values are in `js/autoroster.js`) |
+| Minimum pilots per sector (`MIN_PILOTS`) | `js/ops.js` |
 | Tech log system list | `js/views/techlog.js` |
 | Database connection | `js/config.js` |
 

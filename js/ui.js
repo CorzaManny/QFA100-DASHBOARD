@@ -16,6 +16,36 @@ export function zdate(t) {
   return isNaN(d) ? '—' : `${pad(d.getUTCDate())} ${MONTHS[d.getUTCMonth()]}`;
 }
 
+// The simulator is a fixed-base sim in Sydney, so the only local time shown
+// anywhere is Sydney's (AEDT during WorldFlight).
+export const SIM_TZ = 'Australia/Sydney';
+const simFormat = new Intl.DateTimeFormat('en-AU', {
+  timeZone: SIM_TZ,
+  weekday: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+  timeZoneName: 'short',
+});
+
+function simParts(t) {
+  const d = new Date(t);
+  if (isNaN(d)) return null;
+  return Object.fromEntries(simFormat.formatToParts(d).map((p) => [p.type, p.value]));
+}
+
+// "SUN 0700 AEDT"
+export function simLocal(t) {
+  const p = simParts(t);
+  return p ? `${p.weekday.toUpperCase()} ${p.hour}${p.minute} ${p.timeZoneName}` : '—';
+}
+
+// Hour of the day in sim local time, with minutes as a fraction (6.5 = 0630).
+export function simHour(t) {
+  const p = simParts(t);
+  return p ? Number(p.hour) + Number(p.minute) / 60 : 0;
+}
+
 // Values for <input type="date"> / <input type="time">, in UTC.
 export const isoDate = (t) => new Date(t).toISOString().slice(0, 10);
 export const isoTime = (t) => new Date(t).toISOString().slice(11, 16);

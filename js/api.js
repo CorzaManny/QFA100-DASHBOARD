@@ -129,12 +129,22 @@ const toSector = (r) => ({
 });
 
 export async function loadAll() {
-  const [sectors, roster, people] = await Promise.all([
+  // Settings and availability arrived in a later database version; if the
+  // database has not been updated yet, carry on without them.
+  const [sectors, roster, people, settings, prefs] = await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
-    rest('GET', 'roster?select=id,sector_id,user_id,duty,report_at,notes'),
-    rest('GET', 'profiles?select=id,display_name,vatsim_cid,role&order=display_name.asc'),
+    rest('GET', 'roster?select=*'),
+    rest('GET', 'profiles?select=*&order=display_name.asc'),
+    rest('GET', 'settings?select=*&id=eq.1').catch(() => null),
+    rest('GET', 'preferences?select=user_id,sector_id,choice').catch(() => null),
   ]);
-  return { sectors: sectors.map(toSector), roster, people };
+  return {
+    sectors: sectors.map(toSector),
+    roster,
+    people,
+    settings: settings?.[0] || null,
+    prefs: prefs || [],
+  };
 }
 
 // fields: { flight, dep, arr, std, sta, route, notes }
@@ -154,4 +164,28 @@ export const deleteRoster = (rosterId) => rest('DELETE', `roster?id=eq.${id(rost
 
 export const updateProfile = (userId, fields) => rest('PATCH', `profiles?id=eq.${id(userId)}`, fields);
 
+// Test accounts are stand-in team members nobody can sign in as.
+export const addTestAccount = (name, role) => rest('POST', 'rpc/add_test_account', { account_name: name, account_role: role });
+
+// Pass null to remove every test account.
+export const removeTestAccount = (userId) => rest('POST', 'rpc/remove_test_account', { target: userId });
+
 export const setRole = (userId, role) => rest('POST', 'rpc/set_role', { target: userId, new_role: role });
+
+// ---- Roster state, rules and availability ----
+
+// fields: { roster_state } and/or { rules }
+export const saveSettings = (fields) => rest('PATCH', 'settings?id=eq.1', fields);
+
+// rows: [{ user_id, sector_id, choice }]
+export const savePrefs = (rows) =>
+  rest('POST', 'preferences?on_conflict=user_id,sector_id', rows, 'resolution=merge-duplicates');
+
+export const deletePref = (userId, sectorId) =>
+  rest('DELETE', `preferences?user_id=eq.${id(userId)}&sector_id=eq.${id(sectorId)}`);
+
+// entries: complete roster rows, all with the same fields
+export const saveRosterMany = (entries) =>
+  rest('POST', 'roster?on_conflict=sector_id,user_id', entries, 'resolution=merge-duplicates');
+
+export const clearAutoRoster = () => rest('DELETE', 'roster?auto=is.true');

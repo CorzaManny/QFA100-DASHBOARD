@@ -3,10 +3,11 @@
 import { zulu } from './ui.js';
 import { state } from './store.js';
 import { configured, getSession } from './api.js';
-import { loadAirports, syncTeam, canEdit } from './ops.js';
+import { loadAirports, syncTeam, canEdit, isPending } from './ops.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
 import * as admin from './views/admin.js';
+import * as availability from './views/availability.js';
 import * as dash from './views/dash.js';
 import * as checklists from './views/checklists.js';
 import * as schedule from './views/schedule.js';
@@ -15,7 +16,7 @@ import * as airports from './views/airports.js';
 import * as dispatch from './views/dispatch.js';
 import * as settings from './views/settings.js';
 
-const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, dispatch, settings, admin };
+const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, dispatch, settings, admin, availability };
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
 let route = { name: 'dashboard', args: [], view: dash };
@@ -36,7 +37,8 @@ function parse() {
 
 // With a database connected everyone signs in first. Without one, the login
 // page explains that and offers a preview on this device.
-const locked = () => (configured ? !getSession() : !state.preview);
+// Signed-in accounts still waiting for an admin's approval stay on that page too.
+const locked = () => (configured ? !getSession() || isPending() : !state.preview);
 
 function render() {
   const gate = locked();
@@ -116,10 +118,12 @@ const quietRender = () => {
 
 // Keep the schedule and roster in step with the team database.
 async function sync() {
-  if (locked() || document.visibilityState !== 'visible') return;
+  if (document.visibilityState !== 'visible') return;
+  const before = locked();
   await syncTeam();
-  // A sign-in that has ended sends the user back to the login page.
-  if (locked()) render();
+  // A sign-in that has ended goes back to the login page, and an account
+  // that has just been approved leaves the waiting page.
+  if (locked() !== before || isPending()) render();
   else quietRender();
 }
 

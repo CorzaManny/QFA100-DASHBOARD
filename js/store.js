@@ -21,7 +21,9 @@ function defaults() {
     preview: false, // using the app without accounts because no database is connected
     sectors: officialSectors(), // copy of the team database's sectors
     roster: [], // copy of the team database's roster: { id, sector_id, user_id, duty, report_at, notes }
-    people: [], // copy of the team's accounts: { id, display_name, vatsim_cid, role }
+    settings: null, // team-wide: { roster_state, rules }
+    prefs: [], // availability: { user_id, sector_id, choice }; mine, or everyone's for editors
+    people: [], // copy of the team's accounts: { id, display_name, vatsim_cid, role, is_test }
     defects: [],
     defectSeq: 0,
     notes: {}, // airport briefing notes by ICAO

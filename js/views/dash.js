@@ -1,7 +1,7 @@
 // Dashboard: current flight status, your next sector, aircraft status.
 
 import { state } from '../store.js';
-import { esc, zulu, zdate, span, ago, depWindow, icon, rerender } from '../ui.js';
+import { esc, zulu, zdate, span, ago, depWindow, simLocal, icon, rerender } from '../ui.js';
 import {
   currentSector,
   nextSector,
@@ -12,6 +12,10 @@ import {
   isMine,
   myDuty,
   crewLabel,
+  isAdmin,
+  canEdit,
+  isDraft,
+  pendingPeople,
 } from '../ops.js';
 import { nextIncomplete } from './checklists.js';
 
@@ -175,7 +179,7 @@ function sectorCard(now) {
         duty
           ? `<div class="report">
               <span class="badge warn">${esc(duty.duty.toUpperCase())}</span>
-              <span><strong>Report ${zdate(duty.report_at)} ${zulu(duty.report_at)}</strong>
+              <span><strong>Report ${zdate(duty.report_at)} ${zulu(duty.report_at)} · ${simLocal(duty.report_at)}</strong>
                 <span class="sub" data-until="${esc(duty.report_at)}" data-verb="Report">${countdown(duty.report_at, now, 'Report')}</span></span>
             </div>${duty.notes ? `<p class="note"><strong>Roster note:</strong> ${esc(duty.notes)}</p>` : ''}`
           : ''
@@ -185,16 +189,25 @@ function sectorCard(now) {
           ? `<p class="note warn">${icon('alert')} Aircraft ETA ${zulu(state.track.eta)} plus a ${state.profile.turnaround} min turnaround puts departure at about ${zulu(risk.earliest)}, ${span(risk.late)} late.</p>`
           : ''
       }
-      ${s.window ? `<div class="tiny">DEPARTURE WINDOW ${depWindow(s)}</div>` : ''}
+      <div class="tiny">${s.window ? `DEPARTURE WINDOW ${depWindow(s)} · ` : ''}SIM LOCAL ${simLocal(s.std)}</div>
       ${s.notes ? `<p class="note"><strong>Handover notes:</strong> ${esc(s.notes)}</p>` : ''}
       ${
         mine
           ? ''
           : state.preview
             ? '<div class="tiny">Accounts are not set up yet, so this is the team\'s next sector.</div>'
-            : '<div class="tiny">You are not rostered on an upcoming sector, so this is the team\'s next one. See the <a href="#/roster">Roster</a>.</div>'
+            : isDraft() && !canEdit()
+              ? '<div class="tiny">The roster is still a draft. <a href="#/availability">Set your availability</a> so you can be rostered.</div>'
+              : '<div class="tiny">You are not rostered on an upcoming sector, so this is the team\'s next one. See the <a href="#/roster">Roster</a>.</div>'
       }
     </section>`;
+}
+
+function approvalBanner() {
+  const waiting = isAdmin() ? pendingPeople().length : 0;
+  if (!waiting) return '';
+  return `<a class="banner info" href="#/admin/people">${icon('alert')}
+    <span><strong>${waiting} account${waiting === 1 ? '' : 's'}</strong> waiting for your approval</span>${icon('chevron')}</a>`;
 }
 
 function statusBanner() {
@@ -220,6 +233,7 @@ export function render() {
   const open = state.defects.filter((d) => d.status !== 'RECTIFIED').length;
   const o = state.ofp;
   return `
+    ${approvalBanner()}
     ${statusBanner()}
     ${liveCard(now)}
     ${sectorCard(now)}
