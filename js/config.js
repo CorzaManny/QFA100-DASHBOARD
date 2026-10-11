@@ -3,5 +3,5 @@
 // The "anon public" key is designed to be published; never put the
 // "service_role" key here.
 
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+export const SUPABASE_URL = 'https://robydzjjanyhsmtjrhog.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_294YXJrzcL-PXagMXnAFog_PM3CsjJH';
