@@ -97,6 +97,10 @@ alter table public.sectors  enable row level security;
 alter table public.roster   enable row level security;
 
 revoke all on public.profiles, public.sectors, public.roster from anon;
+-- Stated explicitly because newer Supabase projects do not grant these by default.
+-- The policies below still decide which rows each person can touch.
+grant select on public.profiles, public.sectors, public.roster to authenticated;
+grant insert, update, delete on public.sectors, public.roster to authenticated;
 revoke insert, update, delete on public.profiles from authenticated;
 grant update (display_name, vatsim_cid) on public.profiles to authenticated;
 
