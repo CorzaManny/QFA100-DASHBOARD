@@ -1,7 +1,7 @@
 // Duty rules and the Auto roster fill. Pure functions: nothing here reads or
 // saves app data, so the rules can be reasoned about (and tested) on their own.
 
-import { simHour } from './ui.js';
+import { simHour, simDay } from './ui.js';
 
 const HOUR = 3600000;
 const PILOT_SEATS = ['Captain', 'First Officer'];
@@ -16,6 +16,7 @@ export const DEFAULT_RULES = {
   bocStart: 0, // back of the clock: sim local hour it starts...
   bocEnd: 5, // ...and ends
   maxBoc: 2, // back-of-clock sectors per person for the whole event; 0 = no limit
+  bocEveryDays: 2, // at most one back-of-clock sector every this many days; 0 = no limit
   maxSectors: 0, // per person for the whole event; 0 = no limit
   unmarkedAvailable: false, // treat sectors someone has not answered as available
   reportLeadMinutes: 45, // report this long before the departure window opens
@@ -40,6 +41,10 @@ export function isBoc(sector, rules) {
   }
   return inside(simHour(sta(sector) - 1));
 }
+
+// Which night a sector belongs to: midday to midday in sim local time, so a
+// 2300 departure and an 0030 departure a little later are the same night.
+const night = (sector) => simDay(std(sector) - 12 * HOUR);
 
 // Everything wrong with one person's set of sectors, as plain sentences.
 export function problems(sectors, rules) {
@@ -71,9 +76,17 @@ export function problems(sectors, rules) {
   });
   endDuty();
 
-  const boc = list.filter((s) => isBoc(s, rules)).length;
-  if (rules.maxBoc > 0 && boc > rules.maxBoc) {
-    out.push(`${boc} back-of-clock sectors (limit ${rules.maxBoc})`);
+  const boc = list.filter((s) => isBoc(s, rules));
+  if (rules.maxBoc > 0 && boc.length > rules.maxBoc) {
+    out.push(`${boc.length} back-of-clock sectors (limit ${rules.maxBoc})`);
+  }
+  if (rules.bocEveryDays > 1) {
+    boc.forEach((s, i) => {
+      const prev = boc[i - 1];
+      if (prev && night(s) - night(prev) < rules.bocEveryDays) {
+        out.push(`back-of-clock sectors ${prev.flight} and ${s.flight} are too close (one every ${rules.bocEveryDays} days)`);
+      }
+    });
   }
 
   if (rules.maxSectors > 0 && list.length > rules.maxSectors) {

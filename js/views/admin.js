@@ -154,7 +154,11 @@ function rulesPage() {
         ${num('bocStart', 'Starts at hour', '0 to 23')}
         ${num('bocEnd', 'Ends at hour', '0 to 23')}
       </div>
-      ${num('maxBoc', 'Back-of-clock sectors per person', 'For the whole event; 0 = no limit. A sector counts if any of it is flown in that window')}
+      <div class="grid2">
+        ${num('maxBoc', 'Back-of-clock sectors per person', 'For the whole event; 0 = no limit')}
+        ${num('bocEveryDays', 'One back of clock every (days)', '2 = never on consecutive nights; 0 = no limit')}
+      </div>
+      <p class="tiny">A sector is back of clock if any of it is flown in that window. A night runs midday to midday, sim local time.</p>
       <h3>Report time</h3>
       <div class="grid2">
         ${num('reportLeadMinutes', 'Minutes before departure', 'Before the window opens', 5)}

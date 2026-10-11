@@ -40,10 +40,22 @@ export function simLocal(t) {
   return p ? `${p.weekday.toUpperCase()} ${p.hour}${p.minute} ${p.timeZoneName}` : '—';
 }
 
+// "0700 AEDT", for the header clock
+export function simClock(t) {
+  const p = simParts(t);
+  return p ? `${p.hour}${p.minute} ${p.timeZoneName}` : '—';
+}
+
 // Hour of the day in sim local time, with minutes as a fraction (6.5 = 0630).
 export function simHour(t) {
   const p = simParts(t);
   return p ? Number(p.hour) + Number(p.minute) / 60 : 0;
+}
+
+// The sim-local calendar day as a whole number, for counting days apart.
+const simDate = new Intl.DateTimeFormat('en-CA', { timeZone: SIM_TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+export function simDay(t) {
+  return Math.round(Date.parse(`${simDate.format(new Date(t))}T00:00:00Z`) / 86400000);
 }
 
 // Values for <input type="date"> / <input type="time">, in UTC.

@@ -113,6 +113,10 @@ h3 {
   gap: 8px;
 }
 .clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   padding: 4px 10px;
@@ -969,4 +973,11 @@ fieldset:disabled textarea {
 }
 .field .tiny {
   letter-spacing: 0;
+}
+
+.clock-sim {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
 }

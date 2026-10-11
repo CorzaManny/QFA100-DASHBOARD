@@ -1,6 +1,6 @@
 // App shell: sign-in gate, hash routing, event delegation, clock, screen wake lock.
 
-import { zulu } from './ui.js';
+import { zulu, simClock } from './ui.js';
 import { state } from './store.js';
 import { configured, getSession } from './api.js';
 import { loadAirports, syncTeam, canEdit, isPending } from './ops.js';
@@ -19,6 +19,7 @@ import * as settings from './views/settings.js';
 const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, dispatch, settings, admin, availability };
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
+const clockSim = document.getElementById('clock-sim');
 let route = { name: 'dashboard', args: [], view: dash };
 
 function safeDecode(part) {
@@ -95,6 +96,7 @@ async function wakeLock() {
 function tick() {
   const now = Date.now();
   clock.textContent = zulu(now);
+  clockSim.textContent = simClock(now);
   for (const el of root.querySelectorAll('[data-until]')) {
     el.textContent = dash.countdown(el.dataset.until, now, el.dataset.verb);
   }
