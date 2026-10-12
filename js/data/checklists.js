@@ -97,7 +97,7 @@ export const CHECKLISTS = [
     name: 'Shutdown',
     items: [
       ['Fuel pumps', 'Off'],
-      ['Probe heat', 'Off'],
+      ['Probe heat', 'Auto'],
       ['Hydraulic panel', 'Set'],
       ['Flaps', 'UP'],
       ['Parking brake', '___'],
