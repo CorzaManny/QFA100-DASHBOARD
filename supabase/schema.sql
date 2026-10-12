@@ -72,6 +72,23 @@ create table if not exists public.settings (
 );
 insert into public.settings (id) values (1) on conflict (id) do nothing;
 
+-- The one SimBrief account the whole team imports flight plans from.
+alter table public.settings add column if not exists simbrief text not null default '';
+
+-- The shared briefing for each sector: the imported flight plan, the team's
+-- notes, WorldFlight's page and notes, and the crew's handover to the next crew.
+create table if not exists public.briefings (
+  sector_id  uuid primary key references public.sectors (id) on delete cascade,
+  notes      text not null default '',
+  wf_url     text not null default '',
+  wf_notes   text not null default '',
+  handover   text not null default '',
+  ofp        jsonb,
+  ofp_by     text not null default '',
+  ofp_at     timestamptz,
+  updated_at timestamptz not null default now()
+);
+
 -- Each person's availability for each sector, used by Auto roster.
 create table if not exists public.preferences (
   user_id    uuid not null references public.profiles (id) on delete cascade,
@@ -309,8 +326,9 @@ alter table public.settings enable row level security;
 alter table public.preferences enable row level security;
 alter table public.techlog  enable row level security;
 alter table public.techlog_history enable row level security;
+alter table public.briefings enable row level security;
 
-revoke all on public.profiles, public.sectors, public.roster, public.settings, public.preferences, public.techlog, public.techlog_history from anon;
+revoke all on public.profiles, public.sectors, public.roster, public.settings, public.preferences, public.techlog, public.techlog_history, public.briefings from anon;
 -- Stated explicitly because newer Supabase projects do not grant these by default.
 -- The policies below still decide which rows each person can touch.
 grant select on public.profiles, public.sectors, public.roster to authenticated;
@@ -320,6 +338,7 @@ grant select, insert, update, delete on public.preferences to authenticated;
 grant select, insert, update, delete on public.techlog to authenticated;
 grant usage on sequence public.techlog_seq to authenticated;
 grant select on public.techlog_history to authenticated;
+grant select, insert, update on public.briefings to authenticated;
 revoke insert, update, delete on public.profiles from authenticated;
 grant update (display_name, vatsim_cid) on public.profiles to authenticated;
 
@@ -391,3 +410,16 @@ create policy "editors delete techlog" on public.techlog
 drop policy if exists "members read techlog history" on public.techlog_history;
 create policy "members read techlog history" on public.techlog_history
   for select to authenticated using (public.is_member());
+
+-- Members read briefings; pilots, dispatchers and admins write them.
+drop policy if exists "members read briefings" on public.briefings;
+create policy "members read briefings" on public.briefings
+  for select to authenticated using (public.is_member());
+
+drop policy if exists "crew add briefings" on public.briefings;
+create policy "crew add briefings" on public.briefings
+  for insert to authenticated with check (public.can_report());
+
+drop policy if exists "crew update briefings" on public.briefings;
+create policy "crew update briefings" on public.briefings
+  for update to authenticated using (public.can_report()) with check (public.can_report());

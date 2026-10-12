@@ -100,6 +100,17 @@ Open **Settings** (top-right icon) to set, on each device:
 
 The Dashboard can read the aircraft's position, phase, ETA and fuel straight from the simulator instead of VATSIM. The format the simulator side has to publish is defined in [docs/API.md](docs/API.md), with an example in `api/status.example.json`. Nothing publishes it yet; that connector is still to be built.
 
+## Sector briefings
+
+The **Briefings** tab opens the briefing for the next sector (pick any other from the drop-down). It is saved in the team database, so everyone sees the same thing:
+
+- **Flight plan (OFP)** – imported from SimBrief and saved for the whole team. An admin or dispatcher sets the team's one SimBrief username or Pilot ID on the briefing page; until then each person imports from their own account in Settings. A plan for a different sector is refused.
+- **Aircraft status** – open and deferred defects from the tech log, with their restrictions.
+- **Handover** – what the previous sector's crew left for this one, and a box for this crew to leave theirs.
+- **Team notes**, and **WorldFlight's page and briefing notes** for the sector (paste the address and their notes).
+
+Pilots, dispatchers and admins can write; observers read. The MEL lookup and the defect form also have a search box (try "radar" or "34-15").
+
 ## Live updates, password reset and removing accounts
 
 - The app checks the team database every 10 seconds while it is open, so other people's changes (roster, schedule, tech log, approvals) appear without reloading. It never redraws a form you are filling in.
@@ -110,10 +121,10 @@ The Dashboard can read the aircraft's position, phase, ETA and fuel straight fro
 
 The tech log lives in the team database, so everyone sees the same entries on every device. Pilots, dispatchers and admins can add and update entries; only admins and dispatchers can delete one. If the database was set up before the tech log was added, run `supabase/schema.sql` again (it is safe to re-run). Entries written on a device before that show a prompt on the Tech Log page to upload them.
 
-The MEL comes from the FAA Boeing 737 MMEL (Revision 62 draft), cut down to items that apply to a passenger 737-800, and is stored in `js/data/mel.json`. To rebuild it from a newer PDF (on a Mac):
+The MEL is the team's Boeing 737-800 operator MEL (Revision 8, September 2021), stored in `js/data/mel.json` together with its (O) crew and (M) maintenance procedures, which open under each item's conditions. To rebuild it from a newer PDF (on a Mac):
 
 ```
-swift tools/mel_words.swift MMEL_B-737.pdf words.tsv
+swift tools/mel_words.swift "B737 MEL.pdf" words.tsv
 python3 tools/build_mel.py words.tsv
 ```
 

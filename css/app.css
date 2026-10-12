@@ -1002,3 +1002,54 @@ fieldset:disabled textarea {
   white-space: pre-line;
   line-height: 1.45;
 }
+
+/* A list row that is a button (MEL search results) */
+button.row {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* MEL procedures, folded under the verdict */
+.mel-proc {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.mel-proc summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+}
+.mel-proc p {
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
+.mel-proc p.step {
+  padding-left: 1.6em;
+  text-indent: -1.6em;
+}
+.mel-proc p.loud {
+  color: var(--warn);
+}
+.mel-scroll {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+.mel-table {
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+.mel-table td {
+  border: 1px solid var(--line);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.mel > * {
+  min-width: 0;
+}

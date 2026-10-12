@@ -1,6 +1,7 @@
 // The Minimum Equipment List: what the aircraft may be dispatched with
-// inoperative, and on what conditions. The data is built from the FAA Boeing
-// 737 MMEL by tools/build_mel.py, cut down to a passenger 737-800.
+// inoperative, on what conditions, and the (O) crew and (M) maintenance
+// procedures that go with each item. The data is built from the team's
+// 737-800 MEL by tools/build_mel.py.
 
 const DAY = 86400000;
 
@@ -33,8 +34,13 @@ function index(data) {
     options.get(top).push(e);
   }
   const tops = data.items.filter((e) => e.id === topOf(e.id) && options.has(e.id));
+  // For searching: each option's item name, then its number and headings, then its conditions.
+  const search = [...options.values()].flat().map((e) => {
+    const path = pathIn(byId, e.id);
+    return [e, (path[0] || '').toLowerCase(), `${e.id} ${path.join(' ')}`.toLowerCase(), e.rem.toLowerCase()];
+  });
   const chapters = data.chapters.filter((c) => tops.some((t) => t.id.startsWith(`${c.ata}-`)));
-  return { source: data.source, chapters, byId, options, tops };
+  return { source: data.source, chapters, byId, options, tops, search, procs: data.procs || {} };
 }
 
 export const chapters = () => mel?.chapters || [];
@@ -46,13 +52,62 @@ export const melOptions = (topId) => mel?.options.get(topId) || [];
 export const melTop = (id) => (id ? topOf(id) : '');
 
 // The headings above an entry, outermost first: ["Air Conditioning Packs", "All-Passenger Configuration", ...].
-export function melPath(id) {
+export const melPath = (id) => (mel ? pathIn(mel.byId, id) : []);
+
+function pathIn(byId, id) {
   const out = [];
   for (let key = id; key; key = parentOf(key)) {
-    const e = mel?.byId.get(key);
+    const e = byId.get(key);
     if (e?.title) out.unshift(e.title);
   }
   return out;
+}
+
+// Notes printed against the headings above an entry, which apply to everything under them.
+export function melNotes(id) {
+  const out = [];
+  for (let key = parentOf(id); key; key = parentOf(key)) {
+    const e = mel?.byId.get(key);
+    if (e && !e.cat && e.rem) out.unshift(e.rem);
+  }
+  return out;
+}
+
+export const PROCEDURES = {
+  o: '(O) Crew procedure',
+  m: '(M) Maintenance procedure',
+  on: 'Operations note',
+  mn: 'Maintenance note',
+  n: 'Notes',
+};
+
+// The procedures for an entry: { from, sections: [[kind, text]] }. Some are
+// written once for a whole item, so look up the headings when the entry has none.
+export function melProcedures(id) {
+  const entry = melEntry(id);
+  for (let key = id; key; key = parentOf(key)) {
+    const sections = mel?.procs[key];
+    if (sections) return { from: key, sections };
+    if (!entry?.m && !entry?.o) break;
+  }
+  return null;
+}
+
+// Entries matching every word typed: matches in the item's name first, then
+// in its headings, then in the conditions.
+export function searchMel(query, limit = 20) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!mel || query.trim().length < 2) return [];
+  const out = [];
+  for (const [e, item, name, text] of mel.search) {
+    if (words.every((w) => item.includes(w))) out.push([0, e]);
+    else if (words.every((w) => name.includes(w))) out.push([1, e]);
+    else if (words.every((w) => name.includes(w) || text.includes(w))) out.push([2, e]);
+  }
+  return out
+    .sort((a, b) => a[0] - b[0])
+    .slice(0, limit)
+    .map((x) => x[1]);
 }
 
 // What tells one option of an item from another.

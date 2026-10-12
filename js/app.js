@@ -13,10 +13,10 @@ import * as checklists from './views/checklists.js';
 import * as schedule from './views/schedule.js';
 import * as techlog from './views/techlog.js';
 import * as airports from './views/airports.js';
-import * as dispatch from './views/dispatch.js';
+import * as brief from './views/brief.js';
 import * as settings from './views/settings.js';
 
-const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, dispatch, settings, admin, availability };
+const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, brief, dispatch: brief, settings, admin, availability };
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
 const clockSim = document.getElementById('clock-sim');
@@ -49,7 +49,7 @@ function render() {
   route = gate ? { name: 'login', args: [], view: login } : parse();
   root.innerHTML = route.view.render(route.args);
   for (const tab of document.querySelectorAll('[data-tab]')) {
-    tab.classList.toggle('on', tab.dataset.tab === route.name);
+    tab.classList.toggle('on', tab.dataset.tab === (route.name === 'airports' ? 'brief' : route.name));
   }
   route.view.mounted?.(root, route.args);
   wakeLock();
@@ -136,7 +136,7 @@ const quietRender = () => {
 
 // Everything that comes from the team database, to tell whether a sync changed anything.
 const teamData = () =>
-  JSON.stringify([state.sectors, state.roster, state.people, state.settings, state.prefs, state.defects, state.history]);
+  JSON.stringify([state.sectors, state.roster, state.people, state.settings, state.prefs, state.defects, state.history, state.briefings]);
 
 // Keep this device in step with the team database: other people's changes
 // appear by themselves within a few seconds, without reloading.

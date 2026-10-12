@@ -18,6 +18,10 @@ import {
   melOptions,
   melTop,
   melPath,
+  melNotes,
+  melProcedures,
+  PROCEDURES,
+  searchMel,
   optionLabel,
   CATEGORIES,
   dueFor,
@@ -92,12 +96,73 @@ function verdict(sel, chapter) {
         ${e.o ? '<span class="badge info">(O) CREW PROCEDURE</span>' : ''}
       </div>
       <p class="mel-text">${e.rem ? esc(e.rem) : 'May be inoperative. No conditions listed.'}</p>
+      ${melNotes(e.id).map((note) => `<p class="mel-text sub">${esc(note)}</p>`).join('')}
       ${cat ? `<p class="tiny">${cat.text}.</p>` : ''}
+      ${procedures(e)}
     </div>`;
 }
 
+// The (O) and (M) procedures, folded away until wanted.
+function procedures(e) {
+  const found = melProcedures(e.id);
+  if (!found) {
+    return e.m || e.o ? '<p class="tiny">The MEL calls for a procedure here, but does not print one for this item.</p>' : '';
+  }
+  return `
+    ${found.from !== e.id ? `<p class="tiny">Procedures are listed under MEL ${esc(found.from)}.</p>` : ''}
+    ${found.sections
+      .map(([kind, text]) => `<details class="mel-proc"><summary>${PROCEDURES[kind] || 'Notes'}</summary>${procedureText(text)}</details>`)
+      .join('')}`;
+}
+
+// Procedure text: one paragraph or step per line; lines with " | " are table rows.
+function procedureText(text) {
+  const out = [];
+  let rows = [];
+  const flush = () => {
+    if (rows.length) out.push(`<div class="mel-scroll"><table class="mel-table">${rows.join('')}</table></div>`);
+    rows = [];
+  };
+  for (const line of text.split('\n')) {
+    if (line.includes(' | ')) {
+      rows.push(`<tr>${line.split(' | ').map((cell) => `<td>${esc(cell)}</td>`).join('')}</tr>`);
+    } else {
+      flush();
+      const step = /^(\d{1,2}[.)]|[A-Za-z][.)])\s/.test(line);
+      const loud = /^(NOTE|CAUTION|WARNING)\b/.test(line);
+      out.push(`<p class="${step ? 'step' : loud ? 'loud' : ''}">${esc(line)}</p>`);
+    }
+  }
+  flush();
+  return out.join('');
+}
+
+// A search box that fills in the drop-downs. The results are drawn as you type (see mounted).
+const searchBox = () => `
+  <label class="field">Search the MEL<input id="mel-search" type="search" autocomplete="off" autocapitalize="none" placeholder="e.g. radar, APU, pack, 34-15"></label>
+  <div id="mel-results" class="list"></div>`;
+
+function searchResults(query) {
+  const found = searchMel(query);
+  if (query.trim().length < 2) return '';
+  if (!found.length) return '<p class="note">Nothing in the MEL matches that. Try another word, or pick the system below.</p>';
+  return found
+    .map((e) => {
+      const path = melPath(e.id);
+      return `
+      <button type="button" class="row" data-act="pick" data-id="${esc(e.id)}">
+        <div class="row-main">
+          <div class="row-t">${esc(e.id)} · ${esc(path[0] || '')}</div>
+          ${path.length > 1 ? `<div class="sub">${path.slice(1).map(esc).join(' › ')}</div>` : ''}
+        </div>
+        <span class="badge mute">CAT ${esc(e.cat)}</span>
+      </button>`;
+    })
+    .join('');
+}
+
 const sourceNote = () =>
-  `<p class="tiny center">${esc(melSource() || 'FAA MMEL Boeing 737')}, items for a passenger 737-800. For flight simulation only.</p>`;
+  `<p class="tiny center">${esc(melSource() || 'Boeing 737-800 MEL. For flight simulation only.')}</p>`;
 
 function lookup() {
   return `
@@ -105,6 +170,7 @@ function lookup() {
     <section class="card form">
       <h2>MEL lookup</h2>
       <p class="note">Check whether the aircraft can go with something inoperative, without adding it to the tech log.</p>
+      ${searchBox()}
       <label class="field">System<select name="system" data-change="system">
         <option value="">Select…</option>${chapters()
           .map((c) => opt(chapterLabel(c), look.system))
@@ -218,6 +284,7 @@ function form(id) {
         <label class="field">Sector<select name="sector">
           ${opt('', d.sector, 'Not on a sector')}${sectors.map(([v, label]) => opt(v, d.sector, label)).join('')}</select></label>
       </div>
+      ${searchBox()}
       <label class="field">System<select name="system" required data-change="system">
         <option value="">Select…</option>${systems.map((s) => opt(s, d.system)).join('')}</select></label>
       ${melPicker(d)}
@@ -259,8 +326,17 @@ export function render(args) {
   return args[0] ? form(args[0]) : list();
 }
 
-export function mounted() {
+export function mounted(root) {
   if (!melReady()) loadMel().then(() => location.hash.startsWith('#/techlog') && melReady() && rerender());
+  const box = root.querySelector('#mel-search');
+  if (!box) return;
+  box.addEventListener('input', () => {
+    root.querySelector('#mel-results').innerHTML = searchResults(box.value);
+  });
+  // Enter in the search box must not submit the defect form around it.
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') e.preventDefault();
+  });
 }
 
 // Everything the form holds, as plain values.
@@ -371,6 +447,13 @@ forms.rectify = async (data) => {
 };
 
 export const actions = {
+  // A search result: set the drop-downs to it.
+  pick(el) {
+    const id = el.dataset.id;
+    const chapter = chapters().find((c) => id.startsWith(`${c.ata}-`));
+    Object.assign(selection(el), { system: chapterLabel(chapter), melTop: melTop(id), melItem: id });
+    rerender();
+  },
   async remove() {
     if (busy || !confirm('Delete this tech log entry?')) return;
     const id = currentId();

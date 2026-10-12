@@ -3,6 +3,7 @@
 import { state } from '../store.js';
 import { esc, zulu, zdate, span, ago, depWindow, simLocal, icon, rerender } from '../ui.js';
 import {
+  briefingOf,
   currentSector,
   nextSector,
   upcomingSector,
@@ -190,7 +191,7 @@ function sectorCard(now) {
           : ''
       }
       <div class="tiny">${s.window ? `DEPARTURE WINDOW ${depWindow(s)} · ` : ''}SIM LOCAL ${simLocal(s.std)}</div>
-      ${s.notes ? `<p class="note"><strong>Handover notes:</strong> ${esc(s.notes)}</p>` : ''}
+      ${s.notes ? `<p class="note"><strong>Sector notes:</strong> ${esc(s.notes)}</p>` : ''}
       ${
         mine
           ? ''
@@ -231,7 +232,7 @@ export function render() {
   const next = upcomingSector(now);
   const resume = nextIncomplete();
   const open = state.defects.filter((d) => d.status !== 'RECTIFIED').length;
-  const o = state.ofp;
+  const o = next ? briefingOf(next.id).ofp : null;
   return `
     ${approvalBanner()}
     ${statusBanner()}
@@ -241,7 +242,7 @@ export function render() {
       ${tile('#/checklists', 'checks', '737 Checklists', resume ? `Resume: ${resume.name}` : 'All complete')}
       ${tile('#/airports', 'pin', 'Airport Briefings', next ? `${next.dep} · ${next.arr}` : 'All airports')}
       ${tile('#/techlog', 'wrench', 'Tech Log', open ? `${open} active defect${open > 1 ? 's' : ''}` : 'No active defects')}
-      ${tile('#/dispatch', 'file', 'SimBrief OFP', o ? `${o.dep} → ${o.arr}` : 'Not imported')}
+      ${tile('#/brief', 'file', 'Sector Briefing', next ? `${next.dep} → ${next.arr} · ${o ? 'OFP imported' : 'no OFP yet'}` : 'OFP, notes, handover')}
     </div>`;
 }
 

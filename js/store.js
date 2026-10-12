@@ -26,13 +26,13 @@ function defaults() {
     people: [], // copy of the team's accounts: { id, display_name, vatsim_cid, role, is_test }
     defects: [], // tech log: a copy of the team database's, or this device's own in preview mode
     defectSeq: 0,
+    briefings: [], // per sector: { sector_id, notes, wf_url, wf_notes, handover, ofp, ofp_by, ofp_at }
     history: [], // tech log history: { defect_id, at, by_name, event, detail }
     sharedLog: false, // the tech log above came from the team database
     localDefects: [], // entries made on this device before the tech log was shared
     notes: {}, // airport briefing notes by ICAO
     metar: {}, // last METAR by ICAO: { text, at }
     checks: {}, // checklist progress by checklist id
-    ofp: null, // last imported SimBrief OFP summary
     track: null, // last VATSIM sample for the team aircraft
   };
 }

@@ -200,7 +200,7 @@ const fromDefect = (d) => ({
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs, techlog, history] = await Promise.all([
+  const [sectors, roster, people, settings, prefs, techlog, history, briefings] = await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
     rest('GET', 'profiles?select=*&order=display_name.asc'),
@@ -208,6 +208,7 @@ export async function loadAll() {
     rest('GET', 'preferences?select=user_id,sector_id,choice').catch(() => null),
     rest('GET', 'techlog?select=*&order=reported_at.desc').catch(() => null),
     rest('GET', 'techlog_history?select=defect_id,at,by_name,event,detail&order=at.asc').catch(() => null),
+    rest('GET', 'briefings?select=*').catch(() => null),
   ]);
   return {
     sectors: sectors.map(toSector),
@@ -217,6 +218,7 @@ export async function loadAll() {
     prefs: prefs || [],
     defects: techlog ? techlog.map(toDefect) : null, // null: this database has no tech log table yet
     history: history || [],
+    briefings: briefings || [],
   };
 }
 
@@ -250,7 +252,7 @@ export const setRole = (userId, role) => rest('POST', 'rpc/set_role', { target: 
 
 // ---- Roster state, rules and availability ----
 
-// fields: { roster_state } and/or { rules }
+// fields: any of { roster_state, rules, simbrief }
 export const saveSettings = (fields) => rest('PATCH', 'settings?id=eq.1', fields);
 
 // rows: [{ user_id, sector_id, choice }]
@@ -265,6 +267,18 @@ export const saveRosterMany = (entries) =>
   rest('POST', 'roster?on_conflict=sector_id,user_id', entries, 'resolution=merge-duplicates');
 
 export const clearAutoRoster = () => rest('DELETE', 'roster?auto=is.true');
+
+// ---- Briefings ----
+
+// fields: any of { notes, wf_url, wf_notes, handover, ofp, ofp_by, ofp_at }.
+// Only the fields given are changed; the rest of the sector's briefing is kept.
+export const saveBriefing = (sectorId, fields) =>
+  rest(
+    'POST',
+    'briefings?on_conflict=sector_id',
+    { sector_id: sectorId, ...fields, updated_at: new Date().toISOString() },
+    'resolution=merge-duplicates',
+  );
 
 // ---- Tech log ----
 

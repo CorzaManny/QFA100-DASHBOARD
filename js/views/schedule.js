@@ -75,7 +75,7 @@ function detail(id) {
           <label class="field">Arrival time (UTC)<input type="time" name="staTime" required value="${isoTime(sta)}"></label>
         </div>
         <label class="field">Route<textarea name="route" rows="2" autocapitalize="characters" placeholder="Optional. Sent to SimBrief when you plan the sector.">${esc(s.route)}</textarea></label>
-        <label class="field">Handover / sector notes<textarea name="notes" rows="3" placeholder="Anything the next crew should know">${esc(s.notes)}</textarea></label>
+        <label class="field">Sector notes<textarea name="notes" rows="3" placeholder="Shown on the Dashboard and the sector's briefing">${esc(s.notes)}</textarea></label>
       </fieldset>
       <p class="form-error" hidden></p>
       ${
@@ -97,6 +97,7 @@ function detail(id) {
           <section class="card">
             <h2>Prepare this sector</h2>
             <div class="btn-col">
+              <a class="btn primary" href="#/brief/${esc(s.id)}">Open the briefing</a>
               <a class="btn ghost" href="${esc(simbriefPlanUrl(s))}" target="_blank" rel="noopener">Plan in SimBrief ${icon('external')}</a>
               <a class="btn ghost" href="#/airports/${esc(s.dep)}">${esc(s.dep)} departure briefing</a>
               <a class="btn ghost" href="#/airports/${esc(s.arr)}">${esc(s.arr)} arrival briefing</a>
