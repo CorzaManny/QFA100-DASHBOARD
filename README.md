@@ -10,7 +10,8 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **Schedule** – the official WorldFlight 2026 schedule. Each sector shows when its departure window opens (UTC), the window, block time and validated route. Admins and dispatchers can add, edit or delete sectors.
 - **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with sectors that have fewer than two pilots flagged.
 - **Admin** (shield icon, top right) – where the roster is built: pick a Captain and First Officer for each sector from a dropdown and it saves straight away. Admins also set each person's role here.
-- **Tech Log** – report defects, defer them with a simulated MEL category and restriction, or mark them rectified. Defects stay with the aircraft between sectors and show as a banner on the Dashboard.
+- **Tech Log** – report defects, check them against the built-in MEL, defer them with a restriction, or mark them rectified. The log is shared by the whole team, stays with the aircraft between sectors and shows as a banner on the Dashboard.
+- **MEL** – the 737 Minimum Equipment List as drop-downs (system → item → option) inside the Tech Log: it shows whether the aircraft can go with something inoperative, the conditions, and how long the fix can wait.
 - **Airport Briefings** – runways, elevation, live METAR, your team's own notes, and links to Navigraph Charts and ChartFox for every airport on the schedule (or any ICAO code).
 - **SimBrief** – opens SimBrief with the next sector filled in, then imports your latest OFP (route, fuel, weights, times).
 
@@ -99,9 +100,22 @@ Open **Settings** (top-right icon) to set, on each device:
 
 The Dashboard can read the aircraft's position, phase, ETA and fuel straight from the simulator instead of VATSIM. The format the simulator side has to publish is defined in [docs/API.md](docs/API.md), with an example in `api/status.example.json`. Nothing publishes it yet; that connector is still to be built.
 
-## Tech log and airport notes
+## Tech log and MEL
 
-These are still saved on each person's own device, not in the database. To share them, use **Settings → Export**, send the file to the team, and they use **Import**. Moving them into the database is the natural next step.
+The tech log lives in the team database, so everyone sees the same entries on every device. Pilots, dispatchers and admins can add and update entries; only admins and dispatchers can delete one. If the database was set up before the tech log was added, run `supabase/schema.sql` again (it is safe to re-run). Entries written on a device before that show a prompt on the Tech Log page to upload them.
+
+The MEL comes from the FAA Boeing 737 MMEL (Revision 62 draft), cut down to items that apply to a passenger 737-800, and is stored in `js/data/mel.json`. To rebuild it from a newer PDF (on a Mac):
+
+```
+swift tools/mel_words.swift MMEL_B-737.pdf words.tsv
+python3 tools/build_mel.py words.tsv
+```
+
+It is for flight simulation only. Repair categories: A as stated in the item, B 3 days, C 10 days, D 120 days.
+
+## Airport notes
+
+These are still saved on each person's own device, not in the database. To share them, use **Settings → Export**, send the file to the team, and they use **Import**.
 
 ## Changing things
 
@@ -112,7 +126,7 @@ These are still saved on each person's own device, not in the database. To share
 | Default callsign and aircraft type | `js/store.js` |
 | Duty rules and report times | in the app: **Admin → Rules** (starting values are in `js/autoroster.js`) |
 | Minimum pilots per sector (`MIN_PILOTS`) | `js/ops.js` |
-| Tech log system list | `js/views/techlog.js` |
+| MEL items | rebuild `js/data/mel.json` with `tools/build_mel.py` |
 | Database connection | `js/config.js` |
 
 Edits to existing files show up the next time the app is opened online. If you add or rename a file, also add it to the list in `sw.js` and change the `CACHE` name there (for example to `qfa100-ops-v5`) so it is available offline.

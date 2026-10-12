@@ -24,8 +24,10 @@ function defaults() {
     settings: null, // team-wide: { roster_state, rules }
     prefs: [], // availability: { user_id, sector_id, choice }; mine, or everyone's for editors
     people: [], // copy of the team's accounts: { id, display_name, vatsim_cid, role, is_test }
-    defects: [],
+    defects: [], // tech log: a copy of the team database's, or this device's own in preview mode
     defectSeq: 0,
+    sharedLog: false, // the tech log above came from the team database
+    localDefects: [], // entries made on this device before the tech log was shared
     notes: {}, // airport briefing notes by ICAO
     metar: {}, // last METAR by ICAO: { text, at }
     checks: {}, // checklist progress by checklist id
@@ -71,8 +73,9 @@ export function resetAll() {
   save();
 }
 
-// The tech log and airport notes still live on each device, so they can be
-// passed around as a file. The schedule and roster come from the database.
+// Airport notes still live on each device, so they can be passed around as a
+// file, along with a copy of the tech log. The schedule, roster and tech log
+// themselves come from the database.
 export function exportData() {
   const { defects, defectSeq, notes } = state;
   return JSON.stringify({ app: 'qfa100-ops', version: 2, defects, defectSeq, notes }, null, 2);
@@ -83,8 +86,14 @@ export function importData(text) {
   if (data.app !== 'qfa100-ops') {
     throw new Error('Not a QFA100 Ops export file');
   }
-  state.defects = Array.isArray(data.defects) ? data.defects : [];
-  state.defectSeq = Number(data.defectSeq) || state.defects.length;
+  // Imported tech log entries wait on the Tech Log page to be uploaded to the
+  // shared log; without a database they simply become this device's log.
+  const defects = (Array.isArray(data.defects) ? data.defects : []).map((d) => ({ ...d, shared: false }));
+  if (state.sharedLog) state.localDefects = defects;
+  else {
+    state.defects = defects;
+    state.defectSeq = Number(data.defectSeq) || defects.length;
+  }
   state.notes = data.notes && typeof data.notes === 'object' ? data.notes : {};
   save();
 }

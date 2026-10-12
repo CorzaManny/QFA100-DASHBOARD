@@ -106,16 +106,27 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [] });
+  Object.assign(state, { roster: [], people: [], prefs: [], defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 
-// Pull the latest schedule, roster and accounts from the team database.
+// True when the tech log is the team's shared one rather than this device's own.
+export const sharedLog = () => configured && !!getSession() && state.sharedLog;
+
+// Pull the latest schedule, roster, accounts and tech log from the team database.
 // On failure the copy already on the device stays in use.
 export async function syncTeam() {
   if (!configured || !getSession()) return false;
   try {
-    Object.assign(state, await loadAll());
+    const { defects, ...team } = await loadAll();
+    Object.assign(state, team);
+    if (defects) {
+      // Entries written before the tech log was shared stay on this device
+      // until someone uploads them from the Tech Log page.
+      state.localDefects = [...state.localDefects, ...state.defects.filter((d) => !d.shared)];
+      state.defects = defects;
+    }
+    state.sharedLog = !!defects;
     save();
     return true;
   } catch {

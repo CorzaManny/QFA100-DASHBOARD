@@ -128,15 +128,51 @@ const toSector = (r) => ({
   notes: r.notes || '',
 });
 
+// A tech log entry as the app uses it, and as the database stores it.
+const toDefect = (r) => ({
+  id: r.id,
+  ref: r.ref,
+  at: new Date(r.reported_at).getTime(),
+  system: r.system,
+  desc: r.description,
+  by: r.reporter,
+  sector: r.sector,
+  status: r.status,
+  melItem: r.mel_item,
+  mel: r.mel_cat,
+  due: r.due_at ? new Date(r.due_at).getTime() : null,
+  restriction: r.restriction,
+  action: r.action,
+  aog: r.aog,
+  shared: true,
+});
+
+const fromDefect = (d) => ({
+  reported_at: new Date(d.at).toISOString(),
+  system: d.system,
+  description: d.desc,
+  reporter: d.by,
+  sector: d.sector,
+  status: d.status,
+  mel_item: d.melItem || '',
+  mel_cat: d.mel || '',
+  due_at: d.due ? new Date(d.due).toISOString() : null,
+  restriction: d.restriction,
+  action: d.action,
+  aog: !!d.aog,
+  updated_at: new Date().toISOString(),
+});
+
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs] = await Promise.all([
+  const [sectors, roster, people, settings, prefs, techlog] = await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
     rest('GET', 'profiles?select=*&order=display_name.asc'),
     rest('GET', 'settings?select=*&id=eq.1').catch(() => null),
     rest('GET', 'preferences?select=user_id,sector_id,choice').catch(() => null),
+    rest('GET', 'techlog?select=*&order=reported_at.desc').catch(() => null),
   ]);
   return {
     sectors: sectors.map(toSector),
@@ -144,6 +180,7 @@ export async function loadAll() {
     people,
     settings: settings?.[0] || null,
     prefs: prefs || [],
+    defects: techlog ? techlog.map(toDefect) : null, // null: this database has no tech log table yet
   };
 }
 
@@ -189,3 +226,11 @@ export const saveRosterMany = (entries) =>
   rest('POST', 'roster?on_conflict=sector_id,user_id', entries, 'resolution=merge-duplicates');
 
 export const clearAutoRoster = () => rest('DELETE', 'roster?auto=is.true');
+
+// ---- Tech log ----
+
+// The database numbers new entries (WF-001, WF-002, ...).
+export const saveDefect = (defect, defectId) =>
+  defectId ? rest('PATCH', `techlog?id=eq.${id(defectId)}`, fromDefect(defect)) : rest('POST', 'techlog', fromDefect(defect));
+
+export const deleteDefect = (defectId) => rest('DELETE', `techlog?id=eq.${id(defectId)}`);

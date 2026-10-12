@@ -981,3 +981,24 @@ fieldset:disabled textarea {
   color: var(--muted);
   white-space: nowrap;
 }
+
+/* MEL verdict on the tech log */
+.mel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--warn);
+  border-radius: 10px;
+}
+.mel.ok {
+  border-left-color: var(--ok);
+}
+.mel.bad {
+  border-left-color: var(--bad);
+}
+.mel-text {
+  margin: 0;
+  white-space: pre-line;
+  line-height: 1.45;
+}

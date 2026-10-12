@@ -81,6 +81,29 @@ create table if not exists public.preferences (
   primary key (user_id, sector_id)
 );
 
+-- The aircraft's tech log, shared by the whole team. mel_item is the number of
+-- the MEL entry a defect was checked against (e.g. 21-01-01-01), if any.
+create sequence if not exists public.techlog_seq;
+
+create table if not exists public.techlog (
+  id          uuid primary key default gen_random_uuid(),
+  ref         text not null default ('WF-' || lpad(nextval('public.techlog_seq')::text, 3, '0')),
+  reported_at timestamptz not null default now(),
+  created_by  uuid default auth.uid() references public.profiles (id) on delete set null,
+  reporter    text not null default '',
+  sector      text not null default '',
+  system      text not null default '',
+  description text not null,
+  status      text not null default 'OPEN' check (status in ('OPEN', 'DEFERRED', 'RECTIFIED')),
+  mel_item    text not null default '',
+  mel_cat     text not null default '',
+  due_at      timestamptz,
+  restriction text not null default '',
+  action      text not null default '',
+  aog         boolean not null default false,
+  updated_at  timestamptz not null default now()
+);
+
 -- ---------- Helper functions ----------
 
 create or replace function public.is_admin()
@@ -98,6 +121,12 @@ $$;
 create or replace function public.can_edit()
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'dispatcher'));
+$$;
+
+-- Everyone approved except observers may write in the tech log.
+create or replace function public.can_report()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'dispatcher', 'pilot'));
 $$;
 
 create or replace function public.roster_published()
@@ -211,14 +240,17 @@ alter table public.sectors  enable row level security;
 alter table public.roster   enable row level security;
 alter table public.settings enable row level security;
 alter table public.preferences enable row level security;
+alter table public.techlog  enable row level security;
 
-revoke all on public.profiles, public.sectors, public.roster, public.settings, public.preferences from anon;
+revoke all on public.profiles, public.sectors, public.roster, public.settings, public.preferences, public.techlog from anon;
 -- Stated explicitly because newer Supabase projects do not grant these by default.
 -- The policies below still decide which rows each person can touch.
 grant select on public.profiles, public.sectors, public.roster to authenticated;
 grant insert, update, delete on public.sectors, public.roster to authenticated;
 grant select, update on public.settings to authenticated;
 grant select, insert, update, delete on public.preferences to authenticated;
+grant select, insert, update, delete on public.techlog to authenticated;
+grant usage on sequence public.techlog_seq to authenticated;
 revoke insert, update, delete on public.profiles from authenticated;
 grant update (display_name, vatsim_cid) on public.profiles to authenticated;
 
@@ -268,3 +300,21 @@ create policy "set availability" on public.preferences
   for all to authenticated
   using ((user_id = auth.uid() and public.is_member()) or public.can_edit())
   with check ((user_id = auth.uid() and public.is_member()) or public.can_edit());
+
+-- Members read the tech log; pilots, dispatchers and admins write in it;
+-- only admins and dispatchers can delete an entry.
+drop policy if exists "members read techlog" on public.techlog;
+create policy "members read techlog" on public.techlog
+  for select to authenticated using (public.is_member());
+
+drop policy if exists "crew add to techlog" on public.techlog;
+create policy "crew add to techlog" on public.techlog
+  for insert to authenticated with check (public.can_report());
+
+drop policy if exists "crew update techlog" on public.techlog;
+create policy "crew update techlog" on public.techlog
+  for update to authenticated using (public.can_report()) with check (public.can_report());
+
+drop policy if exists "editors delete techlog" on public.techlog;
+create policy "editors delete techlog" on public.techlog
+  for delete to authenticated using (public.can_edit());

@@ -63,8 +63,8 @@ export function render() {
       <div class="btn-row"><button class="btn primary" type="submit">Save device settings</button></div>
     </form>
     <section class="card">
-      <h2>Tech log and airport notes</h2>
-      <p class="note">These are still stored on each device. Export them to a file and have teammates import it to get the same data. The schedule and roster sync automatically.</p>
+      <h2>Airport notes and tech log backup</h2>
+      <p class="note">Airport notes are still stored on each device. Export them to a file and have teammates import it to get the same notes. The file also holds a backup copy of the tech log; the schedule, roster and tech log themselves sync automatically.</p>
       <div class="btn-row">
         <button class="btn ghost" data-act="export">Export</button>
         <label class="btn ghost">Import<input type="file" accept="application/json,.json" data-file="import" hidden></label>
@@ -78,7 +78,7 @@ export function render() {
     </section>
     <section class="card">
       <h2>Reset this device</h2>
-      <p class="note">Erases the tech log, airport notes, checklist progress and device settings stored here. Your account, the schedule and the roster are not affected.</p>
+      <p class="note">Erases the airport notes, checklist progress and device settings stored here. Your account, the schedule, the roster and the team's tech log are not affected.</p>
       <button class="btn danger" data-act="reset">${icon('alert')} Erase data on this device</button>
     </section>`;
   message = '';
@@ -90,10 +90,10 @@ export function mounted(root) {
   root.querySelector('[data-file="import"]').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!confirm('Importing replaces the tech log and airport notes on this device. Continue?')) return;
+    if (!confirm('Importing replaces the airport notes on this device. Tech log entries in the file can then be uploaded from the Tech Log page. Continue?')) return;
     try {
       importData(await file.text());
-      message = 'Tech log and notes imported.';
+      message = 'Imported.';
     } catch (err) {
       problem = `Import failed: ${err.message}`;
     }
