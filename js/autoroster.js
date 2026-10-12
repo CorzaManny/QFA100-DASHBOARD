@@ -19,7 +19,7 @@ export const DEFAULT_RULES = {
   bocEveryDays: 2, // at most one back-of-clock sector every this many days; 0 = no limit
   maxSectors: 0, // per person for the whole event; 0 = no limit
   reliefOverHours: 6, // sectors longer than this also need a relief pilot; 0 = never
-  unmarkedAvailable: false, // treat sectors someone has not answered as available
+  unmarkedAvailable: true, // everyone counts as available until they say otherwise
   reportLeadMinutes: 45, // report this long before the departure window opens
   firstReportLeadMinutes: 60, // ...and this long before the first sector of the event
 };

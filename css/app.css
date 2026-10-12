@@ -949,6 +949,11 @@ fieldset:disabled textarea {
 .seg.three {
   grid-template-columns: repeat(3, 1fr);
 }
+.seg button.assumed {
+  background: var(--card2);
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
 .seg button.on.prefer {
   background: rgba(91, 212, 154, 0.22);
   color: var(--ok);
@@ -1100,4 +1105,11 @@ button.row {
 }
 .warn-text {
   color: var(--warn);
+}
+.ok-text {
+  color: var(--ok);
+}
+/* A row whose buttons sit under the text on a narrow screen */
+.row .btn-row {
+  flex: none;
 }

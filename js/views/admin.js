@@ -102,9 +102,13 @@ function autoPage() {
       <a class="row" href="#/availability/${esc(p.id)}">
         <div class="row-main">
           <div class="row-t">${esc(p.display_name)}${p.is_test ? ' <span class="badge info">TEST</span>' : ''}</div>
-          <div class="sub">${n.prefer} prefer · ${n.available} available · ${n.unavailable} can't · ${n.none} blank</div>
+          <div class="sub">${n.prefer} prefer · ${n.available} available · ${n.unavailable} can't · ${n.none} ${r.unmarkedAvailable ? 'not said' : 'blank'}</div>
         </div>
-        <div class="right">${n.none === upcoming.length ? '<span class="badge warn">NO ANSWER</span>' : ''} ${icon('chevron')}</div>
+        <div class="right">${
+          n.none === upcoming.length
+            ? `<span class="badge ${r.unmarkedAvailable ? 'mute' : 'warn'}">${r.unmarkedAvailable ? 'ALL AVAILABLE' : 'NO ANSWER'}</span>`
+            : ''
+        } ${icon('chevron')}</div>
       </a>`;
     })
     .join('');
@@ -139,7 +143,7 @@ function autoPage() {
       <p class="tiny">To pin someone to a sector, roster them on the Roster tab first. Clearing removes only what Auto roster placed.</p>
     </section>
     <section class="card list">
-      <div class="card-head"><div class="tiny">AVAILABILITY RECEIVED</div><span class="badge ${answered.length === pilots.length ? 'ok' : 'warn'}">${answered.length} OF ${pilots.length}</span></div>
+      <div class="card-head"><div class="tiny">AVAILABILITY RECEIVED</div><span class="badge ${answered.length === pilots.length ? 'ok' : r.unmarkedAvailable ? 'mute' : 'warn'}">${answered.length} OF ${pilots.length}</span></div>
       ${responses || '<p class="note">No pilots yet.</p>'}
       <p class="tiny">Open someone to see or set their availability for them.</p>
     </section>
@@ -231,7 +235,7 @@ function rulesPage() {
         ${num('reportLeadMinutes', 'Minutes before departure', 'Before the window opens', 5)}
         ${num('firstReportLeadMinutes', 'First sector of the event', 'Minutes before departure', 5)}
       </div>
-      <label class="check"><input type="checkbox" name="unmarkedAvailable" ${r.unmarkedAvailable ? 'checked' : ''}> Treat sectors a pilot left blank as available</label>
+      <label class="check"><input type="checkbox" name="unmarkedAvailable" ${r.unmarkedAvailable ? 'checked' : ''}> Everyone is available unless they say otherwise</label>
       <div class="btn-row">
         <button class="btn primary" type="submit">Save rules</button>
         <button class="btn ghost" type="button" data-act="resetRules">Back to defaults</button>
@@ -247,28 +251,44 @@ function needBadge(s) {
 }
 
 // Everyone who could take a seat on one sector: what they said about it, what
-// they are already flying, and whether rostering them would break a duty rule.
+// they are already flying, and every duty rule rostering them would break.
 function candidates(s) {
   const r = rules();
   return flyers()
     .map((p) => {
       const mine = flownBy(p.id);
-      const before = problems(mine, r);
       const already = mine.some((x) => x.id === s.id);
+      // What this sector costs them: the rules broken with it that are not
+      // already broken without it. Works the same whether they are on it or not.
+      const without = already ? mine.filter((x) => x.id !== s.id) : mine;
+      const base = problems(without, r);
+      const choice = prefOf(p.id, s.id) || 'none';
+      const breaks = problems(already ? mine : [...mine, s], r).filter((text) => !base.includes(text));
+      const said = choice === 'unavailable' || (choice === 'none' && !r.unmarkedAvailable);
       return {
         p,
-        choice: prefOf(p.id, s.id) || 'none',
+        choice,
         load: workload(p.id),
-        breaks: already ? [] : problems([...mine, s], r).filter((text) => !before.includes(text)),
+        breaks,
+        already,
+        // Why Auto roster would pass them over. Rostering them by hand still works.
+        blocked: said || breaks.length > 0,
+        reason: said
+          ? choice === 'unavailable'
+            ? "They said they can't fly this sector"
+            : 'They have not said they are available'
+          : '',
       };
     })
     .sort((a, b) => a.load.total - b.load.total || a.p.display_name.localeCompare(b.p.display_name));
 }
 
-const GROUPS = [
+// The drop-down groups, in the order they are offered. What a blank means
+// depends on the team's rule, so the wording follows it.
+const groups = () => [
   ['prefer', 'Asked for this sector'],
-  ['available', 'Available'],
-  ['none', 'Has not answered'],
+  ['available', 'Said they are available'],
+  ['none', rules().unmarkedAvailable ? 'Available (has not said)' : 'Has not answered'],
   ['unavailable', "Said they can't fly it"],
 ];
 
@@ -277,7 +297,7 @@ function seat(s, duty, fit) {
   const crew = crewOf(s);
   const holder = crew.find((r) => r.duty === duty);
   const elsewhere = new Set(crew.filter((r) => r.duty !== duty).map((r) => r.user_id));
-  const options = GROUPS.map(([key, label]) => {
+  const options = groups().map(([key, label]) => {
     const rows = fit
       .filter((f) => f.choice === key && (!elsewhere.has(f.p.id) || f.p.id === holder?.user_id))
       .map(
@@ -302,47 +322,49 @@ function seat(s, duty, fit) {
     ${
       chosen
         ? `<span class="tiny ${chosen.breaks.length ? 'warn-text' : ''}">${tally(chosen.load)}${
-            chosen.breaks.length ? ` · ${esc(chosen.breaks[0])}` : chosen.choice === 'none' ? '' : ` · ${CHOICE_WORDS[chosen.choice]}`
+            chosen.breaks.length ? ` · ${esc(chosen.breaks[0])}` : ` · ${chosen.choice === 'none' ? blankWord() : CHOICE_WORDS[chosen.choice]}`
           }</span>`
         : ''
     }</label>`;
 }
 
 const CHOICE_WORDS = { prefer: 'asked for this sector', available: 'available', unavailable: "can't fly it", none: 'has not answered' };
+const blankWord = () => (rules().unmarkedAvailable ? 'available until they say otherwise' : 'has not answered');
 
+// The list of sectors to roster. Open one to crew it.
 function rosterEditor() {
   const now = Date.now();
   const upcoming = sortedSectors().filter((s) => new Date(s.sta) > now);
   const short = upcoming.filter(pilotsShort);
   const shown = filter === 'short' ? short : upcoming;
-
   const r = rules();
-  const cards = shown
+
+  let day = '';
+  const rows = shown
     .map((s) => {
-      const list = seats(s);
-      const fit = candidates(s);
-      const others = crewOf(s).filter((x) => !list.includes(x.duty));
-      const keen = fit.filter((f) => f.choice === 'prefer').map((f) => f.p.display_name);
-      // Who could actually take it: did not say no, and would not break a rule.
-      const free = fit.filter((f) => f.choice !== 'unavailable' && !f.breaks.length).length;
-      return `
-      <section class="card slot-card ${pilotsShort(s) ? 'short' : 'ok'}">
-        <div class="card-head">
-          <div>
-            <div class="row-t">${esc(s.dep)} → ${esc(s.arr)}</div>
-            <div class="sub">${esc(s.flight)} · ${when(s.std)} · ${simLocal(s.std)} · ${span(new Date(s.sta) - new Date(s.std))}</div>
-          </div>
-          <div class="right stack">
-            ${needBadge(s)}
-            ${needsRelief(s) ? '<span class="badge info">RELIEF PILOT</span>' : ''}
-            ${isBoc(s, r) ? '<span class="badge warn">BACK OF CLOCK</span>' : ''}
-          </div>
+      const header = zdate(s.std) === day ? '' : `<div class="list-day">${(day = zdate(s.std))}</div>`;
+      const crew = crewOf(s);
+      const keen = candidates(s).filter((f) => f.choice === 'prefer').length;
+      return `${header}
+      <a class="row" href="#/admin/sector/${esc(s.id)}">
+        <div class="row-main">
+          <div class="row-t">${esc(s.dep)} → ${esc(s.arr)}</div>
+          <div class="sub">${esc(s.flight)} · ${zulu(s.std)} · ${simLocal(s.std)} · ${span(new Date(s.sta) - new Date(s.std))}${
+            isBoc(s, r) ? ' · back of clock' : ''
+          }</div>
+          ${
+            crew.length
+              ? crew.map((c) => `<div class="sub crew-line">${name(c.user_id)} · ${esc(c.duty)}</div>`).join('')
+              : '<div class="sub crew-line">Nobody rostered yet</div>'
+          }
+          ${keen ? `<div class="sub">${plural(keen, 'pilot')} asked for this sector</div>` : ''}
         </div>
-        <div class="slots">${list.map((duty) => seat(s, duty, fit)).join('')}</div>
-        <div class="tiny">${keen.length ? `Asked for it: ${esc(keen.join(', '))}` : 'Nobody asked for this sector'} · ${free} of ${fit.length} pilots can take it</div>
-        ${others.length ? `<div class="sub">Also: ${others.map((x) => `${name(x.user_id)} (${esc(x.duty)})`).join(', ')}</div>` : ''}
-        <a class="tiny" href="#/admin/sector/${esc(s.id)}">Report times, notes and observers</a>
-      </section>`;
+        <div class="right stack">
+          ${needBadge(s)}
+          ${needsRelief(s) ? '<span class="badge info">3 PILOTS</span>' : ''}
+          ${icon('chevron')}
+        </div>
+      </a>`;
     })
     .join('');
 
@@ -358,9 +380,9 @@ function rosterEditor() {
         <button type="button" class="${filter === 'all' ? 'on' : ''}" data-act="filter" data-filter="all">All sectors</button>
         <button type="button" class="${filter === 'short' ? 'on' : ''}" data-act="filter" data-filter="short">Needs pilots (${short.length})</button>
       </div>
-      <p class="tiny">Pick a name to roster them; it saves straight away. Names are grouped by what each pilot said about that sector, fewest sectors first, and each one shows what they are already flying. Report time is set to ${rules().reportLeadMinutes} minutes before the departure window opens (${rules().firstReportLeadMinutes} for the first sector) and can be changed per person.</p>
+      <p class="tiny">Open a sector to crew it. Each sector page lists every pilot, what they said about it, what they are already flying and any duty rule that would be broken by rostering them.</p>
     </section>
-    ${cards || '<p class="note center">Every upcoming sector has its pilots.</p>'}`;
+    <section class="card list">${rows || '<p class="note">Every upcoming sector has its pilots.</p>'}</section>`;
 }
 
 function people() {
@@ -456,6 +478,60 @@ function testAccounts() {
     </form>`;
 }
 
+// Everyone who could fly this sector, with what they said, what they are
+// already flying, and every rule that stands in the way. Nothing here stops
+// you rostering someone anyway.
+function whoCanFly(s, fit) {
+  const r = rules();
+  const list = seats(s);
+  const crew = crewOf(s);
+  const rank = (f) => (f.already ? 0 : f.choice === 'unavailable' ? 3 : f.breaks.length ? 2 : 1);
+  const rows = [...fit]
+    .sort((a, b) => rank(a) - rank(b) || a.load.total - b.load.total || a.p.display_name.localeCompare(b.p.display_name))
+    .map((f) => {
+      const here = crew.find((c) => c.user_id === f.p.id);
+      const buttons = list
+        .map(
+          (duty) =>
+            `<button class="btn small ${here?.duty === duty ? 'primary' : 'ghost'}" data-act="assign" data-sector="${esc(s.id)}" data-duty="${duty}" data-user="${esc(f.p.id)}">${SEAT_SHORT[duty]}</button>`,
+        )
+        .join('');
+      const why = [here ? '' : f.reason, ...f.breaks].filter(Boolean);
+      return `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-t">${esc(f.p.display_name)}${here ? ` <span class="badge ok">${esc(here.duty)}</span>` : ''}${
+            f.choice === 'prefer' ? ' <span class="badge info">ASKED FOR IT</span>' : ''
+          }${f.choice === 'unavailable' ? ' <span class="badge bad">CAN\'T</span>' : ''}</div>
+          <div class="sub">${tally(f.load)} · ${f.load.hours.toFixed(1)} h · ${plural(f.load.boc, 'back-of-clock sector')}</div>
+          ${here ? '<div class="sub">Rostered on this sector.</div>' : ''}
+          ${
+            why.length
+              ? why.map((text) => `<div class="sub warn-text">${icon('alert')} ${esc(text)}</div>`).join('')
+              : here
+                ? ''
+                : `<div class="sub ok-text">Free to fly it · ${f.choice === 'none' ? blankWord() : CHOICE_WORDS[f.choice]}</div>`
+          }
+        </div>
+        <div class="btn-row">${buttons}</div>
+      </div>`;
+    })
+    .join('');
+
+  const free = fit.filter((f) => !f.blocked && !f.already).length;
+  const broken = fit.filter((f) => !f.already && f.breaks.length).length;
+  return `
+    <section class="card list">
+      <div class="card-head"><div class="tiny">WHO CAN FLY THIS</div><span class="badge ${free ? 'ok' : 'warn'}">${free} FREE</span></div>
+      ${rows || '<p class="note">No pilots on the team yet.</p>'}
+      <p class="tiny">${
+        broken
+          ? `${plural(broken, 'pilot')} would break a duty rule, so Auto roster skips them. The reason is listed against each name, and you can still roster them by pressing a seat.`
+          : 'Press a seat to roster someone, or press it again to take them out. Auto roster skips anyone with a reason listed against their name.'
+      } Rules are set in <a href="#/admin/rules">Admin → Rules</a>. Back of clock is ${String(r.bocStart).padStart(2, '0')}00 to ${String(r.bocEnd).padStart(2, '0')}00 sim local.</p>
+    </section>`;
+}
+
 function sectorCrew(id) {
   const s = state.sectors.find((x) => x.id === id);
   if (!s) return `<p class="note">Sector not found.</p><a class="btn ghost" href="#/admin">Back</a>`;
@@ -488,14 +564,43 @@ function sectorCrew(id) {
     .map((p) => `<option value="${esc(p.id)}">${esc(p.display_name)} · ${plural(sectorCount(p.id), 'sector')}</option>`)
     .join('');
 
+  const r = rules();
+  const list = seats(s);
+  const fit = candidates(s);
+  const others = crew.filter((x) => !list.includes(x.duty));
+  const order = sortedSectors();
+  const at = order.findIndex((x) => x.id === s.id);
+  const step = (x, label) => (x ? `<a class="btn ghost small" href="#/admin/sector/${esc(x.id)}">${label}</a>` : '');
+
   return `
-    <div class="page-head"><a class="back" href="#/admin">${icon('back')} Admin</a></div>
+    <div class="page-head"><a class="back" href="#/admin">${icon('back')} Roster</a>
+      <div class="btn-row">${step(order[at - 1], 'Previous')}${step(order[at + 1], 'Next')}</div>
+    </div>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
+    <section class="card slot-card ${pilotsShort(s) ? 'short' : 'ok'}">
+      <div class="card-head">
+        <div>
+          <div class="big">${esc(s.dep)} → ${esc(s.arr)}</div>
+          <div class="sub">${esc(s.flight)} · ${span(new Date(s.sta) - new Date(s.std))}</div>
+        </div>
+        <div class="right stack">
+          ${needBadge(s)}
+          ${needsRelief(s) ? '<span class="badge info">RELIEF PILOT</span>' : ''}
+          ${isBoc(s, r) ? '<span class="badge warn">BACK OF CLOCK</span>' : ''}
+        </div>
+      </div>
+      <dl class="legend">
+        <dt>Departs</dt><dd>${when(s.std)} · ${simLocal(s.std)}${s.window ? ` · window ${depWindow(s)}` : ''}</dd>
+        <dt>Arrives</dt><dd>${when(s.sta)} · ${simLocal(s.sta)}</dd>
+        <dt>Report</dt><dd>${when(defaultReport(s).toISOString())} unless changed per person</dd>
+        ${s.notes ? `<dt>Notes</dt><dd>${esc(s.notes)}</dd>` : ''}
+      </dl>
+      <div class="slots">${list.map((duty) => seat(s, duty, fit)).join('')}</div>
+      ${others.length ? `<div class="sub">Also on board: ${others.map((x) => `${name(x.user_id)} (${esc(x.duty)})`).join(', ')}</div>` : ''}
+    </section>
+    ${whoCanFly(s, fit)}
     <section class="card">
-      <div class="card-head"><div>
-        <div class="big">${esc(s.dep)} → ${esc(s.arr)}</div>
-        <div class="sub">${esc(s.flight)} · Departs ${when(s.std)}${s.window ? ` · window ${depWindow(s)}` : ''}</div>
-      </div>${needBadge(s)}</div>
+      <div class="card-head"><h2>Report times and notes</h2><span class="badge mute">${crew.length}</span></div>
       ${entries || '<p class="note">No crew rostered on this sector yet.</p>'}
     </section>
     <form class="card form" data-form="entry">
@@ -540,29 +645,30 @@ async function change(work) {
 
 const currentSectorId = () => decodeURIComponent(location.hash.split('/')[3] || '');
 
+// Put someone in a seat, swap them, or clear it. Rules are not enforced here:
+// an admin may roster whoever they like, and the rule check will say so.
+async function setSeat(s, duty, userId) {
+  const crew = crewOf(s);
+  const holder = crew.find((r) => r.duty === duty);
+  if (holder && holder.user_id !== userId) await deleteRoster(holder.id);
+  if (!userId) return;
+  // Someone already on this sector keeps their report time and note.
+  const existing = crew.find((r) => r.user_id === userId);
+  await saveRoster({
+    sector_id: s.id,
+    user_id: userId,
+    duty,
+    report_at: existing?.report_at || defaultReport(s).toISOString(),
+    notes: existing?.notes || '',
+    auto: false,
+  });
+}
+
 export const changes = {
-  // Quick editor: put someone in a seat, swap them, or clear it.
   seat(el) {
     const s = state.sectors.find((x) => x.id === el.dataset.sector);
-    const duty = el.dataset.duty;
-    const userId = el.value;
-    const crew = crewOf(s);
-    const holder = crew.find((r) => r.duty === duty);
     for (const select of el.closest('.card').querySelectorAll('select')) select.disabled = true;
-    return change(async () => {
-      if (holder && holder.user_id !== userId) await deleteRoster(holder.id);
-      if (!userId) return;
-      // Someone already on this sector keeps their report time and note.
-      const existing = crew.find((r) => r.user_id === userId);
-      await saveRoster({
-        sector_id: s.id,
-        user_id: userId,
-        duty,
-        report_at: existing?.report_at || defaultReport(s).toISOString(),
-        notes: existing?.notes || '',
-        auto: false,
-      });
-    });
+    return change(() => setSeat(s, el.dataset.duty, el.value));
   },
   role(el) {
     const who = person(el.dataset.id)?.display_name;
@@ -612,6 +718,15 @@ export const forms = {
 };
 
 export const actions = {
+  // Roster someone straight from the "who can fly this" list, rules or no
+  // rules. Pressing the seat they already hold takes them off the sector.
+  assign(el) {
+    const s = state.sectors.find((x) => x.id === el.dataset.sector);
+    const here = crewOf(s).find((c) => c.user_id === el.dataset.user);
+    for (const button of el.closest('.row').querySelectorAll('button')) button.disabled = true;
+    if (here?.duty === el.dataset.duty) return change(() => deleteRoster(here.id));
+    return change(() => setSeat(s, el.dataset.duty, el.dataset.user));
+  },
   state(el) {
     const publish = el.dataset.state === 'published';
     if (publish && !confirm('Publish the roster? Everyone on the team will be able to see it.')) return;

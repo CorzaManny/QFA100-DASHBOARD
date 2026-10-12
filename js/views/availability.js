@@ -35,9 +35,12 @@ export function render(args) {
     .map((s) => {
       const choice = prefOf(who.id, s.id);
       counts[choice || 'none'] += 1;
+      // With the team rule on, a sector nobody has answered already counts as
+      // available, so show that button as the standing answer.
+      const assumed = !choice && r.unmarkedAvailable;
       const buttons = CHOICES.map(
         ([key, label]) =>
-          `<button type="button" class="${choice === key ? `on ${key}` : ''}" data-act="choose" data-sector="${esc(s.id)}" data-choice="${key}" aria-pressed="${choice === key}">${label}</button>`,
+          `<button type="button" class="${choice === key ? `on ${key}` : assumed && key === 'available' ? 'assumed' : ''}" data-act="choose" data-sector="${esc(s.id)}" data-choice="${key}" aria-pressed="${choice === key}">${label}</button>`,
       ).join('');
       return `
         <div class="avail">
@@ -56,20 +59,20 @@ export function render(args) {
     </div>
     <section class="card">
       <h2>${own ? 'My availability' : `Availability for ${esc(who.display_name)}`}</h2>
-      <p class="note">Mark each sector. <strong>Prefer</strong> means you would like it, <strong>Available</strong> means you can fly it, <strong>Can't</strong> means do not roster you. Tap a choice again to clear it. ${
+      <p class="note">${
         r.unmarkedAvailable
-          ? 'Sectors left blank count as available.'
-          : 'Sectors left blank count as <strong>not available</strong>.'
-      }</p>
+          ? `${own ? 'You count' : `${esc(who.display_name)} counts`} as available for every sector until ${own ? 'you say' : 'they say'} otherwise, so you only need to mark the ones that are different.`
+          : 'Mark every sector: anything left blank counts as <strong>not available</strong>.'
+      } <strong>Prefer</strong> means you would like it, <strong>Can't</strong> means do not roster you. Tap a choice again to clear it.</p>
       <div class="chips">
         <span class="badge ok">${counts.prefer} PREFER</span>
         <span class="badge info">${counts.available} AVAILABLE</span>
         <span class="badge bad">${counts.unavailable} CAN'T</span>
-        <span class="badge mute">${counts.none} BLANK</span>
+        <span class="badge ${r.unmarkedAvailable ? 'info' : 'mute'}">${counts.none} ${r.unmarkedAvailable ? 'NOT SAID' : 'BLANK'}</span>
       </div>
       ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
       ${
-        counts.none
+        counts.none && !r.unmarkedAvailable
           ? `<button class="btn ghost" data-act="fill" data-user="${esc(who.id)}">Mark the ${counts.none} blank sectors as Available</button>`
           : ''
       }
