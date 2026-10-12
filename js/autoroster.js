@@ -18,6 +18,7 @@ export const DEFAULT_RULES = {
   maxBoc: 2, // back-of-clock sectors per person for the whole event; 0 = no limit
   bocEveryDays: 2, // at most one back-of-clock sector every this many days; 0 = no limit
   maxSectors: 0, // per person for the whole event; 0 = no limit
+  reliefOverHours: 6, // sectors longer than this also need a relief pilot; 0 = never
   unmarkedAvailable: false, // treat sectors someone has not answered as available
   reportLeadMinutes: 45, // report this long before the departure window opens
   firstReportLeadMinutes: 60, // ...and this long before the first sector of the event
@@ -28,7 +29,11 @@ export const rulesOf = (settings) => ({ ...DEFAULT_RULES, ...(settings?.rules ||
 const std = (s) => new Date(s.std).getTime();
 const sta = (s) => new Date(s.sta).getTime();
 const byStd = (a, b) => std(a) - std(b);
-const blockHours = (s) => (sta(s) - std(s)) / HOUR;
+export const blockHours = (s) => (sta(s) - std(s)) / HOUR;
+
+// The seats a sector is rostered from. Long sectors also carry a relief pilot.
+export const seatsFor = (sector, rules) =>
+  rules.reliefOverHours > 0 && blockHours(sector) > rules.reliefOverHours ? [...PILOT_SEATS, 'Relief Pilot'] : PILOT_SEATS;
 
 // A sector is back-of-clock if any part of it is flown inside the window,
 // in sim local time. The window may run past midnight (e.g. 23 to 5).
@@ -107,13 +112,14 @@ export function planRoster({ sectors, roster, people, prefs, rules, now, reportF
   const pilots = people.filter((p) => PILOT_ROLES.includes(p.role));
   const choice = new Map(prefs.map((p) => [`${p.user_id}|${p.sector_id}`, p.choice]));
 
-  // What each pilot is already flying, and how often as Captain.
+  // What each pilot is already flying, and how often in each seat.
   const flying = new Map(pilots.map((p) => [p.id, []]));
-  const captain = new Map(pilots.map((p) => [p.id, 0]));
+  const seated = new Map(pilots.map((p) => [p.id, {}]));
+  const count = (id, duty) => seated.get(id)[duty] || 0;
   for (const r of roster) {
     if (!PILOT_DUTIES.includes(r.duty) || !flying.has(r.user_id) || !byId.has(r.sector_id)) continue;
     flying.get(r.user_id).push(byId.get(r.sector_id));
-    if (r.duty === 'Captain') captain.set(r.user_id, captain.get(r.user_id) + 1);
+    seated.get(r.user_id)[r.duty] = count(r.user_id, r.duty) + 1;
   }
 
   const added = [];
@@ -122,7 +128,7 @@ export function planRoster({ sectors, roster, people, prefs, rules, now, reportF
 
   for (const s of upcoming) {
     const crew = [...roster, ...added].filter((r) => r.sector_id === s.id);
-    for (const seat of PILOT_SEATS) {
+    for (const seat of seatsFor(s, rules)) {
       if (crew.some((r) => r.duty === seat)) continue;
 
       let best = null;
@@ -136,16 +142,18 @@ export function planRoster({ sectors, roster, people, prefs, rules, now, reportF
         const before = problems(mine, rules);
         if (problems([...mine, s], rules).some((text) => !before.includes(text))) continue;
 
-        // Lower is better. Share the flying evenly, honour requests, and keep
-        // a crew together across back-to-back sectors to cut down handovers.
+        // Lower is better. Even out the number of sectors first, then the time in
+        // each seat, then the hours flown; honour requests, and keep a crew together
+        // across back-to-back sectors to cut down handovers.
         const hours = mine.reduce((sum, x) => sum + blockHours(x), 0);
         const continues = mine.some((x) => sta(x) <= std(s) && std(s) - sta(x) < rules.restHours * HOUR);
         const score =
-          hours -
+          mine.length * 3 +
+          count(p.id, seat) * 2 +
+          hours * 0.1 -
           (want === 'prefer' ? 4 : 0) -
           (continues ? 2 : 0) +
-          (want ? 0 : 1) +
-          (seat === 'Captain' ? captain.get(p.id) * 0.5 : 0);
+          (want ? 0 : 1);
         if (score < bestScore) {
           best = p;
           bestScore = score;
@@ -167,7 +175,7 @@ export function planRoster({ sectors, roster, people, prefs, rules, now, reportF
       added.push(entry);
       crew.push(entry);
       flying.get(best.id).push(s);
-      if (seat === 'Captain') captain.set(best.id, captain.get(best.id) + 1);
+      seated.get(best.id)[seat] = count(best.id, seat) + 1;
     }
   }
   return { added, gaps };

@@ -1053,3 +1053,51 @@ button.row {
 .mel > * {
   min-width: 0;
 }
+
+/* Five admin tabs: three on top, two below */
+.seg.tabs5 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.seg.tabs5 a {
+  font-size: 0.8rem;
+  padding: 0 2px;
+}
+
+/* Who is flying what (Admin → Balance) */
+.tally {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.tally th,
+.tally td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--card2);
+  text-align: left;
+  white-space: nowrap;
+}
+.tally th:first-child,
+.tally td:first-child {
+  width: 99%;
+  white-space: normal;
+  padding-left: 0;
+}
+.tally th:last-child,
+.tally td:last-child {
+  padding-right: 0;
+}
+.tally th {
+  color: var(--dim);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.tally .num {
+  text-align: right;
+}
+.tally tr.dim td {
+  opacity: 0.55;
+}
+.warn-text {
+  color: var(--warn);
+}

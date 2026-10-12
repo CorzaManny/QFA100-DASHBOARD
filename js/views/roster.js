@@ -4,7 +4,7 @@
 import { state } from '../store.js';
 import { configured } from '../api.js';
 import { esc, zulu, zdate, depWindow, simLocal, icon } from '../ui.js';
-import { sortedSectors, crewOf, person, me, canEdit, pilotsShort, isDraft, MIN_PILOTS } from '../ops.js';
+import { sortedSectors, crewOf, person, me, canEdit, pilotsShort, pilotsNeeded, needsRelief, isDraft, MIN_PILOTS, rules } from '../ops.js';
 
 const name = (id) => esc(person(id)?.display_name || 'Unknown');
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
@@ -12,7 +12,7 @@ const when = (t) => `${zdate(t)} ${zulu(t)}`;
 function needBadge(s) {
   const short = pilotsShort(s);
   if (!short) return '';
-  return `<span class="badge ${short === MIN_PILOTS ? 'bad' : 'warn'}">NEEDS ${short} PILOT${short === 1 ? '' : 'S'}</span>`;
+  return `<span class="badge ${short >= pilotsNeeded(s) ? 'bad' : 'warn'}">NEEDS ${short} PILOT${short === 1 ? '' : 'S'}</span>`;
 }
 
 function noAccounts() {
@@ -69,7 +69,7 @@ function list() {
       return `${header}
         <a class="row ${new Date(s.sta) < now ? 'past' : ''}" href="#/roster/${esc(s.id)}">
           <div class="row-main">
-            <div class="row-t">${esc(s.dep)} → ${esc(s.arr)}</div>
+            <div class="row-t">${esc(s.dep)} → ${esc(s.arr)}${needsRelief(s) ? ' <span class="badge info">3 PILOTS</span>' : ''}</div>
             <div class="sub">${esc(s.flight)} · ${zulu(s.std)}</div>
             ${crewOf(s)
               .map((r) => `<div class="sub crew-line">${name(r.user_id)} · ${esc(r.duty)} · report ${zulu(r.report_at)}</div>`)
@@ -98,7 +98,9 @@ function list() {
         ${short ? `<span class="badge warn">${short} NEED PILOTS</span>` : '<span class="badge ok">ALL CREWED</span>'}</div>
       ${allRows || '<p class="note">No sectors in the schedule yet.</p>'}
     </section>
-    <p class="tiny center">All times UTC. Every sector needs at least ${MIN_PILOTS} pilots.</p>`;
+    <p class="tiny center">All times UTC. Every sector needs ${MIN_PILOTS} pilots${
+      rules().reliefOverHours > 0 ? `, and a relief pilot as well when it is longer than ${rules().reliefOverHours} hours` : ''
+    }.</p>`;
 }
 
 function detail(id) {

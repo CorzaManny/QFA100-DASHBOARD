@@ -2,7 +2,7 @@
 
 import { state, save } from './store.js';
 import { configured, getSession, loadAll, saveBriefing } from './api.js';
-import { rulesOf } from './autoroster.js';
+import { rulesOf, seatsFor, isBoc, blockHours } from './autoroster.js';
 
 const VATSIM_FEED = 'https://data.vatsim.net/v3/vatsim-data.json';
 const EARTH_NM = 3440.065;
@@ -68,11 +68,37 @@ export function crewOf(sector) {
     .sort((a, b) => DUTIES.indexOf(a.duty) - DUTIES.indexOf(b.duty));
 }
 
-// Every sector needs at least this many pilots on the roster.
+// Every sector needs a Captain and a First Officer; long ones also need a
+// relief pilot, which is a team rule.
 export const MIN_PILOTS = 2;
 export const PILOT_DUTIES = ['Captain', 'First Officer', 'Relief Pilot'];
+export const seats = (sector) => seatsFor(sector, rules());
+export const pilotsNeeded = (sector) => seats(sector).length;
+export const needsRelief = (sector) => seats(sector).includes('Relief Pilot');
 export const pilotsShort = (sector) =>
-  Math.max(0, MIN_PILOTS - crewOf(sector).filter((r) => PILOT_DUTIES.includes(r.duty)).length);
+  Math.max(0, pilotsNeeded(sector) - crewOf(sector).filter((r) => PILOT_DUTIES.includes(r.duty)).length);
+
+// How much one person is flying: sectors in each seat, block hours and
+// back-of-clock sectors. Used to keep the roster even.
+export function workload(userId) {
+  const byId = new Map(state.sectors.map((s) => [s.id, s]));
+  const r = rules();
+  const out = { total: 0, hours: 0, boc: 0 };
+  for (const duty of PILOT_DUTIES) out[duty] = 0;
+  for (const entry of state.roster) {
+    if (entry.user_id !== userId || !PILOT_DUTIES.includes(entry.duty)) continue;
+    const sector = byId.get(entry.sector_id);
+    if (!sector) continue;
+    out.total += 1;
+    out[entry.duty] += 1;
+    out.hours += blockHours(sector);
+    if (isBoc(sector, r)) out.boc += 1;
+  }
+  return out;
+}
+
+// Everyone who can be rostered in a pilot's seat.
+export const flyers = () => state.people.filter((p) => ['admin', 'dispatcher', 'pilot'].includes(p.role));
 
 // Report time offered when rostering: a set time before the departure window
 // opens, longer for the first sector of the event. Both are team rules.

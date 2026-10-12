@@ -234,7 +234,7 @@ function list() {
     </section>
     <p class="tiny center">${
       sharedLog() ? 'Shared with the whole team.' : 'Saved on this device only.'
-    } Deferrals follow the FAA 737 MMEL and are for flight simulation only.</p>`;
+    } Deferrals follow the 737 MEL - FOR FLIGHT SIMULATION ONLY.</p>`;
   error = '';
   return out;
 }
