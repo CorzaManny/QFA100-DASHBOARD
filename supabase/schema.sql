@@ -104,6 +104,19 @@ create table if not exists public.techlog (
   updated_at  timestamptz not null default now()
 );
 
+-- What happened to each tech log entry and who did it. Written by the
+-- database itself (see log_techlog_change below), never by the app.
+create table if not exists public.techlog_history (
+  id        uuid primary key default gen_random_uuid(),
+  defect_id uuid not null references public.techlog (id) on delete cascade,
+  at        timestamptz not null default now(),
+  by_name   text not null default '',
+  event     text not null,
+  detail    text not null default ''
+);
+
+create index if not exists techlog_history_defect_idx on public.techlog_history (defect_id);
+
 -- ---------- Helper functions ----------
 
 create or replace function public.is_admin()
@@ -166,6 +179,60 @@ drop trigger if exists on_auth_user_deleted on auth.users;
 create trigger on_auth_user_deleted
   after delete on auth.users
   for each row execute function public.handle_deleted_user();
+
+-- Adds a line to a defect's history whenever it is reported or changed.
+create or replace function public.log_techlog_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  who  text;
+  what text;
+  note text := '';
+begin
+  select display_name into who from public.profiles where id = auth.uid();
+  if tg_op = 'INSERT' then
+    what := 'Reported';
+    who := coalesce(who, new.reporter);
+    if new.status <> 'OPEN' then note := initcap(new.status); end if;
+  elsif new.status is distinct from old.status then
+    what := case new.status when 'DEFERRED' then 'Deferred' when 'RECTIFIED' then 'Rectified' else 'Reopened' end;
+    note := case new.status
+      when 'DEFERRED' then concat_ws(' · ', nullif('MEL ' || new.mel_item, 'MEL '), nullif(new.restriction, ''))
+      when 'RECTIFIED' then new.action
+      else '' end;
+  elsif (to_jsonb(new) - 'updated_at') = (to_jsonb(old) - 'updated_at') then
+    return new;  -- saved without changing anything
+  else
+    what := 'Edited';
+  end if;
+  insert into public.techlog_history (defect_id, by_name, event, detail)
+  values (new.id, coalesce(who, ''), what, coalesce(note, ''));
+  return new;
+end;
+$$;
+
+drop trigger if exists techlog_history_trigger on public.techlog;
+create trigger techlog_history_trigger
+  after insert or update on public.techlog
+  for each row execute function public.log_techlog_change();
+
+-- Rejects a sign-up or removes a member: deletes the account completely, so
+-- the person can no longer sign in. Their roster entries go with them.
+create or replace function public.remove_account(target uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only admins can remove accounts';
+  end if;
+  if target = auth.uid() then
+    raise exception 'You cannot remove your own account';
+  end if;
+  delete from auth.users where id = target;
+  delete from public.profiles where id = target;
+end;
+$$;
+
+revoke execute on function public.remove_account(uuid) from anon, public;
+grant execute on function public.remove_account(uuid) to authenticated;
 
 -- Test accounts: stand-in team members an admin can create to try out the
 -- roster. Nobody can sign in as one.
@@ -241,8 +308,9 @@ alter table public.roster   enable row level security;
 alter table public.settings enable row level security;
 alter table public.preferences enable row level security;
 alter table public.techlog  enable row level security;
+alter table public.techlog_history enable row level security;
 
-revoke all on public.profiles, public.sectors, public.roster, public.settings, public.preferences, public.techlog from anon;
+revoke all on public.profiles, public.sectors, public.roster, public.settings, public.preferences, public.techlog, public.techlog_history from anon;
 -- Stated explicitly because newer Supabase projects do not grant these by default.
 -- The policies below still decide which rows each person can touch.
 grant select on public.profiles, public.sectors, public.roster to authenticated;
@@ -251,6 +319,7 @@ grant select, update on public.settings to authenticated;
 grant select, insert, update, delete on public.preferences to authenticated;
 grant select, insert, update, delete on public.techlog to authenticated;
 grant usage on sequence public.techlog_seq to authenticated;
+grant select on public.techlog_history to authenticated;
 revoke insert, update, delete on public.profiles from authenticated;
 grant update (display_name, vatsim_cid) on public.profiles to authenticated;
 
@@ -318,3 +387,7 @@ create policy "crew update techlog" on public.techlog
 drop policy if exists "editors delete techlog" on public.techlog;
 create policy "editors delete techlog" on public.techlog
   for delete to authenticated using (public.can_edit());
+
+drop policy if exists "members read techlog history" on public.techlog_history;
+create policy "members read techlog history" on public.techlog_history
+  for select to authenticated using (public.is_member());

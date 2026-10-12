@@ -2,7 +2,7 @@
 
 import { zulu, simClock } from './ui.js';
 import { state } from './store.js';
-import { configured, getSession } from './api.js';
+import { configured, getSession, useEmailLink } from './api.js';
 import { loadAirports, syncTeam, canEdit, isPending } from './ops.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
@@ -39,7 +39,8 @@ function parse() {
 // With a database connected everyone signs in first. Without one, the login
 // page explains that and offers a preview on this device.
 // Signed-in accounts still waiting for an admin's approval stay on that page too.
-const locked = () => (configured ? !getSession() || isPending() : !state.preview);
+// Someone choosing a new password from a reset email stays there until it is done.
+const locked = () => login.resetting() || (configured ? !getSession() || isPending() : !state.preview);
 
 function render() {
   const gate = locked();
@@ -113,27 +114,59 @@ document.addEventListener('visibilitychange', () => {
   if (route.name === 'dashboard') dash.poll();
 });
 
-// Don't redraw underneath someone who has already started typing.
+// True when a form on the page holds something that has not been saved.
+function unsaved() {
+  for (const el of root.querySelectorAll('form input, form textarea, form select')) {
+    if (el.type === 'hidden' || el.type === 'file') continue;
+    if (el.type === 'checkbox' || el.type === 'radio') {
+      if (el.checked !== el.defaultChecked) return true;
+    } else if (el.tagName === 'SELECT') {
+      // With no option marked as chosen, a drop-down starts on its first one.
+      const start = Math.max(0, [...el.options].findIndex((o) => o.defaultSelected));
+      if (el.selectedIndex !== start) return true;
+    } else if (el.value !== el.defaultValue) return true;
+  }
+  return false;
+}
+
+// Don't redraw underneath someone who is typing or has unsaved changes.
 const quietRender = () => {
-  if (!root.querySelector('form:focus-within, select:focus')) render();
+  if (!root.querySelector('form:focus-within, select:focus') && !unsaved()) render();
 };
 
-// Keep the schedule and roster in step with the team database.
+// Everything that comes from the team database, to tell whether a sync changed anything.
+const teamData = () =>
+  JSON.stringify([state.sectors, state.roster, state.people, state.settings, state.prefs, state.defects, state.history]);
+
+// Keep this device in step with the team database: other people's changes
+// appear by themselves within a few seconds, without reloading.
+let syncing = false;
 async function sync() {
-  if (document.visibilityState !== 'visible') return;
+  if (syncing || document.visibilityState !== 'visible' || !navigator.onLine) return;
+  syncing = true;
   const before = locked();
+  const data = teamData();
   await syncTeam();
+  syncing = false;
   // A sign-in that has ended goes back to the login page, and an account
   // that has just been approved leaves the waiting page.
-  if (locked() !== before || isPending()) render();
-  else quietRender();
+  if (locked() !== before) render();
+  else if (teamData() !== data) quietRender();
+}
+
+// A link from an email comes back with a sign-in in the address rather than a page name.
+const link = new URLSearchParams(location.hash.slice(1));
+if (link.has('access_token') || link.has('error_description')) {
+  history.replaceState(null, '', location.pathname);
+  login.emailLink(link, () => useEmailLink(link));
 }
 
 render();
 tick();
 loadAirports().then(quietRender);
 sync();
-setInterval(sync, 2 * 60000);
+setInterval(sync, 10000);
+window.addEventListener('online', sync);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});

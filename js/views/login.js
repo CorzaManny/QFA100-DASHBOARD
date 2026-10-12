@@ -1,11 +1,11 @@
 // The first page: sign in or create an account.
 
 import { state, save } from '../store.js';
-import { configured, signIn, signUp, signOut, getSession } from '../api.js';
+import { configured, signIn, signUp, signOut, getSession, requestReset, setPassword } from '../api.js';
 import { esc, icon, rerender } from '../ui.js';
 import { syncTeam, clearTeam, isPending, me } from '../ops.js';
 
-let mode = 'signin';
+let mode = 'signin'; // signin, signup, forgot (ask for a reset email) or newpass (arrived from that email)
 let error = '';
 let notice = '';
 let busy = false;
@@ -34,6 +34,62 @@ function awaitingApproval() {
     </section>`;
 }
 
+function forgot() {
+  return `
+    <form class="card form" data-form="forgot">
+      <h2>Reset your password</h2>
+      <p class="note">Enter the email you signed up with and we will send a link to choose a new password.</p>
+      <label class="field">Email<input name="email" type="email" required autocomplete="email" autocapitalize="none" value="${esc(email)}"></label>
+      ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
+      ${notice ? `<p class="note ok">${esc(notice)}</p>` : ''}
+      <div class="btn-row">
+        <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Please wait…' : 'Send reset link'}</button>
+        <button class="btn ghost" type="button" data-act="mode" data-mode="signin">Back to sign in</button>
+      </div>
+    </form>`;
+}
+
+function newPassword() {
+  return `
+    <form class="card form" data-form="newpass">
+      <h2>Choose a new password</h2>
+      ${getSession() ? `<p class="note">For <strong>${esc(getSession().email)}</strong>.</p>` : ''}
+      <input type="email" name="username" autocomplete="username" value="${esc(getSession()?.email || '')}" hidden readonly>
+      <label class="field">New password<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+      ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
+      <div class="btn-row">
+        <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Please wait…' : 'Save new password'}</button>
+        <button class="btn ghost" type="button" data-act="cancelReset">Cancel</button>
+      </div>
+      <p class="tiny">Use at least 8 characters.</p>
+    </form>`;
+}
+
+// True while someone is choosing a new password, so the app stays on this page.
+export const resetting = () => mode === 'newpass';
+
+// Called when the app is opened from a link in an email. link: URLSearchParams
+// of the address; signInWith(): signs in with the link.
+export async function emailLink(link, signInWith) {
+  if (link.has('error_description')) {
+    mode = 'forgot';
+    error = `${link.get('error_description')}. Ask for a new link.`;
+    return;
+  }
+  const recovery = link.get('type') === 'recovery';
+  if (recovery) mode = 'newpass';
+  busy = true;
+  try {
+    await signInWith();
+    await syncTeam();
+  } catch (err) {
+    if (recovery) mode = 'forgot';
+    error = `That link did not work (${err.message}). Ask for a new one.`;
+  }
+  busy = false;
+  rerender();
+}
+
 function form() {
   const signup = mode === 'signup';
   return `
@@ -52,7 +108,7 @@ function form() {
       ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
       ${notice ? `<p class="note ok">${esc(notice)}</p>` : ''}
       <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Please wait…' : signup ? 'Create account' : 'Sign in'}</button>
-      ${signup ? '<p class="tiny">Use at least 8 characters. A team admin has to approve your account before you can use the app.</p>' : ''}
+      ${signup ? '<p class="tiny">Use at least 8 characters. A team admin has to approve your account before you can use the app.</p>' : '<button class="btn ghost" type="button" data-act="mode" data-mode="forgot">Forgot your password?</button>'}
     </form>`;
 }
 
@@ -64,7 +120,7 @@ export function render() {
         <h1>QFA100 Ops</h1>
         <div class="tiny">WORLDFLIGHT · 737 OPERATIONS</div>
       </div>
-      ${!configured ? notConnected() : getSession() && isPending() ? awaitingApproval() : form()}
+      ${!configured ? notConnected() : mode === 'newpass' ? newPassword() : mode === 'forgot' ? forgot() : getSession() && isPending() ? awaitingApproval() : form()}
     </div>`;
 }
 
@@ -99,7 +155,43 @@ export const forms = {
   },
 };
 
+async function submit(work) {
+  if (busy) return;
+  busy = true;
+  error = '';
+  notice = '';
+  rerender();
+  try {
+    await work();
+  } catch (err) {
+    error = err.message;
+  }
+  busy = false;
+  rerender();
+}
+
+forms.forgot = (data) =>
+  submit(async () => {
+    email = String(data.get('email')).trim();
+    await requestReset(email);
+    notice = 'If that email has an account, a reset link is on its way. Open it on this device.';
+  });
+
+forms.newpass = (data) =>
+  submit(async () => {
+    await setPassword(String(data.get('password')));
+    mode = 'signin';
+    notice = 'Password changed.';
+    await syncTeam();
+  });
+
 export const actions = {
+  async cancelReset() {
+    mode = 'signin';
+    await signOut();
+    clearTeam();
+    rerender();
+  },
   async recheck() {
     busy = true;
     rerender();

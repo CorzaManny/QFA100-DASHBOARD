@@ -100,6 +100,12 @@ Open **Settings** (top-right icon) to set, on each device:
 
 The Dashboard can read the aircraft's position, phase, ETA and fuel straight from the simulator instead of VATSIM. The format the simulator side has to publish is defined in [docs/API.md](docs/API.md), with an example in `api/status.example.json`. Nothing publishes it yet; that connector is still to be built.
 
+## Live updates, password reset and removing accounts
+
+- The app checks the team database every 10 seconds while it is open, so other people's changes (roster, schedule, tech log, approvals) appear without reloading. It never redraws a form you are filling in.
+- **Forgot your password?** on the sign-in page emails a reset link. The link opens the app on a "Choose a new password" page. This relies on **Site URL** in Supabase (Authentication → URL Configuration) being the app's address. Supabase's built-in email service only sends a few emails an hour.
+- Admins can **Reject** an account that is waiting for approval, which deletes it. To remove an existing member, set their role to "Awaiting approval" first, then reject.
+
 ## Tech log and MEL
 
 The tech log lives in the team database, so everyone sees the same entries on every device. Pilots, dispatchers and admins can add and update entries; only admins and dispatchers can delete one. If the database was set up before the tech log was added, run `supabase/schema.sql` again (it is safe to re-run). Entries written on a device before that show a prompt on the Tech Log page to upload them.
@@ -110,6 +116,8 @@ The MEL comes from the FAA Boeing 737 MMEL (Revision 62 draft), cut down to item
 swift tools/mel_words.swift MMEL_B-737.pdf words.tsv
 python3 tools/build_mel.py words.tsv
 ```
+
+Each entry keeps a history of who reported, deferred, edited and rectified it; the database writes that itself. An open defect has a quick **Mark rectified** box at the top of its page.
 
 It is for flight simulation only. Repair categories: A as stated in the item, B 3 days, C 10 days, D 120 days.
 

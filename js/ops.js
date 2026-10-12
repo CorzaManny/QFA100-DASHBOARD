@@ -106,7 +106,7 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [], defects: state.defects.filter((d) => !d.shared), sharedLog: false });
+  Object.assign(state, { roster: [], people: [], prefs: [], history: [], defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 

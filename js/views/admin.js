@@ -8,6 +8,7 @@ import {
   setRole,
   addTestAccount,
   removeTestAccount,
+  removeAccount,
   saveSettings,
   saveRosterMany,
   clearAutoRoster,
@@ -248,7 +249,10 @@ function people() {
           <div class="row-t">${esc(p.display_name)}${p.is_test ? ' <span class="badge info">TEST</span>' : ''}</div>
           <div class="sub">Signed up and waiting${p.vatsim_cid ? ` · CID ${esc(p.vatsim_cid)}` : ''}</div>
         </div>
-        <button class="btn primary small" data-act="approve" data-id="${esc(p.id)}">Approve</button>
+        <div class="btn-row">
+          <button class="btn danger small" data-act="reject" data-id="${esc(p.id)}" data-name="${esc(p.display_name)}">Reject</button>
+          <button class="btn primary small" data-act="approve" data-id="${esc(p.id)}">Approve</button>
+        </div>
       </div>`,
     )
     .join('');
@@ -277,7 +281,7 @@ function people() {
         ? `<section class="card list slot-card short">
             <div class="card-head"><div class="tiny">WAITING FOR APPROVAL</div><span class="badge warn">${pendingPeople().length}</span></div>
             ${waiting}
-            <p class="tiny">Approving makes them a Pilot. Only approve people you recognise; until then they cannot see anything.</p>
+            <p class="tiny">Approving makes them a Pilot. Only approve people you recognise; until then they cannot see anything. Rejecting deletes the account.</p>
           </section>`
         : ''
     }
@@ -291,7 +295,7 @@ function people() {
       <dl class="legend">${Object.values(ROLES)
         .map(([label, what]) => `<dt>${label}</dt><dd>${what}</dd>`)
         .join('')}</dl>
-      <p class="tiny">You cannot change your own role, so there is always at least one admin. New accounts wait for approval; set someone back to "Awaiting approval" to remove their access.</p>
+      <p class="tiny">You cannot change your own role, so there is always at least one admin. New accounts wait for approval. To remove someone, set them back to "Awaiting approval" (they lose access at once), then press Reject to delete the account.</p>
     </section>`;
 }
 
@@ -542,6 +546,12 @@ export const actions = {
     if (!confirm('Remove every test account and their roster entries? Real accounts are not affected.')) return;
     el.disabled = true;
     return change(() => removeTestAccount(null));
+  },
+  reject(el) {
+    const person = state.people.find((p) => p.id === el.dataset.id);
+    if (!confirm(`Delete the account for ${el.dataset.name}? They will not be able to sign in, and this cannot be undone.`)) return;
+    el.disabled = true;
+    return change(() => (person?.is_test ? removeTestAccount(el.dataset.id) : removeAccount(el.dataset.id)));
   },
   approve(el) {
     el.disabled = true;

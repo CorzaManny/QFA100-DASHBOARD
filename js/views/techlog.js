@@ -5,7 +5,7 @@
 import { state, save, uid } from '../store.js';
 import { saveDefect, deleteDefect } from '../api.js';
 import { esc, zulu, zdate, icon, rerender } from '../ui.js';
-import { currentSector, me, sharedLog, syncTeam, canEdit } from '../ops.js';
+import { currentSector, sortedSectors, me, sharedLog, syncTeam, canEdit } from '../ops.js';
 import {
   loadMel,
   melReady,
@@ -192,17 +192,31 @@ function form(id) {
         aog: false,
       };
   const d = draft?.key === id ? { ...base, ...draft.values } : base;
+  // The schedule's sectors, in order. An entry may name one that has since changed.
+  const sectors = sortedSectors().map((x) => [`${x.dep}-${x.arr}`, `${x.dep} → ${x.arr} · ${zdate(x.std)}`]);
+  if (d.sector && !sectors.some(([v]) => v === d.sector)) sectors.push([d.sector, d.sector]);
   const systems = [...chapters().map(chapterLabel), ...OTHER_SYSTEMS];
   // An entry written before the MEL was added may name a system that is no longer offered.
   if (d.system && !systems.includes(d.system)) systems.push(d.system);
+  const history = existing ? state.history.filter((h) => h.defect_id === existing.id) : [];
   const out = `
     <div class="page-head"><a class="back" href="#/techlog">${icon('back')} Tech Log</a></div>
+    ${
+      existing && existing.status !== 'RECTIFIED'
+        ? `<form class="card form" data-form="rectify">
+            <div class="card-head"><h2>${esc(existing.ref)} fixed?</h2><span class="badge ${STATUS[existing.status]}">${existing.status}</span></div>
+            <label class="field">What fixed it<input name="action" required placeholder="e.g. Sim restarted, radar tested OK"></label>
+            <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>Mark rectified</button>
+          </form>`
+        : ''
+    }
     <form class="card form" data-form="defect">
       <h2>${existing ? esc(existing.ref) : 'Report a defect'}</h2>
       <label class="field">Defect description<textarea name="desc" rows="3" required placeholder="e.g. Weather radar not displaying returns">${esc(d.desc)}</textarea></label>
       <div class="grid2">
         <label class="field">Reported by<input name="by" value="${esc(d.by)}"></label>
-        <label class="field">Sector<input name="sector" value="${esc(d.sector)}" placeholder="YSSY-YBBN"></label>
+        <label class="field">Sector<select name="sector">
+          ${opt('', d.sector, 'Not on a sector')}${sectors.map(([v, label]) => opt(v, d.sector, label)).join('')}</select></label>
       </div>
       <label class="field">System<select name="system" required data-change="system">
         <option value="">Select…</option>${systems.map((s) => opt(s, d.system)).join('')}</select></label>
@@ -218,6 +232,22 @@ function form(id) {
         ${existing && (canEdit() || !sharedLog()) ? '<button class="btn danger" type="button" data-act="remove">Delete</button>' : ''}
       </div>
     </form>
+    ${
+      history.length
+        ? `<section class="card list">
+            <div class="card-head"><div class="tiny">HISTORY</div></div>
+            ${history
+              .map(
+                (h) => `
+              <div class="row"><div class="row-main">
+                <div class="row-t">${esc(h.event)}${h.by_name ? ` · ${esc(h.by_name)}` : ''}</div>
+                <div class="sub">${zdate(h.at)} ${zulu(h.at)}${h.detail ? ` · ${esc(h.detail)}` : ''}</div>
+              </div></div>`,
+              )
+              .join('')}
+          </section>`
+        : ''
+    }
     ${sourceNote()}`;
   error = '';
   return out;
@@ -323,6 +353,21 @@ export const forms = {
     draft = null;
     location.hash = '#/techlog';
   },
+};
+
+// The quick way to close a defect: just say what fixed it.
+forms.rectify = async (data) => {
+  const existing = state.defects.find((x) => x.id === currentId());
+  if (busy || !existing) return;
+  const d = { ...existing, status: 'RECTIFIED', action: String(data.get('action')).trim(), aog: false, due: null };
+  if (sharedLog()) {
+    if (!(await send(() => saveDefect(d, existing.id)))) return;
+  } else {
+    Object.assign(existing, d);
+  }
+  save();
+  draft = null;
+  location.hash = '#/techlog';
 };
 
 export const actions = {

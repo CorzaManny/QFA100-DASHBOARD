@@ -69,6 +69,40 @@ export async function signUp(email, password, displayName) {
   return true;
 }
 
+// Emails a link that comes back to this app and lets the person choose a new password.
+export const requestReset = (email) =>
+  auth(`recover?redirect_to=${encodeURIComponent(location.origin + location.pathname)}`, { email });
+
+async function account(method, token, body) {
+  const res = await fetch(`${BASE}/auth/v1/user`, {
+    method,
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(message(data, res.status));
+  return data;
+}
+
+// A link from an email (password reset, or confirming a new account) arrives
+// with a sign-in in the page address. params: URLSearchParams of that address.
+export async function useEmailLink(params) {
+  const access = params.get('access_token');
+  const user = await account('GET', access);
+  keep({
+    access_token: access,
+    refresh_token: params.get('refresh_token'),
+    expires_in: Number(params.get('expires_in')) || 3600,
+    user,
+  });
+}
+
+export async function setPassword(password) {
+  if (!session) throw new Error('The reset link has expired. Ask for a new one.');
+  if (session.expiresAt - Date.now() < 60000) await refresh();
+  await account('PUT', session.access, { password });
+}
+
 export async function signOut() {
   const token = session?.access;
   setSession(null);
@@ -166,13 +200,14 @@ const fromDefect = (d) => ({
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs, techlog] = await Promise.all([
+  const [sectors, roster, people, settings, prefs, techlog, history] = await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
     rest('GET', 'profiles?select=*&order=display_name.asc'),
     rest('GET', 'settings?select=*&id=eq.1').catch(() => null),
     rest('GET', 'preferences?select=user_id,sector_id,choice').catch(() => null),
     rest('GET', 'techlog?select=*&order=reported_at.desc').catch(() => null),
+    rest('GET', 'techlog_history?select=defect_id,at,by_name,event,detail&order=at.asc').catch(() => null),
   ]);
   return {
     sectors: sectors.map(toSector),
@@ -181,6 +216,7 @@ export async function loadAll() {
     settings: settings?.[0] || null,
     prefs: prefs || [],
     defects: techlog ? techlog.map(toDefect) : null, // null: this database has no tech log table yet
+    history: history || [],
   };
 }
 
@@ -206,6 +242,9 @@ export const addTestAccount = (name, role) => rest('POST', 'rpc/add_test_account
 
 // Pass null to remove every test account.
 export const removeTestAccount = (userId) => rest('POST', 'rpc/remove_test_account', { target: userId });
+
+// Deletes a real account for good: rejects a sign-up, or removes a member.
+export const removeAccount = (userId) => rest('POST', 'rpc/remove_account', { target: userId });
 
 export const setRole = (userId, role) => rest('POST', 'rpc/set_role', { target: userId, new_role: role });
 
