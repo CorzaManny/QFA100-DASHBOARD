@@ -144,7 +144,26 @@ The estimate takes the best source it has, in this order: a stamped time, the si
 
 ## Notifications
 
-Not built yet. The roster stores what a notification needs: who is on each sector, their duty and their report time. Sending one to a phone that has the app closed needs two more pieces: each device registering for push notifications, and a scheduled job in Supabase that checks for upcoming report times and sends them. On iPhone this only works once the app has been added to the home screen.
+The app can notify a phone even when it is closed. Four things are sent, and nothing else:
+
+- **the roster is published** — with how many sectors you have and when the first one is;
+- **your own sectors change** — added, taken off, duty or report time moved;
+- **a delay moves your report time** by more than the threshold in **Admin → Rules**;
+- **a reminder** a set time before you report, using the real time including the delay.
+
+Each person turns it on in **Settings → Notifications**, on each device they want told. Nobody is sent anything until they do. On iPhone and iPad it only works once the app has been added to the Home Screen and opened from there; the app says so rather than failing silently.
+
+### Setting it up
+
+This is the one part of the app with a piece outside Supabase's SQL editor: the sending has to be signed, which needs a small function running somewhere. Supabase runs it for free.
+
+1. In Supabase, open **Edge Functions → Deploy a new function**, name it exactly `send-push`, and paste in the whole of [`supabase/functions/send-push/index.ts`](supabase/functions/send-push/index.ts). Deploy it. Its address is then `https://YOUR-PROJECT.supabase.co/functions/v1/send-push`.
+2. Open the SQL Editor and paste in [`supabase/notifications.sql`](supabase/notifications.sql). Three lines are marked `<= fill in`: the VAPID private key (the public half is already in `js/config.js`; whoever set this up has the private half), that function address, and any long random string as a shared secret so only the database can call the function. Fill them in **in the editor, not in the file**, because this repository is public. Press Run.
+3. Open the app, go to **Settings → Notifications** and turn it on. Press **Show me one** to check it appears.
+
+The database builds the messages and asks the function to deliver them once a minute. A message is encrypted for the one device it is going to ([RFC 8291](https://www.rfc-editor.org/rfc/rfc8291)), so the push service that carries it cannot read it. A device that has uninstalled the app or turned notifications off is dropped automatically the next time something is sent to it.
+
+If notifications stop working, run `select public.push_tick();` in the SQL editor: it returns what it did, including anything the sending function complained about.
 
 ## Install it on a phone or tablet
 

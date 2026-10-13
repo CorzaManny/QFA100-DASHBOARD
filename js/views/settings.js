@@ -4,9 +4,12 @@ import { state, save, exportData, importData, resetAll } from '../store.js';
 import { configured, getSession, signOut, updateProfile } from '../api.js';
 import { esc, icon, rerender } from '../ui.js';
 import { me, isAdmin, canEdit, roleName, syncTeam, clearTeam } from '../ops.js';
+import { pushProblem, pushEnabled, enablePush, disablePush, deviceLabel, testNotification } from '../push.js';
 
 let message = '';
 let problem = '';
+// Found when the page is drawn, because asking the browser takes a moment.
+let notifications = null;
 
 function account() {
   if (!configured) {
@@ -30,6 +33,33 @@ function account() {
     </form>`;
 }
 
+// Notifications are per device: a phone, an iPad, the computer at the sim.
+// Each one has to be turned on where it is.
+function notificationsCard() {
+  if (!configured) return '';
+  const blocked = pushProblem();
+  const on = notifications === true;
+  return `
+    <section class="card">
+      <div class="card-head"><h2>Notifications</h2>
+        <span class="badge ${on ? 'ok' : 'mute'}">${on ? 'ON FOR THIS DEVICE' : 'OFF'}</span></div>
+      <p class="note">Tells you when the roster is published, when your own sectors change, when a delay moves your report time, and when it is nearly time to report. ${
+        on ? 'Turn it on separately on every device you want told.' : 'Nothing else is sent.'
+      }</p>
+      ${blocked ? `<p class="note warn">${icon('alert')} ${esc(blocked)}</p>` : ''}
+      <div class="btn-row">
+        ${
+          blocked
+            ? ''
+            : on
+              ? `<button class="btn ghost" data-act="pushOff">Turn off on ${esc(deviceLabel())}</button>
+                 <button class="btn ghost" data-act="pushTest">Show me one</button>`
+              : `<button class="btn primary" data-act="pushOn">Turn on for ${esc(deviceLabel())}</button>`
+        }
+      </div>
+    </section>`;
+}
+
 function adminLink() {
   if (!configured || !canEdit()) return '';
   return `
@@ -47,6 +77,7 @@ export function render() {
     ${message ? `<p class="note ok">${esc(message)}</p>` : ''}
     ${problem ? `<p class="note warn">${icon('alert')} ${esc(problem)}</p>` : ''}
     ${account()}
+    ${notificationsCard()}
     ${adminLink()}
     <form class="card form" data-form="profile">
       <h2>This device</h2>
@@ -84,6 +115,16 @@ export function render() {
 }
 
 export function mounted(root) {
+  // Ask the browser whether this device is already subscribed, then redraw if
+  // the answer is not what the page assumed.
+  if (configured && !pushProblem()) {
+    pushEnabled().then((on) => {
+      if (on !== notifications) {
+        notifications = on;
+        if (location.hash.startsWith('#/settings')) rerender();
+      }
+    });
+  }
   root.querySelector('[data-file="import"]').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -138,6 +179,40 @@ export const forms = {
 };
 
 export const actions = {
+  async pushOn(el) {
+    el.disabled = true;
+    message = '';
+    problem = '';
+    try {
+      await enablePush();
+      notifications = true;
+      message = `Notifications are on for ${deviceLabel()}.`;
+    } catch (err) {
+      problem = err.message;
+    }
+    rerender();
+  },
+  async pushOff(el) {
+    el.disabled = true;
+    try {
+      await disablePush();
+      notifications = false;
+      message = 'Notifications are off for this device.';
+    } catch (err) {
+      problem = err.message;
+    }
+    rerender();
+  },
+  async pushTest(el) {
+    el.disabled = true;
+    try {
+      await testNotification();
+    } catch (err) {
+      problem = err.message;
+      rerender();
+    }
+    el.disabled = false;
+  },
   async signout() {
     await signOut();
     clearTeam();

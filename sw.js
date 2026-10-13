@@ -3,7 +3,7 @@
 // so edits you publish show up on the next load. Live data (VATSIM, METAR,
 // SimBrief) always goes straight to the network.
 
-const CACHE = 'qfa100-ops-v24';
+const CACHE = 'qfa100-ops-v25';
 const SHELL = [
   './',
   'index.html',
@@ -17,6 +17,7 @@ const SHELL = [
   'js/ops.js',
   'js/autoroster.js',
   'js/running.js',
+  'js/push.js',
   'js/mel.js',
   'js/data/checklists.js',
   'js/data/schedule.js',
@@ -72,5 +73,44 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => caches.match(request, { ignoreSearch: true }).then((hit) => hit || caches.match('index.html'))),
+  );
+});
+
+// A notification from the team: the roster, a delay, a report time.
+self.addEventListener('push', (event) => {
+  let note = { title: 'QFA100 Ops', body: '', url: '#/dashboard' };
+  try {
+    note = { ...note, ...(event.data ? event.data.json() : {}) };
+  } catch {
+    // A push with no readable payload still deserves to be shown.
+    if (event.data) note.body = event.data.text();
+  }
+  event.waitUntil(
+    self.registration.showNotification(note.title, {
+      body: note.body,
+      icon: 'icons/icon-192.png',
+      badge: 'icons/icon-192.png',
+      tag: note.tag || 'qfa100',
+      renotify: true,
+      data: { url: note.url },
+    }),
+  );
+});
+
+// Tapping one opens the app at the page it is about, reusing a window that is
+// already open rather than starting a second copy.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || '#/dashboard', self.registration.scope).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      for (const client of windows) {
+        if (client.url.startsWith(self.registration.scope)) {
+          client.focus();
+          return client.navigate ? client.navigate(target) : undefined;
+        }
+      }
+      return self.clients.openWindow(target);
+    }),
   );
 });

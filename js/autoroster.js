@@ -22,6 +22,8 @@ export const DEFAULT_RULES = {
   unmarkedAvailable: true, // everyone counts as available until they say otherwise
   turnaroundMinutes: 45, // the least time on the ground between two sectors
   taxiInMinutes: 5, // from overhead the arrival airport to on blocks, for live estimates
+  reportReminderMinutes: 90, // notify this long before someone reports; 0 = never
+  delayNoticeMinutes: 20, // notify when a delay moves a report time by this much; 0 = never
   reportLeadMinutes: 45, // report this long before the departure window opens
   firstReportLeadMinutes: 60, // ...and this long before the first sector of the event
 };

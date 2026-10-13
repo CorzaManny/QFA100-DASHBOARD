@@ -239,6 +239,13 @@ export function saveSector(fields, sectorId) {
 
 export const deleteSector = (sectorId) => rest('DELETE', `sectors?id=eq.${id(sectorId)}`);
 
+// Where this device wants notifications sent. One row per device.
+export const savePushSubscription = (sub) =>
+  rest('POST', 'push_subscriptions?on_conflict=endpoint', { ...sub, user_id: getSession()?.userId }, 'resolution=merge-duplicates');
+
+export const deletePushSubscription = (endpoint) =>
+  rest('DELETE', `push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}`);
+
 // The times the flight deck stamped for a sector. One row per sector, so
 // stamping the same sector again updates it.
 export const saveActual = (sectorId, fields) =>

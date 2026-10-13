@@ -227,6 +227,12 @@ function rulesPage() {
         ${num('taxiInMinutes', 'Taxi in (minutes)', 'Landing to on blocks, for live estimates')}
       </div>
       <p class="tiny">These two work out how a late sector moves the ones after it. The published schedule is never changed.</p>
+      <h3>Notifications</h3>
+      <div class="grid2">
+        ${num('reportReminderMinutes', 'Remind before report (minutes)', '0 = no reminder', 5)}
+        ${num('delayNoticeMinutes', 'Tell about a delay over (minutes)', 'How far a report time must move', 5)}
+      </div>
+      <p class="tiny">Only people who have turned notifications on, on a device, are sent anything. See <a href="#/settings">Settings</a>.</p>
       <h3>Back of the clock (sim local time)</h3>
       <div class="grid2">
         ${num('bocStart', 'Starts at hour', '0 to 23')}

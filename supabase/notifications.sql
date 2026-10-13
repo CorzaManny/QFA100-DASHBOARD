@@ -1,0 +1,324 @@
+-- Notifications: tells a pilot's phone when the roster is published, when
+-- their own sectors change, when a delay moves their report time, and when it
+-- is nearly time to report.
+--
+-- Run this in the SQL Editor after schema.sql, and after deploying the
+-- send-push function (supabase/functions/send-push/index.ts). Three things
+-- have to be filled in below, all marked "<= fill in":
+--
+--   1. the VAPID private key that goes with the public one in js/config.js
+--   2. the address of your send-push function
+--   3. any secret you like, so only the database can call that function
+--
+-- Fill them in here in the SQL Editor, not in the file on your computer: this
+-- repository is public.
+
+create extension if not exists http with schema extensions;
+create extension if not exists pg_cron;
+
+-- ---------- Where the pieces are kept ----------
+
+-- One row, readable only by the database itself and the send-push function.
+create table if not exists public.push_config (
+  id            boolean primary key default true check (id),
+  vapid_public  text not null default '',
+  vapid_private text not null default '',
+  subject       text not null default 'mailto:ops@qfa100.example',
+  edge_url      text not null default '',
+  secret        text not null default ''
+);
+insert into public.push_config (id) values (true) on conflict (id) do nothing;
+
+update public.push_config set
+  vapid_public  = 'BBQNk0GT1-Fa1AgSql6WRll_GHErZz6o8picqXFW65tNfiRRNBc0OvcGaf0X7WfZUujkX25tRhodSEK2oTdEChE',
+  vapid_private = 'PASTE-THE-PRIVATE-KEY-HERE',                      -- <= fill in
+  edge_url      = 'https://YOUR-PROJECT.supabase.co/functions/v1/send-push',  -- <= fill in
+  secret        = 'PICK-ANY-LONG-RANDOM-STRING'                      -- <= fill in
+where id;
+
+-- One row per device somebody has turned notifications on for. A person can
+-- have several: their phone, their iPad, the computer at the sim.
+create table if not exists public.push_subscriptions (
+  endpoint   text primary key,
+  user_id    uuid not null references public.profiles (id) on delete cascade,
+  p256dh     text not null,
+  auth       text not null,
+  label      text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subscriptions_user_idx on public.push_subscriptions (user_id);
+
+-- Everything waiting to be sent, and everything already sent. Keeping the sent
+-- ones means a notification is never sent twice, and you can see what went out.
+create table if not exists public.notifications (
+  id         bigserial primary key,
+  user_id    uuid not null references public.profiles (id) on delete cascade,
+  kind       text not null,
+  title      text not null,
+  body       text not null default '',
+  url        text not null default '#/dashboard',
+  ttl        integer not null default 3600,
+  dedupe     text not null unique,
+  created_at timestamptz not null default now(),
+  sent_at    timestamptz
+);
+create index if not exists notifications_waiting_idx on public.notifications (created_at) where sent_at is null;
+
+-- The report time each person was last told about, so a delay is only
+-- mentioned when it has actually moved.
+create table if not exists public.notified_report (
+  roster_id    uuid primary key references public.roster (id) on delete cascade,
+  told_report  timestamptz not null,
+  updated_at   timestamptz not null default now()
+);
+
+alter table public.push_config enable row level security;
+alter table public.push_subscriptions enable row level security;
+alter table public.notifications enable row level security;
+alter table public.notified_report enable row level security;
+
+revoke all on public.push_config, public.notified_report from anon, authenticated;
+grant select, insert, update, delete on public.push_subscriptions to authenticated;
+grant select on public.notifications to authenticated;
+
+-- A person manages their own devices and reads their own notifications.
+drop policy if exists "own devices" on public.push_subscriptions;
+create policy "own devices" on public.push_subscriptions
+  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists "own notifications" on public.notifications;
+create policy "own notifications" on public.notifications
+  for select to authenticated using (user_id = auth.uid());
+
+-- ---------- How late the day is running ----------
+
+-- The same chain the app draws on the Schedule page, worked out in the
+-- database so the notifications can use it: a sector leaves no earlier than
+-- its published window, and no earlier than the aeroplane is back and turned
+-- round. The live aircraft position is not available here, so this uses only
+-- the times the flight deck has stamped.
+create or replace function public.sector_running()
+returns table (sector_id uuid, est_off timestamptz, est_on timestamptz, delay_minutes integer)
+language plpgsql stable security definer set search_path = public as $$
+declare
+  turn interval;
+  r    record;
+  off_ timestamptz;
+  on_  timestamptz;
+  prev timestamptz;
+begin
+  select make_interval(mins => round(coalesce((rules ->> 'turnaroundMinutes')::numeric, 45))::integer)
+    into turn from public.settings limit 1;
+  turn := coalesce(turn, interval '45 minutes');
+
+  for r in
+    select s.id, s.std, s.sta, a.off_blocks, a.on_blocks, coalesce(a.skipped, false) as skipped
+    from public.sectors s
+    left join public.sector_actuals a on a.sector_id = s.id
+    order by s.std
+  loop
+    continue when r.skipped;
+    off_ := coalesce(r.off_blocks, greatest(r.std, coalesce(prev + turn, r.std)));
+    on_  := coalesce(r.on_blocks, off_ + (r.sta - r.std));
+    prev := on_;
+    sector_id := r.id;
+    est_off := off_;
+    est_on := on_;
+    delay_minutes := round(extract(epoch from (off_ - r.std)) / 60);
+    return next;
+  end loop;
+end;
+$$;
+
+-- Everyone's real report time: the one they were given, moved by the delay on
+-- their sector, keeping whatever lead they were rostered with.
+create or replace view public.report_times with (security_invoker = true) as
+  select r.id as roster_id, r.user_id, r.duty, r.report_at, s.id as sector_id, s.flight, s.dep, s.arr, s.std,
+         run.est_off, run.delay_minutes,
+         r.report_at + (run.est_off - s.std) as due_at
+  from public.roster r
+  join public.sectors s on s.id = r.sector_id
+  join public.sector_running() run on run.sector_id = s.id;
+
+grant select on public.report_times to authenticated;
+
+-- ---------- What is worth telling someone ----------
+
+create or replace function public.notify(
+  target uuid, kind text, title text, body text, url text, dedupe text, ttl integer default 3600
+)
+returns void language sql security definer set search_path = public as $$
+  insert into public.notifications (user_id, kind, title, body, url, dedupe, ttl)
+  select target, kind, title, body, url, dedupe, ttl
+  where exists (select 1 from public.push_subscriptions where user_id = target)
+  on conflict (dedupe) do nothing;
+$$;
+
+-- The roster going live.
+create or replace function public.notify_roster_published()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  stamp text := to_char(now(), 'YYYYMMDDHH24MI');
+  r record;
+begin
+  if new.roster_state = 'published' and coalesce(old.roster_state, '') <> 'published' then
+    for r in
+      select ro.user_id, count(*) as sectors, min(s.std) as first_std,
+             (array_agg(s.flight order by s.std))[1] as first_flight
+      from public.roster ro join public.sectors s on s.id = ro.sector_id
+      where s.std > now()
+      group by ro.user_id
+    loop
+      perform public.notify(
+        r.user_id, 'roster', 'The roster is published',
+        format('You have %s sector%s. The first is %s on %s.', r.sectors, case when r.sectors = 1 then '' else 's' end,
+               r.first_flight, to_char(r.first_std, 'DD Mon HH24:MI"Z"')),
+        '#/roster', 'published-' || r.user_id || '-' || stamp, 86400
+      );
+    end loop;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists notify_published on public.settings;
+create trigger notify_published after update on public.settings
+  for each row execute function public.notify_roster_published();
+
+-- Somebody's own sectors changing after the roster has gone out.
+create or replace function public.notify_roster_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  s     record;
+  stamp text := to_char(now(), 'YYYYMMDDHH24MI');
+  entry public.roster%rowtype;
+begin
+  if tg_op = 'DELETE' then entry := old; else entry := new; end if;
+  if not public.roster_published() then return entry; end if;
+  select * into s from public.sectors where id = entry.sector_id;
+  if s.id is null or s.std < now() then return entry; end if;
+
+  if tg_op = 'DELETE' then
+    perform public.notify(old.user_id, 'roster', 'You are off ' || s.flight,
+      format('%s to %s on %s is no longer yours.', s.dep, s.arr, to_char(s.std, 'DD Mon')),
+      '#/roster', 'off-' || old.id || '-' || stamp, 86400);
+  elsif tg_op = 'INSERT' then
+    perform public.notify(new.user_id, 'roster', 'You are rostered on ' || s.flight,
+      format('%s to %s as %s. Report %s.', s.dep, s.arr, new.duty, to_char(new.report_at, 'DD Mon HH24:MI"Z"')),
+      '#/roster/' || s.id, 'on-' || new.id, 86400);
+  elsif new.duty <> old.duty or new.report_at <> old.report_at then
+    perform public.notify(new.user_id, 'roster', s.flight || ' has changed',
+      format('Now %s, report %s.', new.duty, to_char(new.report_at, 'DD Mon HH24:MI"Z"')),
+      '#/roster/' || s.id, 'moved-' || new.id || '-' || stamp, 86400);
+  end if;
+  return entry;
+end;
+$$;
+
+drop trigger if exists notify_roster on public.roster;
+create trigger notify_roster after insert or update or delete on public.roster
+  for each row execute function public.notify_roster_change();
+
+-- Report reminders, and a word when a delay moves somebody's report time.
+-- Called once a minute by the job at the bottom.
+create or replace function public.notify_due()
+returns integer language plpgsql security definer set search_path = public as $$
+declare
+  lead  integer;
+  shift integer;
+  r     record;
+  made  integer := 0;
+begin
+  if not public.roster_published() then return 0; end if;
+  select round(coalesce((rules ->> 'reportReminderMinutes')::numeric, 90))::integer,
+         round(coalesce((rules ->> 'delayNoticeMinutes')::numeric, 20))::integer
+    into lead, shift from public.settings limit 1;
+  lead := coalesce(lead, 90);
+  shift := coalesce(shift, 20);
+
+  for r in select * from public.report_times where due_at between now() - interval '1 hour' and now() + interval '24 hours'
+  loop
+    -- A delay that moves the report time by more than the team's threshold.
+    if not exists (select 1 from public.notified_report n where n.roster_id = r.roster_id) then
+      insert into public.notified_report (roster_id, told_report) values (r.roster_id, r.due_at)
+      on conflict (roster_id) do nothing;
+    elsif exists (
+      select 1 from public.notified_report n
+      where n.roster_id = r.roster_id and abs(extract(epoch from (r.due_at - n.told_report))) >= shift * 60
+    ) then
+      perform public.notify(
+        r.user_id,
+        'delay',
+        format('%s is running %s', r.flight, case when r.delay_minutes > 0 then r.delay_minutes || ' min late' else abs(r.delay_minutes) || ' min early' end),
+        format('Report moves to %s. %s to %s.', to_char(r.due_at, 'DD Mon HH24:MI"Z"'), r.dep, r.arr),
+        '#/roster/' || r.sector_id,
+        'delay-' || r.roster_id || '-' || to_char(r.due_at, 'YYYYMMDDHH24MI'),
+        7200
+      );
+      update public.notified_report set told_report = r.due_at, updated_at = now() where roster_id = r.roster_id;
+      made := made + 1;
+    end if;
+
+    -- The reminder itself, once, as the report time comes up.
+    if r.due_at between now() and now() + make_interval(mins => lead) then
+      perform public.notify(
+        r.user_id,
+        'report',
+        format('Report at %s for %s', to_char(r.due_at, 'HH24:MI"Z"'), r.flight),
+        format('%s to %s as %s, in about %s minutes.', r.dep, r.arr, r.duty,
+               round(extract(epoch from (r.due_at - now())) / 60)),
+        '#/roster/' || r.sector_id,
+        'report-' || r.roster_id,
+        7200
+      );
+      made := made + 1;
+    end if;
+  end loop;
+  return made;
+end;
+$$;
+
+-- ---------- Sending ----------
+
+-- Builds whatever is due, then asks the send-push function to deliver
+-- everything waiting. Runs every minute.
+create or replace function public.push_tick()
+returns text language plpgsql security definer set search_path = public, extensions as $$
+declare
+  cfg      record;
+  waiting  integer;
+  answer   extensions.http_response;
+begin
+  perform public.notify_due();
+  select count(*) into waiting from public.notifications where sent_at is null;
+  if waiting = 0 then return 'nothing waiting'; end if;
+
+  select * into cfg from public.push_config where id;
+  if cfg.edge_url = '' or cfg.vapid_private = '' then return 'push is not set up yet'; end if;
+
+  select * into answer from extensions.http((
+    'POST',
+    cfg.edge_url,
+    array[extensions.http_header('x-push-secret', cfg.secret)],
+    'application/json',
+    '{}'
+  )::extensions.http_request);
+  return format('%s waiting, send-push said %s %s', waiting, answer.status, left(answer.content, 200));
+exception when others then
+  return 'could not reach send-push: ' || sqlerrm;
+end;
+$$;
+
+revoke all on function public.push_tick(), public.notify_due(), public.sector_running() from public, anon, authenticated;
+grant execute on function public.sector_running() to authenticated;
+
+select cron.unschedule('push-tick') where exists (select 1 from cron.job where jobname = 'push-tick');
+select cron.schedule('push-tick', '* * * * *', $job$ select public.push_tick() $job$);
+
+-- Old notifications are no use to anybody after a week.
+select cron.unschedule('push-tidy') where exists (select 1 from cron.job where jobname = 'push-tidy');
+select cron.schedule('push-tidy', '40 3 * * *',
+  $job$ delete from public.notifications where created_at < now() - interval '7 days' $job$);
+
+-- Run it once now and see what it says.
+select public.push_tick();
