@@ -455,17 +455,17 @@ create policy "crew update briefings" on public.briefings
 --
 --     captain          first_officer
 --
--- and share one password, set here. Change it before you run this file the
--- first time, and tell the crew. To change it later, use
--- Authentication -> Users in Supabase, or edit the line below and run
--- supabase/efb-password.sql.
+-- and share one password. Set it in the SQL Editor before you press Run, not
+-- in the file itself: this repository is public. The password below only
+-- applies the first time, when the accounts do not exist yet; after that,
+-- change it with supabase/efb-password.sql.
 --
 -- Running this file again does not touch a password you have already changed.
 create extension if not exists pgcrypto with schema extensions;
 
 do $$
 declare
-  password constant text := 'flightdeck';   -- <= the tablets' password
+  password constant text := 'change-me';   -- <= the tablets' password
   tablet record;
   uid uuid;
 begin
@@ -500,4 +500,25 @@ begin
   end loop;
 exception when others then
   raise warning 'Could not create the flight deck tablet accounts (%). Everything else was set up. Create them by hand in Authentication -> Users with the addresses captain@qfa100.efb and first_officer@qfa100.efb, then set their role to EFB tablet in Admin.', sqlerrm;
+end $$;
+
+-- Supabase reads these columns as plain text, so a row created by hand with
+-- them left empty makes signing in fail with "Database error querying schema".
+-- This fills in anything missing, for these accounts and any other.
+do $$
+declare
+  col text;
+begin
+  foreach col in array array[
+    'confirmation_token', 'recovery_token', 'email_change', 'email_change_token_new',
+    'email_change_token_current', 'phone_change', 'phone_change_token', 'reauthentication_token'
+  ]
+  loop
+    if exists (
+      select 1 from information_schema.columns
+      where table_schema = 'auth' and table_name = 'users' and column_name = col
+    ) then
+      execute format('update auth.users set %I = %L where %I is null', col, '', col);
+    end if;
+  end loop;
 end $$;
