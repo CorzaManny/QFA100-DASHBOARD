@@ -53,12 +53,18 @@ export const ROLES = {
   dispatcher: ['Dispatcher', 'Edits the schedule and the roster'],
   pilot: ['Pilot', 'Can be rostered to fly'],
   observer: ['Observer', 'Read only; can only be rostered as an observer'],
+  efb: ['EFB tablet', 'A shared cockpit tablet: keeps the tech log, cannot be rostered'],
 };
 export const roleName = (role) => (ROLES[role] || ROLES.pilot)[0];
 export const isAdmin = () => me()?.role === 'admin';
 export const isPending = () => me()?.role === 'pending';
 export const pendingPeople = () => state.people.filter((p) => p.role === 'pending');
 export const canEdit = () => ['admin', 'dispatcher'].includes(me()?.role);
+// A tablet left in the cockpit, signed in to a shared account. It shows the
+// whole team's flying rather than one person's, and keeps the tech log.
+export const isEfb = () => me()?.role === 'efb';
+// Who may write in the tech log: the cockpit tablets, and ops staff correcting it.
+export const canLog = () => !configured || ['admin', 'dispatcher', 'efb'].includes(me()?.role);
 export const person = (id) => state.people.find((p) => p.id === id) || null;
 
 // Everyone rostered on a sector, in seat order.
@@ -96,6 +102,9 @@ export function workload(userId) {
   }
   return out;
 }
+
+// Everyone who can be put on a sector at all: a tablet is not a person.
+export const rosterable = () => state.people.filter((p) => !['pending', 'efb'].includes(p.role));
 
 // Everyone who can be rostered in a pilot's seat.
 export const flyers = () => state.people.filter((p) => ['admin', 'dispatcher', 'pilot'].includes(p.role));
@@ -476,8 +485,9 @@ export async function fetchOfp(id) {
 
 // ---- Briefings ----
 
-// Pilots, dispatchers and admins write briefings and the tech log; observers only read.
-export const canReport = () => !configured || ['admin', 'dispatcher', 'pilot'].includes(me()?.role);
+// Everyone except observers writes briefings; the cockpit tablet does too,
+// since the handover is written on the flight deck.
+export const canReport = () => !configured || ['admin', 'dispatcher', 'pilot', 'efb'].includes(me()?.role);
 
 export const briefingOf = (sectorId) => state.briefings.find((b) => b.sector_id === sectorId) || {};
 

@@ -5,7 +5,7 @@
 import { state, save, uid } from '../store.js';
 import { saveDefect, deleteDefect } from '../api.js';
 import { esc, zulu, zdate, icon, rerender } from '../ui.js';
-import { currentSector, sortedSectors, me, sharedLog, syncTeam, canEdit } from '../ops.js';
+import { currentSector, sortedSectors, me, sharedLog, syncTeam, canEdit, canLog, isEfb, crewOf, rosterable, person } from '../ops.js';
 import {
   loadMel,
   melReady,
@@ -224,31 +224,44 @@ function list() {
   const out = `
     <div class="page-head"><h1>Tech Log</h1>
       <div class="btn-row"><a class="btn ghost" href="#/techlog/mel">MEL</a>
-      <a class="btn primary" href="#/techlog/new">${icon('plus')} Report defect</a></div></div>
+      ${canLog() ? `<a class="btn primary" href="#/techlog/new">${icon('plus')} Report defect</a>` : ''}</div></div>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
     ${waiting()}
     <section class="card list">
       <div class="card-head"><div class="tiny">${esc(state.profile.callsign)} · ${esc(state.profile.aircraft)}</div>
         <span class="badge ${active ? 'warn' : 'ok'}">${active ? `${active} ACTIVE` : 'SERVICEABLE'}</span></div>
-      ${rows || '<p class="note">No defects recorded. Report anything that breaks or is not modelled.</p>'}
+      ${rows || `<p class="note">No defects recorded.${canLog() ? ' Report anything that breaks or is not modelled.' : ''}</p>`}
     </section>
     <p class="tiny center">${
       sharedLog() ? 'Shared with the whole team.' : 'Saved on this device only.'
-    } Deferrals follow the 737 MEL - FOR FLIGHT SIMULATION ONLY.</p>`;
+    } ${canLog() ? '' : 'Entries are made on the flight deck tablet. '}Deferrals follow the 737 MEL - FOR FLIGHT SIMULATION ONLY.</p>`;
   error = '';
   return out;
+}
+
+// The "Reported by" field. On a shared log it is a list of the team, so a
+// cockpit tablet can name whoever found the defect.
+function reportedBy(value) {
+  const names = rosterable().map((p) => p.display_name);
+  if (!names.length) return `<label class="field">Reported by<input name="by" value="${esc(value)}"></label>`;
+  if (value && !names.includes(value)) names.unshift(value);
+  return `<label class="field">Reported by<select name="by">
+    ${opt('', value, 'Nobody named')}${names.map((n) => opt(n, value)).join('')}</select></label>`;
 }
 
 function form(id) {
   const existing = state.defects.find((d) => d.id === id);
   if (id !== 'new' && !existing) return `<p class="note">Defect not found.</p><a class="btn ghost" href="#/techlog">Back</a>`;
   const cur = currentSector();
+  // A tablet is not a person, so it offers the crew flying now instead.
+  const onBoard = cur ? crewOf(cur).map((c) => person(c.user_id)?.display_name).filter(Boolean) : [];
+  const mine = isEfb() ? onBoard[0] || '' : me()?.display_name || '';
   const base = existing
     ? { ...existing, melTop: melTop(existing.melItem) }
     : {
         system: '',
         desc: '',
-        by: me()?.display_name || '',
+        by: mine,
         sector: cur ? `${cur.dep}-${cur.arr}` : '',
         status: 'OPEN',
         melTop: '',
@@ -268,7 +281,7 @@ function form(id) {
   const out = `
     <div class="page-head"><a class="back" href="#/techlog">${icon('back')} Tech Log</a></div>
     ${
-      existing && existing.status !== 'RECTIFIED'
+      existing && existing.status !== 'RECTIFIED' && canLog()
         ? `<form class="card form" data-form="rectify">
             <div class="card-head"><h2>${esc(existing.ref)} fixed?</h2><span class="badge ${STATUS[existing.status]}">${existing.status}</span></div>
             <label class="field">What fixed it<input name="action" required placeholder="e.g. Sim restarted, radar tested OK"></label>
@@ -278,9 +291,11 @@ function form(id) {
     }
     <form class="card form" data-form="defect">
       <h2>${existing ? esc(existing.ref) : 'Report a defect'}</h2>
+      ${canLog() ? '' : `<p class="note">${icon('alert')} The tech log is kept on the flight deck tablet. Tell the crew what you found and they will enter it. You can read everything here.</p>`}
+      <fieldset ${canLog() ? '' : 'disabled'}>
       <label class="field">Defect description<textarea name="desc" rows="3" required placeholder="e.g. Weather radar not displaying returns">${esc(d.desc)}</textarea></label>
       <div class="grid2">
-        <label class="field">Reported by<input name="by" value="${esc(d.by)}"></label>
+        ${reportedBy(d.by)}
         <label class="field">Sector<select name="sector">
           ${opt('', d.sector, 'Not on a sector')}${sectors.map(([v, label]) => opt(v, d.sector, label)).join('')}</select></label>
       </div>
@@ -293,11 +308,16 @@ function form(id) {
       <label class="field">Operational restriction<input name="restriction" value="${esc(d.restriction)}" placeholder="e.g. Stay at or below FL250"></label>
       <label class="field">Rectification action<textarea name="action" rows="2" placeholder="What fixed it, or why it was deferred">${esc(d.action)}</textarea></label>
       <label class="check"><input type="checkbox" name="aog" ${d.aog ? 'checked' : ''}> Aircraft unserviceable until fixed (AOG)</label>
+      </fieldset>
       ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
-      <div class="btn-row">
-        <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Saving…' : existing ? 'Save changes' : 'Add to tech log'}</button>
-        ${existing && (canEdit() || !sharedLog()) ? '<button class="btn danger" type="button" data-act="remove">Delete</button>' : ''}
-      </div>
+      ${
+        canLog()
+          ? `<div class="btn-row">
+              <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Saving…' : existing ? 'Save changes' : 'Add to tech log'}</button>
+              ${existing && (canEdit() || !sharedLog()) ? '<button class="btn danger" type="button" data-act="remove">Delete</button>' : ''}
+            </div>`
+          : ''
+      }
     </form>
     ${
       history.length

@@ -3,7 +3,7 @@
 import { zulu, simClock } from './ui.js';
 import { state } from './store.js';
 import { configured, getSession, useEmailLink } from './api.js';
-import { loadAirports, syncTeam, canEdit, isPending } from './ops.js';
+import { loadAirports, syncTeam, canEdit, isPending, isEfb } from './ops.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
 import * as admin from './views/admin.js';
@@ -20,6 +20,7 @@ const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airport
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
 const clockSim = document.getElementById('clock-sim');
+const brand = document.querySelector('.brand .tiny');
 let route = { name: 'dashboard', args: [], view: dash };
 
 function safeDecode(part) {
@@ -32,7 +33,8 @@ function safeDecode(part) {
 
 function parse() {
   const [name, ...args] = location.hash.replace(/^#\/?/, '').split('/').map(safeDecode);
-  const key = ROUTES[name] ? name : 'dashboard';
+  // A cockpit tablet has no availability of its own.
+  const key = ROUTES[name] && !(name === 'availability' && isEfb()) ? name : 'dashboard';
   return { name: key, args, view: ROUTES[key] };
 }
 
@@ -46,6 +48,9 @@ function render() {
   const gate = locked();
   document.body.classList.toggle('locked', gate);
   document.body.classList.toggle('editor', !gate && canEdit());
+  document.body.classList.toggle('efb', !gate && isEfb());
+  // Both tablets look the same and say so, so nobody mistakes one for their own device.
+  brand.textContent = !gate && isEfb() ? 'FLIGHT DECK TABLET · SHARED' : 'WORLDFLIGHT · 737 OPERATIONS';
   route = gate ? { name: 'login', args: [], view: login } : parse();
   root.innerHTML = route.view.render(route.args);
   for (const tab of document.querySelectorAll('[data-tab]')) {

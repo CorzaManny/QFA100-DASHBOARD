@@ -8,7 +8,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **Dashboard** – shows where the aircraft is, its altitude, ground speed, distance to go and estimated arrival, read from the simulator's status API or from VATSIM. Shows your next rostered sector with your duty, report time and a countdown, and warns when a late arrival will push back the following departure.
 - **737 Checklists** – tap-through normal checklists from Preflight to Secure, with a "CHECKLIST COMPLETE" footer and a Next button. Works with no connection and keeps the screen awake.
 - **Schedule** – the official WorldFlight 2026 schedule. Each sector shows when its departure window opens (UTC), the window, block time and validated route. Admins and dispatchers can add, edit or delete sectors.
-- **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with short-crewed sectors flagged.
+- **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with short-crewed sectors flagged. The cockpit tablets sign in to their own accounts and show the whole team's roster instead.
 - **Admin** (shield icon, top right) – where the roster is built: pick a Captain and First Officer for each sector from a dropdown and it saves straight away. Admins also set each person's role here.
 - **Tech Log** – report defects, check them against the built-in MEL, defer them with a restriction, or mark them rectified. The log is shared by the whole team, stays with the aircraft between sectors and shows as a banner on the Dashboard.
 - **MEL** – the 737 Minimum Equipment List as drop-downs (system → item → option) inside the Tech Log: it shows whether the aircraft can go with something inoperative, the conditions, and how long the fix can wait.
@@ -44,16 +44,32 @@ Optional once everyone has joined: **Authentication → Sign In / Providers**, t
 
 ### Roles
 
-| | Observer | Pilot | Dispatcher | Admin |
-|---|---|---|---|---|
-| See the schedule, the full roster and their own roster | yes | yes | yes | yes |
-| Change their own name and VATSIM CID | yes | yes | yes | yes |
-| Be rostered as a pilot | | yes | yes | yes |
-| Add, edit and delete sectors | | | yes | yes |
-| Build the roster, set duties and report times | | | yes | yes |
-| Change other people's roles | | | | yes |
+| | Observer | Pilot | EFB tablet | Dispatcher | Admin |
+|---|---|---|---|---|---|
+| See the schedule, the full roster and their own roster | yes | yes | full roster only | yes | yes |
+| Change their own name and VATSIM CID | yes | yes | yes | yes | yes |
+| Write in the tech log | | | yes | yes | yes |
+| Write sector briefings and the handover | | yes | yes | yes | yes |
+| Be rostered as a pilot | | yes | | yes | yes |
+| Add, edit and delete sectors | | | | yes | yes |
+| Build the roster, set duties and report times | | | | yes | yes |
+| Change other people's roles | | | | | yes |
 
 New accounts start as **Awaiting approval** and see nothing; approving one makes it a Pilot. An admin changes roles, or sets someone back to Awaiting approval to remove their access, in **Admin → People and roles**. These rules are enforced by the database, not just by hiding buttons. A forgotten password is reset from **Authentication → Users** in Supabase.
+
+### EFB tablet accounts
+
+The tablets that live in the cockpit sign in to their own shared accounts, so they show the aeroplane rather than one person. Make one each the same way as anyone else (**Create account**, say `efb1@yourteam…` and name it "EFB 1"), then set its role to **EFB tablet** in **Admin → People and roles**. Two accounts means each tablet keeps its own sign-in, and nobody has to sign out of their own.
+
+A tablet account:
+
+- shows **the full roster** and the crew on each sector, never a personal roster or availability;
+- shows the crew flying now and the crew taking the next sector on its Dashboard, with their duties and report times;
+- **keeps the tech log**: it is the only account besides ops staff that can add, change or rectify a defect, and the **Reported by** field is a drop-down of the team, so the tablet records whoever actually found it;
+- cannot be rostered onto a sector, and is not offered as crew anywhere;
+- says **FLIGHT DECK TABLET · SHARED** at the top, so nobody mistakes it for their own device.
+
+Pilots still read the whole tech log and the MEL on their own phones; they just cannot write in it. Anything they find goes to the flight deck, which is where the log is kept.
 
 ### Building the roster with Auto roster
 
@@ -120,7 +136,7 @@ Pilots, dispatchers and admins can write; observers read. The MEL lookup and the
 
 ## Tech log and MEL
 
-The tech log lives in the team database, so everyone sees the same entries on every device. Pilots, dispatchers and admins can add and update entries; only admins and dispatchers can delete one. If the database was set up before the tech log was added, run `supabase/schema.sql` again (it is safe to re-run). Entries written on a device before that show a prompt on the Tech Log page to upload them.
+The tech log lives in the team database, so everyone sees the same entries on every device. It is kept on the flight deck: the **EFB tablet** accounts, dispatchers and admins add and update entries, and the **Reported by** field names whoever found the defect. Everyone else reads it. Only admins and dispatchers can delete an entry. If the database was set up before the tech log was added, run `supabase/schema.sql` again (it is safe to re-run). Entries written on a device before that show a prompt on the Tech Log page to upload them.
 
 The MEL is the team's Boeing 737-800 operator MEL (Revision 8, September 2021), stored in `js/data/mel.json` together with its (O) crew and (M) maintenance procedures, which open under each item's conditions. To rebuild it from a newer PDF (on a Mac):
 

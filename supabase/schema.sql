@@ -26,9 +26,10 @@ alter table public.profiles drop constraint if exists profiles_id_fkey;
 --   dispatcher  edits the schedule and the roster
 --   pilot       can be rostered to fly; reads everything
 --   observer    reads everything; can only be rostered as an observer
+--   efb         a shared cockpit tablet: keeps the tech log, cannot be rostered
 alter table public.profiles drop constraint if exists profiles_role_check;
 alter table public.profiles add constraint profiles_role_check
-  check (role in ('pending', 'admin', 'dispatcher', 'pilot', 'observer'));
+  check (role in ('pending', 'admin', 'dispatcher', 'pilot', 'observer', 'efb'));
 alter table public.profiles alter column role set default 'pending';
 
 -- Every sector the aircraft flies.
@@ -58,6 +59,23 @@ create table if not exists public.roster (
 );
 
 create index if not exists roster_user_idx on public.roster (user_id);
+
+-- A cockpit tablet is a shared account, not a crew member, so it can never
+-- appear on the roster.
+create or replace function public.no_tablet_on_roster()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from public.profiles where id = new.user_id and role = 'efb') then
+    raise exception 'An EFB tablet account cannot be rostered onto a sector';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists roster_no_tablet on public.roster;
+create trigger roster_no_tablet
+  before insert or update on public.roster
+  for each row execute function public.no_tablet_on_roster();
 
 -- True for entries placed by the Auto roster button, so they can be cleared
 -- and re-run without touching anyone rostered by hand.
@@ -153,10 +171,17 @@ returns boolean language sql stable security definer set search_path = public as
   select exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'dispatcher'));
 $$;
 
--- Everyone approved except observers may write in the tech log.
+-- Everyone approved except observers and the tablets may write a briefing.
 create or replace function public.can_report()
 returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'dispatcher', 'pilot'));
+  select exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'dispatcher', 'pilot', 'efb'));
+$$;
+
+-- The tech log is kept on the flight deck: the cockpit tablets write it, and
+-- admins and dispatchers can correct it. Pilots read it and tell the tablet.
+create or replace function public.can_log()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'dispatcher', 'efb'));
 $$;
 
 create or replace function public.roster_published()
@@ -389,19 +414,19 @@ create policy "set availability" on public.preferences
   using ((user_id = auth.uid() and public.is_member()) or public.can_edit())
   with check ((user_id = auth.uid() and public.is_member()) or public.can_edit());
 
--- Members read the tech log; pilots, dispatchers and admins write in it;
--- only admins and dispatchers can delete an entry.
+-- Members read the tech log; the cockpit tablets, dispatchers and admins write
+-- in it; only admins and dispatchers can delete an entry.
 drop policy if exists "members read techlog" on public.techlog;
 create policy "members read techlog" on public.techlog
   for select to authenticated using (public.is_member());
 
 drop policy if exists "crew add to techlog" on public.techlog;
 create policy "crew add to techlog" on public.techlog
-  for insert to authenticated with check (public.can_report());
+  for insert to authenticated with check (public.can_log());
 
 drop policy if exists "crew update techlog" on public.techlog;
 create policy "crew update techlog" on public.techlog
-  for update to authenticated using (public.can_report()) with check (public.can_report());
+  for update to authenticated using (public.can_log()) with check (public.can_log());
 
 drop policy if exists "editors delete techlog" on public.techlog;
 create policy "editors delete techlog" on public.techlog

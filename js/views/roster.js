@@ -4,7 +4,7 @@
 import { state } from '../store.js';
 import { configured } from '../api.js';
 import { esc, zulu, zdate, depWindow, simLocal, icon } from '../ui.js';
-import { sortedSectors, crewOf, person, me, canEdit, pilotsShort, pilotsNeeded, needsRelief, isDraft, MIN_PILOTS, rules } from '../ops.js';
+import { sortedSectors, crewOf, person, me, canEdit, pilotsShort, pilotsNeeded, needsRelief, isDraft, MIN_PILOTS, rules, isEfb } from '../ops.js';
 
 const name = (id) => esc(person(id)?.display_name || 'Unknown');
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
@@ -29,8 +29,12 @@ function draft() {
     <div class="page-head"><h1>Roster</h1><span class="badge warn">DRAFT</span></div>
     <section class="card">
       <h2>The roster is being put together</h2>
-      <p class="note">Tell the team which sectors you would like and which you cannot fly. The roster appears here once it is published.</p>
-      <a class="btn primary" href="#/availability">Set my availability</a>
+      ${
+        isEfb()
+          ? '<p class="note">It appears here once ops publish it.</p>'
+          : `<p class="note">Tell the team which sectors you would like and which you cannot fly. The roster appears here once it is published.</p>
+            <a class="btn primary" href="#/availability">Set my availability</a>`
+      }
     </section>`;
 }
 
@@ -85,14 +89,18 @@ function list() {
     <div class="page-head"><h1>Roster</h1>
       ${isDraft() ? '<span class="badge warn">DRAFT · NOT VISIBLE TO PILOTS</span>' : ''}</div>
     <div class="btn-row">
-      <a class="btn ghost" href="#/availability">My availability</a>
+      ${isEfb() ? '' : '<a class="btn ghost" href="#/availability">My availability</a>'}
       ${canEdit() ? '<a class="btn primary" href="#/admin">Edit roster</a>' : ''}
     </div>
-    <section class="card list">
-      <div class="card-head"><div class="tiny">MY ROSTER · ${esc((me()?.display_name || '').toUpperCase())}</div>
-        <span class="badge ${mine.length ? 'info' : 'mute'}">${mine.length} SECTOR${mine.length === 1 ? '' : 'S'}</span></div>
-      ${myRows || '<p class="note">You are not rostered on any sectors yet.</p>'}
-    </section>
+    ${
+      isEfb()
+        ? ''
+        : `<section class="card list">
+            <div class="card-head"><div class="tiny">MY ROSTER · ${esc((me()?.display_name || '').toUpperCase())}</div>
+              <span class="badge ${mine.length ? 'info' : 'mute'}">${mine.length} SECTOR${mine.length === 1 ? '' : 'S'}</span></div>
+            ${myRows || '<p class="note">You are not rostered on any sectors yet.</p>'}
+          </section>`
+    }
     <section class="card list">
       <div class="card-head"><div class="tiny">FULL ROSTER</div>
         ${short ? `<span class="badge warn">${short} NEED PILOTS</span>` : '<span class="badge ok">ALL CREWED</span>'}</div>

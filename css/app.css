@@ -1113,3 +1113,21 @@ button.row {
 .row .btn-row {
   flex: none;
 }
+
+/* A shared tablet strapped to the flight deck: bigger targets, no personal
+   content, and a brand line that says which device you are looking at. */
+body.efb .brand .tiny {
+  color: var(--accent);
+}
+body.efb .row {
+  padding: 15px 0;
+}
+body.efb .btn,
+body.efb select,
+body.efb input,
+body.efb textarea {
+  min-height: 48px;
+}
+body.efb .tabs a {
+  font-size: 0.75rem;
+}

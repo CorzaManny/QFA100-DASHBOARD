@@ -31,6 +31,7 @@ import {
   seats,
   workload,
   flyers,
+  rosterable,
   defaultReport,
   rules,
   isDraft,
@@ -559,8 +560,8 @@ function sectorCrew(id) {
     .join('');
 
   const report = defaultReport(s);
-  const options = state.people
-    .filter((p) => p.role !== 'pending' && !crew.some((r) => r.user_id === p.id))
+  const options = rosterable()
+    .filter((p) => !crew.some((r) => r.user_id === p.id))
     .map((p) => `<option value="${esc(p.id)}">${esc(p.display_name)} · ${plural(sectorCount(p.id), 'sector')}</option>`)
     .join('');
 

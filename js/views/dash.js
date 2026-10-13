@@ -13,9 +13,12 @@ import {
   isMine,
   myDuty,
   crewLabel,
+  crewOf,
+  person,
   isAdmin,
   canEdit,
   isDraft,
+  isEfb,
   pendingPeople,
 } from '../ops.js';
 import { nextIncomplete } from './checklists.js';
@@ -204,6 +207,65 @@ function sectorCard(now) {
     </section>`;
 }
 
+function crewRow(s, now, label) {
+  const crew = crewOf(s);
+  return `
+    <section class="card">
+      <div class="card-head"><h2>${label}</h2><span class="badge info">${zdate(s.std)}</span></div>
+      <a class="sector-link" href="#/schedule/${esc(s.id)}">
+        <div>
+          <div class="big">${esc(s.dep)} → ${esc(s.arr)}</div>
+          <div class="sub">${esc(s.flight)}${s.window ? ` · window ${depWindow(s)}` : ''}</div>
+        </div>
+        <div class="right">
+          <div class="big">${zulu(s.std)}</div>
+          <div class="sub" data-until="${esc(s.std)}">${countdown(s.std, now)}</div>
+        </div>
+      </a>
+      <div class="list">
+        ${
+          crew.length
+            ? crew
+                .map(
+                  (r) => `
+            <div class="row">
+              <div class="row-main">
+                <div class="row-t">${esc(person(r.user_id)?.display_name || 'Unknown')}</div>
+                <div class="sub">${esc(r.duty)}${r.notes ? ` · ${esc(r.notes)}` : ''}</div>
+              </div>
+              <div class="right"><div class="sub">report ${zulu(r.report_at)}</div></div>
+            </div>`,
+                )
+                .join('')
+            : '<p class="note">Nobody rostered on this sector yet.</p>'
+        }
+      </div>
+      <div class="tiny">SIM LOCAL ${simLocal(s.std)}${s.notes ? ` · ${esc(s.notes)}` : ''}</div>
+    </section>`;
+}
+
+// What a cockpit tablet shows: the aeroplane, who is flying it now, and who
+// takes it next. No personal roster, because the tablet is not a person.
+function flightDeck(now) {
+  const cur = currentSector(now);
+  const next = nextSector(now);
+  const risk = turnaroundRisk(now);
+  return `
+    ${cur ? crewRow(cur, now, 'Flying now') : ''}
+    ${next ? crewRow(next, now, cur ? 'Next crew' : 'Next sector') : ''}
+    ${
+      !cur && !next
+        ? `<section class="card"><h2>Next sector</h2><p class="note">No upcoming sectors in the schedule.</p>
+            <a class="btn ghost" href="#/schedule">Open schedule</a></section>`
+        : ''
+    }
+    ${
+      risk
+        ? `<p class="note warn">${icon('alert')} Aircraft ETA ${zulu(state.track.eta)} plus a ${state.profile.turnaround} min turnaround puts ${esc(risk.sector.flight)} at about ${zulu(risk.earliest)}, ${span(risk.late)} late.</p>`
+        : ''
+    }`;
+}
+
 function approvalBanner() {
   const waiting = isAdmin() ? pendingPeople().length : 0;
   if (!waiting) return '';
@@ -237,7 +299,7 @@ export function render() {
     ${approvalBanner()}
     ${statusBanner()}
     ${liveCard(now)}
-    ${sectorCard(now)}
+    ${isEfb() ? flightDeck(now) : sectorCard(now)}
     <div class="tiles">
       ${tile('#/checklists', 'checks', '737 Checklists', resume ? `Resume: ${resume.name}` : 'All complete')}
       ${tile('#/airports', 'pin', 'Airport Briefings', next ? `${next.dep} · ${next.arr}` : 'All airports')}
