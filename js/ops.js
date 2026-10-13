@@ -42,21 +42,28 @@ export function sortedSectors() {
   return [...state.sectors].sort(byStd);
 }
 
-// The official WorldFlight schedule the app ships with. A scheduled job on
-// GitHub re-reads planning.worldflight.center every few hours and commits any
-// change, so this file follows the real programme without anyone running a
-// command. Nothing is applied to the team's schedule automatically: an admin
-// sees what differs and presses the button.
-export const officialSchedule = () => OFFICIAL_SCHEDULE;
+// The official WorldFlight schedule. The database re-reads
+// planning.worldflight.center every six hours and keeps a copy (see
+// supabase/worldflight.sql), so the app follows the real programme without
+// anyone running anything. Until that is set up, the copy the app ships with
+// is used instead. Nothing is applied to the team's schedule automatically: an
+// admin sees what differs and presses the button.
+export const officialSchedule = () => (state.official?.length ? state.official : OFFICIAL_SCHEDULE);
+
+// When the database last read the WorldFlight site, and whether it worked.
+// null when this database is not watching it.
+export const officialCheck = () => state.officialCheck || null;
+export const watchingSchedule = () => !!state.official?.length;
 
 const sameTime = (a, b) => new Date(a).getTime() === new Date(b).getTime();
 
 export function scheduleDrift() {
   const byFlight = new Map(state.sectors.map((s) => [s.flight, s]));
-  const official = new Set(OFFICIAL_SCHEDULE.map((o) => o.flight));
+  const list = officialSchedule();
+  const official = new Set(list.map((o) => o.flight));
   const added = [];
   const changed = [];
-  for (const o of OFFICIAL_SCHEDULE) {
+  for (const o of list) {
     const s = byFlight.get(o.flight);
     if (!s) {
       added.push(o);
@@ -178,7 +185,7 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], defects: state.defects.filter((d) => !d.shared), sharedLog: false });
+  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], official: [], officialCheck: null, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 
@@ -190,8 +197,11 @@ export const sharedLog = () => configured && !!getSession() && state.sharedLog;
 export async function syncTeam() {
   if (!configured || !getSession()) return false;
   try {
-    const { defects, ...team } = await loadAll();
+    const { defects, official, ...team } = await loadAll();
     Object.assign(state, team);
+    // null means the database has no official schedule table; keep the copy
+    // the app ships with rather than blanking it.
+    state.official = official || [];
     if (defects) {
       // Entries written before the tech log was shared stay on this device
       // until someone uploads them from the Tech Log page.

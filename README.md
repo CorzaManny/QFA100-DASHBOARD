@@ -33,10 +33,11 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 1. Go to [supabase.com](https://supabase.com), create a free account, then **New project**. Pick a region near the team (for example Sydney) and wait for it to finish setting up.
 2. Open **SQL Editor**, paste in the whole of [`supabase/schema.sql`](supabase/schema.sql) and press **Run**. This creates the accounts, sectors and roster tables and their permissions.
 3. In a new query, paste in [`supabase/schedule.sql`](supabase/schedule.sql) and press **Run**. This loads the 43 WorldFlight sectors.
-4. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-5. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so confirmation emails link back to the app.
-6. Push the change to GitHub.
-7. Open the app and **create your own account first**. The first account becomes the admin.
+4. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
+5. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+6. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so confirmation emails link back to the app.
+7. Push the change to GitHub.
+8. Open the app and **create your own account first**. The first account becomes the admin.
 
 Then send the link to the team. Each person presses **Create account**; by default Supabase emails them a confirmation link before they can sign in. A new account then waits on an "Awaiting approval" page and can see nothing until an admin approves it in **Admin → People and roles**. Admins get a banner on the Dashboard when someone is waiting.
 
@@ -101,7 +102,7 @@ When a new version changes the database (new roles, new schedule times), run `su
 
 ### If the WorldFlight schedule changes
 
-Nothing to run: the app watches for it. A scheduled job on GitHub ([`.github/workflows/worldflight-schedule.yml`](.github/workflows/worldflight-schedule.yml)) reads <https://planning.worldflight.center/schedule> every six hours, rebuilds `js/data/schedule.js` and `supabase/schedule.sql`, and commits them if anything moved. The published app picks the new file up on its next load.
+Nothing to run: the database watches for it. [`supabase/worldflight.sql`](supabase/worldflight.sql) sets up a job inside Supabase that reads <https://planning.worldflight.center/schedule> every six hours, parses the 43 sectors out of it and keeps them in a table of their own, `official_schedule`. It uses two free Supabase extensions, `http` and `pg_cron`, and the file turns both on.
 
 Admins and dispatchers then see it in the app:
 
@@ -111,7 +112,9 @@ Admins and dispatchers then see it in the app:
 
 Nothing is applied to the database on its own, so a change to the official programme can never quietly move a sector somebody is about to fly. When the two match, the Schedule page says so.
 
-Two things worth knowing about the job: GitHub turns scheduled workflows off on a repository that has had no activity for 60 days (it emails you, and **Actions → Check the WorldFlight schedule → Run workflow** starts it again), and it commits to the `v0.1` branch, which is the one GitHub Pages serves. If the page's layout ever changes, the job fails and shows up red in the Actions tab rather than writing nonsense.
+The Schedule page says when the site was last read ("Read from the WorldFlight site 36m ago"), and if a check fails it says so and why, rather than going quiet — the copy it read before that is kept and used. If WorldFlight ever rebuilds the page, the check fails loudly in that line instead of writing nonsense into the table.
+
+Until that SQL is run, the app compares against the copy it was built with (`js/data/schedule.js`), which is rebuilt by `tools/build_schedule.py`. To read the site by hand at any time, run `select public.refresh_official_schedule();` in the SQL Editor.
 
 ## Notifications
 

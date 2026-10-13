@@ -3,14 +3,28 @@
 
 import { state } from '../store.js';
 import { saveSector, deleteSector } from '../api.js';
-import { esc, zulu, zdate, span, depWindow, simLocal, isoDate, isoTime, icao, icon, rerender } from '../ui.js';
-import { sortedSectors, currentSector, isMine, canEdit, crewLabel, simbriefPlanUrl, syncTeam, scheduleDrift } from '../ops.js';
+import { esc, zulu, zdate, span, ago, depWindow, simLocal, isoDate, isoTime, icao, icon, rerender } from '../ui.js';
+import { sortedSectors, currentSector, isMine, canEdit, crewLabel, simbriefPlanUrl, syncTeam, scheduleDrift, officialCheck, watchingSchedule } from '../ops.js';
 
 let applying = '';
 let applyError = '';
 
 // What WorldFlight has changed since the team's schedule was set. The app
 // checks on its own; applying it is still a decision someone makes.
+// Where the official schedule came from and when it was last read.
+function checkedLine() {
+  const check = officialCheck();
+  if (!check) {
+    return watchingSchedule()
+      ? ''
+      : 'Compared with the copy the app was built with. To check the WorldFlight site itself every six hours, run supabase/worldflight.sql.';
+  }
+  if (!check.ok) {
+    return `The last check of the WorldFlight site failed ${ago(new Date(check.checked_at))}: ${check.note || 'no reason given'}. The schedule below is the one it read before that.`;
+  }
+  return `Read from the WorldFlight site ${ago(new Date(check.checked_at))}. It is checked again every six hours.`;
+}
+
 function officialChanges() {
   if (!canEdit() || !state.sectors.length) return '';
   const { added, changed, extra, total } = scheduleDrift();
@@ -19,7 +33,7 @@ function officialChanges() {
   if (!total) {
     return `<p class="tiny center">${icon('check')} The team's schedule matches the official WorldFlight one${
       extra.length ? `, apart from ${extra.length} sector${extra.length === 1 ? '' : 's'} of your own (${extra.map((s) => esc(s.flight)).join(', ')})` : ''
-    }. It is checked for changes a few times a day.</p>`;
+    }. ${esc(checkedLine())}</p>`;
   }
   const all = [
     ...changed.map(
@@ -46,6 +60,7 @@ function officialChanges() {
       <p class="note">WorldFlight has published ${changed.length ? `${changed.length} change${changed.length === 1 ? '' : 's'}` : ''}${
         changed.length && added.length ? ' and ' : ''
       }${added.length ? `${added.length} new sector${added.length === 1 ? '' : 's'}` : ''} since the team's schedule was set. Applying this keeps every roster entry, note and briefing where it is.</p>
+      <p class="tiny">${esc(checkedLine())}</p>
       ${rows}
       ${applyError ? `<p class="note warn">${icon('alert')} ${esc(applyError)}</p>` : ''}
       <div class="btn-row">

@@ -200,7 +200,8 @@ const fromDefect = (d) => ({
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs, techlog, history, briefings] = await Promise.all([
+  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck] =
+    await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
     rest('GET', 'profiles?select=*&order=display_name.asc'),
@@ -209,6 +210,8 @@ export async function loadAll() {
     rest('GET', 'techlog?select=*&order=reported_at.desc').catch(() => null),
     rest('GET', 'techlog_history?select=defect_id,at,by_name,event,detail&order=at.asc').catch(() => null),
     rest('GET', 'briefings?select=*').catch(() => null),
+    rest('GET', 'official_schedule?select=*&order=std.asc').catch(() => null),
+    rest('GET', 'official_schedule_check?select=*').catch(() => null),
   ]);
   return {
     sectors: sectors.map(toSector),
@@ -219,6 +222,9 @@ export async function loadAll() {
     defects: techlog ? techlog.map(toDefect) : null, // null: this database has no tech log table yet
     history: history || [],
     briefings: briefings || [],
+    // null: this database is not watching the WorldFlight schedule yet.
+    official: official ? official.map(toSector) : null,
+    officialCheck: officialCheck?.[0] || null,
   };
 }
 
