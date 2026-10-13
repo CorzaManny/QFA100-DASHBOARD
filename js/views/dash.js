@@ -1,7 +1,7 @@
 // Dashboard: current flight status, your next sector, aircraft status.
 
 import { state } from '../store.js';
-import { esc, zulu, zdate, span, ago, depWindow, simLocal, icon, rerender } from '../ui.js';
+import { esc, zulu, zdate, span, ago, depWindow, simLocal, isoTime, icon, rerender } from '../ui.js';
 import { round5 } from '../running.js';
 import { saveActual } from '../api.js';
 import {
@@ -232,37 +232,78 @@ function runningBanner(run) {
     }</span>${icon('chevron')}</a>`;
 }
 
-// The two buttons the flight deck presses. Everything downstream is worked out
-// from these, so they are the only numbers anybody has to enter.
+// Which sector and field a different time is being typed for, so the picker
+// only opens on the one that was asked for.
+let picking = '';
+
+// The two buttons the flight deck presses. One press records the time on the
+// button, which is the time now in Zulu; the time itself can be changed after
+// if the press was late. These are the only numbers anybody has to enter.
 function stamps(row, now) {
   if (!canLog() || !row) return '';
   const s = row.sector;
   const live = state.track;
-  // The feed cannot stamp anything by itself, but it can offer the time.
+  // The feed cannot stamp anything by itself, but it can offer the time it saw
+  // the aeroplane stop.
   const suggest =
     live?.online && live.at && (!live.dep || live.dep === s.dep) && (!live.arr || live.arr === s.arr) ? live.at : now;
-  const at = (t) => `${zulu(t)} · ${simLocal(t)}`;
+
+  // The feed knows when the aeroplane actually stopped; otherwise the button
+  // simply offers now, and keeps up with the clock while it sits there.
+  const fromFeed = live?.phase === 'ARRIVED' && suggest !== now;
+  const button = (field, label, at, kind) => {
+    const key = `${s.id}|${field}`;
+    if (picking === key) return timePicker(s, field, at);
+    const follows = !(field === 'on_blocks' && fromFeed);
+    return `
+      <button class="btn ${kind}" data-act="stamp" data-sector="${esc(s.id)}" data-field="${field}">
+        <span class="stamp-label">${label}</span>
+        <span class="stamp-time" data-at="${at}" ${follows ? 'data-live="1"' : ''}>${zulu(at)}</span>
+      </button>
+      <button class="btn ghost small" data-act="pick" data-key="${esc(key)}">Different time</button>`;
+  };
+
+  const done = (field, label, t) => `
+    <div class="stamped">
+      <div><span class="tiny">${label}</span> <strong>${zulu(t)}</strong> <span class="tiny">${simLocal(t)}</span></div>
+      <button class="btn ghost small" data-act="pick" data-key="${esc(`${s.id}|${field}`)}">Change</button>
+    </div>
+    ${picking === `${s.id}|${field}` ? timePicker(s, field, t) : ''}`;
+
   return `
     <div class="stamps">
       <div class="tiny">${esc(s.flight)} ${esc(s.dep)} → ${esc(s.arr)}</div>
       ${
         row.off
-          ? `<div class="row-t">Off blocks ${at(row.off)}${
-              row.delay ? ` · <span class="${row.delay > 0 ? 'warn-text' : 'ok-text'}">${lateWords(row.delay)}</span>` : ''
-            }</div>`
-          : `<button class="btn primary" data-act="stamp" data-sector="${esc(s.id)}" data-field="off_blocks" data-at="${suggest}">Off blocks now</button>`
+          ? `${done('off_blocks', 'Off blocks', row.off)}${
+              row.delay ? `<div class="tiny ${row.delay > 0 ? 'warn-text' : 'ok-text'}">${lateWords(row.delay)}</div>` : ''
+            }`
+          : button('off_blocks', 'Off blocks', suggest, 'primary')
       }
       ${
         row.on
-          ? `<div class="row-t">On blocks ${at(row.on)}</div>`
+          ? done('on_blocks', 'On blocks', row.on)
           : row.off
-            ? `<button class="btn ${live?.phase === 'ARRIVED' ? 'primary' : 'ghost'}" data-act="stamp" data-sector="${esc(s.id)}" data-field="on_blocks" data-at="${suggest}">On blocks${
-                live?.phase === 'ARRIVED' ? ` at ${zulu(suggest)}` : ' now'
-              }</button>`
+            ? button('on_blocks', 'On blocks', suggest, live?.phase === 'ARRIVED' ? 'primary' : 'ghost')
             : ''
       }
-      ${row.off || row.on ? '<button class="btn ghost small" data-act="unstamp" data-sector="' + esc(s.id) + '">Clear</button>' : ''}
+      ${row.off || row.on ? `<button class="btn ghost small" data-act="unstamp" data-sector="${esc(s.id)}">Clear both</button>` : ''}
     </div>`;
+}
+
+// Typing a time instead: Zulu, hours and minutes, on the day the sector flies.
+function timePicker(sector, field, at) {
+  return `
+    <form class="stamp-pick" data-form="pickTime">
+      <input type="hidden" name="sector" value="${esc(sector.id)}">
+      <input type="hidden" name="field" value="${field}">
+      <input type="hidden" name="near" value="${at}">
+      <label class="field">Time (Zulu)<input type="time" name="time" required value="${isoTime(at)}"></label>
+      <div class="btn-row">
+        <button class="btn primary" type="submit">Save</button>
+        <button class="btn ghost" type="button" data-act="pick" data-key="">Cancel</button>
+      </div>
+    </form>`;
 }
 
 function crewRow(s, now, label, run) {
@@ -396,13 +437,47 @@ export function mounted() {
   poll();
 }
 
+export const forms = {
+  // A time typed in Zulu, on whichever day the sector is flying. A time that
+  // lands more than half a day from the moment it is replacing has rolled over
+  // midnight, so the day moves with it.
+  async pickTime(data, formEl) {
+    const near = Number(data.get('near'));
+    const [h, m] = String(data.get('time')).split(':').map(Number);
+    if (!isFinite(h) || !isFinite(m)) return;
+    const at = new Date(near);
+    at.setUTCHours(h, m, 0, 0);
+    const drift = at - near;
+    if (drift > 12 * 3600000) at.setUTCDate(at.getUTCDate() - 1);
+    if (drift < -12 * 3600000) at.setUTCDate(at.getUTCDate() + 1);
+    formEl.querySelector('[type=submit]').disabled = true;
+    picking = '';
+    try {
+      await saveActual(data.get('sector'), { [data.get('field')]: at.toISOString(), by_name: me()?.display_name || '' });
+      await syncTeam();
+    } catch (err) {
+      alert(`Could not save that time: ${err.message}`);
+    }
+    rerender();
+  },
+};
+
 export const actions = {
   refresh: () => poll(true),
 
   // One press, one timestamp. The delay for every later sector follows from it.
+  // Opens or closes the "different time" box.
+  pick(el) {
+    picking = el.dataset.key || '';
+    rerender();
+  },
+
   async stamp(el) {
     el.disabled = true;
-    const at = new Date(Number(el.dataset.at) || Date.now());
+    picking = '';
+    // The time shown on the button is the time recorded, kept in step with the
+    // clock so a button sitting on screen does not record a stale minute.
+    const at = new Date(Number(el.querySelector('.stamp-time')?.dataset.at) || Date.now());
     try {
       await saveActual(el.dataset.sector, { [el.dataset.field]: at.toISOString(), by_name: me()?.display_name || '' });
       await syncTeam();

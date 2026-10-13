@@ -3,7 +3,7 @@
 import { state, save, exportData, importData, resetAll } from '../store.js';
 import { configured, getSession, signOut, updateProfile } from '../api.js';
 import { esc, icon, rerender } from '../ui.js';
-import { me, isAdmin, canEdit, roleName, syncTeam, clearTeam } from '../ops.js';
+import { me, isAdmin, canEdit, roleName, syncTeam, clearTeam, myNotify, NOTIFY_KINDS } from '../ops.js';
 import { pushProblem, pushEnabled, enablePush, disablePush, deviceLabel, testNotification } from '../push.js';
 
 let message = '';
@@ -57,7 +57,30 @@ function notificationsCard() {
               : `<button class="btn primary" data-act="pushOn">Turn on for ${esc(deviceLabel())}</button>`
         }
       </div>
-    </section>`;
+    </section>
+    ${notificationChoices()}`;
+}
+
+// What this person is told, and how early. These follow the person, not the
+// device, so they are the same on their phone and their iPad.
+function notificationChoices() {
+  const n = myNotify();
+  const box = (key, label) =>
+    `<label class="check"><input type="checkbox" name="${key}" ${n[key] ? 'checked' : ''}> ${label}</label>`;
+  return `
+    <form class="card form" data-form="notify">
+      <h2>What to tell me</h2>
+      ${NOTIFY_KINDS.map(([key, label]) => box(key, label)).join('')}
+      <div class="grid2">
+        <label class="field">Remind me this long before I report (minutes)
+          <input type="number" name="reportMinutes" min="0" max="1440" step="5" required value="${esc(n.reportMinutes)}">
+          <span class="tiny">0 = no reminder</span></label>
+        <label class="field">Tell me about a delay over (minutes)
+          <input type="number" name="delayMinutes" min="0" max="1440" step="5" required value="${esc(n.delayMinutes)}">
+          <span class="tiny">How far my report time must move</span></label>
+      </div>
+      <div class="btn-row"><button class="btn primary" type="submit">Save what I am told</button></div>
+    </form>`;
 }
 
 function adminLink() {
@@ -151,6 +174,22 @@ async function attempt(work, done) {
 }
 
 export const forms = {
+  notify(data) {
+    const minutes = (name) => Math.max(0, Math.min(1440, Math.round(Number(data.get(name)) || 0)));
+    return attempt(
+      () =>
+        updateProfile(me().id, {
+          notify: {
+            roster: data.get('roster') === 'on',
+            delay: data.get('delay') === 'on',
+            report: data.get('report') === 'on',
+            reportMinutes: minutes('reportMinutes'),
+            delayMinutes: minutes('delayMinutes'),
+          },
+        }),
+      'Saved. This applies on every device you are signed in on.',
+    );
+  },
   account(data) {
     return attempt(
       () =>

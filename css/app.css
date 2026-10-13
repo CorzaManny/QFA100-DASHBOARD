@@ -1142,8 +1142,39 @@ body.efb .tabs a {
   background: var(--bg);
 }
 .stamps .btn {
-  min-height: 52px;
+  min-height: 56px;
   font-size: 1.05rem;
+}
+/* "Off blocks" on the left, the time it will record on the right */
+.stamps .btn .stamp-label {
+  font-weight: 600;
+}
+.stamps .btn .stamp-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.stamps .btn[data-act='stamp'] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+}
+.stamps .btn.small {
+  min-height: 36px;
+  font-size: 0.85rem;
+}
+.stamped {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.stamp-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 /* A published time that the running has moved on from */
 .dim-time {

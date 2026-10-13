@@ -112,6 +112,26 @@ export const isEfb = () => me()?.role === 'efb';
 export const canLog = () => !configured || ['admin', 'dispatcher', 'efb'].includes(me()?.role);
 export const person = (id) => state.people.find((p) => p.id === id) || null;
 
+// What each person is told, and how early. Anything they have not chosen falls
+// back to the team's rules, so a new account gets sensible behaviour.
+export const NOTIFY_KINDS = [
+  ['roster', 'The roster is published, or my sectors change'],
+  ['delay', 'A delay moves my report time'],
+  ['report', 'A reminder before I report'],
+];
+
+export function myNotify() {
+  const chosen = me()?.notify || {};
+  const r = rules();
+  return {
+    roster: chosen.roster !== false,
+    delay: chosen.delay !== false,
+    report: chosen.report !== false,
+    reportMinutes: Number.isFinite(chosen.reportMinutes) ? chosen.reportMinutes : r.reportReminderMinutes,
+    delayMinutes: Number.isFinite(chosen.delayMinutes) ? chosen.delayMinutes : r.delayNoticeMinutes,
+  };
+}
+
 // Everyone rostered on a sector, in seat order.
 export function crewOf(sector) {
   return state.roster

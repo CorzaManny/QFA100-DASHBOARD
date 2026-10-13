@@ -120,7 +120,7 @@ Until that SQL is run, the app compares against the copy it was built with (`js/
 
 WorldFlight slips, and a late sector in Indonesia is still late over Canada two days later. The app keeps the published schedule exactly as it is and lays the real running over the top of it.
 
-The flight deck stamps two times per sector, **Off blocks** and **On blocks**, from the Dashboard — two big buttons, nothing else to fill in. Admins and dispatchers can correct one afterwards, or enter one nobody stamped at the time, from the sector's page on the Schedule.
+The flight deck stamps two times per sector, **Off blocks** and **On blocks**, from the Dashboard. Each button shows the Zulu time it will record, counting up with the clock, so one press records that moment and there is nothing to fill in. **Different time** under it takes a time typed in Zulu instead, and **Change** does the same to a time already stamped — useful when the button gets pressed ten minutes after the event. When VATSIM shows the aircraft stopped at the destination, the on-blocks button offers that moment rather than now. Admins and dispatchers can correct one afterwards, or enter one nobody stamped at the time, from the sector's page on the Schedule.
 
 From those stamps the app works out, for every sector still to come:
 
@@ -151,7 +151,7 @@ The app can notify a phone even when it is closed. Four things are sent, and not
 - **a delay moves your report time** by more than the threshold in **Admin → Rules**;
 - **a reminder** a set time before you report, using the real time including the delay.
 
-Each person turns it on in **Settings → Notifications**, on each device they want told. Nobody is sent anything until they do. On iPhone and iPad it only works once the app has been added to the Home Screen and opened from there; the app says so rather than failing silently.
+Each person turns it on in **Settings → Notifications**, on each device they want told, and chooses which of the four they want and how early under **What to tell me** — those choices follow the person, so they are the same on their phone and their iPad. The numbers in **Admin → Rules** are only the starting point for somebody who has not chosen. Nobody is sent anything until they turn it on. On iPhone and iPad it only works once the app has been added to the Home Screen and opened from there; the app says so rather than failing silently.
 
 ### Setting it up
 

@@ -18,6 +18,9 @@ create table if not exists public.profiles (
 -- longer tied to auth.users by a foreign key; a trigger below removes a
 -- profile when its sign-in account is deleted instead.
 alter table public.profiles add column if not exists is_test boolean not null default false;
+-- What this person wants to be notified about, and how early. Empty means the
+-- team's defaults; see supabase/notifications.sql.
+alter table public.profiles add column if not exists notify jsonb not null default '{}'::jsonb;
 alter table public.profiles drop constraint if exists profiles_id_fkey;
 
 -- Roles:
@@ -379,7 +382,7 @@ grant usage on sequence public.techlog_seq to authenticated;
 grant select on public.techlog_history to authenticated;
 grant select, insert, update on public.briefings to authenticated;
 revoke insert, update, delete on public.profiles from authenticated;
-grant update (display_name, vatsim_cid) on public.profiles to authenticated;
+grant update (display_name, vatsim_cid, notify) on public.profiles to authenticated;
 
 drop policy if exists "members read profiles" on public.profiles;
 create policy "members read profiles" on public.profiles

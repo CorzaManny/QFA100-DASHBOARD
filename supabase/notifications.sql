@@ -144,6 +144,12 @@ grant select on public.report_times to authenticated;
 
 -- ---------- What is worth telling someone ----------
 
+-- In case schema.sql has not been run since this column was added.
+alter table public.profiles add column if not exists notify jsonb not null default '{}'::jsonb;
+grant update (display_name, vatsim_cid, notify) on public.profiles to authenticated;
+
+-- Nothing is queued for somebody with no device listening, or who has turned
+-- this kind of notification off in Settings.
 create or replace function public.notify(
   target uuid, kind text, title text, body text, url text, dedupe text, ttl integer default 3600
 )
@@ -151,6 +157,7 @@ returns void language sql security definer set search_path = public as $$
   insert into public.notifications (user_id, kind, title, body, url, dedupe, ttl)
   select target, kind, title, body, url, dedupe, ttl
   where exists (select 1 from public.push_subscriptions where user_id = target)
+    and coalesce((select (notify ->> kind)::boolean from public.profiles where id = target), true)
   on conflict (dedupe) do nothing;
 $$;
 
@@ -224,25 +231,34 @@ create trigger notify_roster after insert or update or delete on public.roster
 create or replace function public.notify_due()
 returns integer language plpgsql security definer set search_path = public as $$
 declare
-  lead  integer;
-  shift integer;
-  r     record;
-  made  integer := 0;
+  team_lead  integer;
+  team_shift integer;
+  lead       integer;
+  shift      integer;
+  r          record;
+  made       integer := 0;
 begin
   if not public.roster_published() then return 0; end if;
   select round(coalesce((rules ->> 'reportReminderMinutes')::numeric, 90))::integer,
          round(coalesce((rules ->> 'delayNoticeMinutes')::numeric, 20))::integer
-    into lead, shift from public.settings limit 1;
-  lead := coalesce(lead, 90);
-  shift := coalesce(shift, 20);
+    into team_lead, team_shift from public.settings limit 1;
+  team_lead := coalesce(team_lead, 90);
+  team_shift := coalesce(team_shift, 20);
 
-  for r in select * from public.report_times where due_at between now() - interval '1 hour' and now() + interval '24 hours'
+  for r in
+    select rt.*, p.notify
+    from public.report_times rt
+    join public.profiles p on p.id = rt.user_id
+    where rt.due_at between now() - interval '1 hour' and now() + interval '24 hours'
   loop
+    -- Each person may want more or less warning than the team's default.
+    lead  := coalesce(round((r.notify ->> 'reportMinutes')::numeric)::integer, team_lead);
+    shift := coalesce(round((r.notify ->> 'delayMinutes')::numeric)::integer, team_shift);
     -- A delay that moves the report time by more than the team's threshold.
     if not exists (select 1 from public.notified_report n where n.roster_id = r.roster_id) then
       insert into public.notified_report (roster_id, told_report) values (r.roster_id, r.due_at)
       on conflict (roster_id) do nothing;
-    elsif exists (
+    elsif shift > 0 and exists (
       select 1 from public.notified_report n
       where n.roster_id = r.roster_id and abs(extract(epoch from (r.due_at - n.told_report))) >= shift * 60
     ) then
@@ -260,7 +276,7 @@ begin
     end if;
 
     -- The reminder itself, once, as the report time comes up.
-    if r.due_at between now() and now() + make_interval(mins => lead) then
+    if lead > 0 and r.due_at between now() and now() + make_interval(mins => lead) then
       perform public.notify(
         r.user_id,
         'report',
