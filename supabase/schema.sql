@@ -81,6 +81,18 @@ create trigger roster_no_tablet
 -- and re-run without touching anyone rostered by hand.
 alter table public.roster add column if not exists auto boolean not null default false;
 
+-- What actually happened: the times the flight deck stamped for each sector.
+-- The published schedule in public.sectors is never changed, so the plan and
+-- the running of the day are both kept.
+create table if not exists public.sector_actuals (
+  sector_id  uuid primary key references public.sectors (id) on delete cascade,
+  off_blocks timestamptz,
+  on_blocks  timestamptz,
+  skipped    boolean not null default false,
+  by_name    text not null default '',
+  updated_at timestamptz not null default now()
+);
+
 -- Team-wide settings: one row. While the roster is a draft only admins and
 -- dispatchers can see it. rules holds the duty limits edited in the app.
 create table if not exists public.settings (
@@ -349,6 +361,7 @@ alter table public.sectors  enable row level security;
 alter table public.roster   enable row level security;
 alter table public.settings enable row level security;
 alter table public.preferences enable row level security;
+alter table public.sector_actuals enable row level security;
 alter table public.techlog  enable row level security;
 alter table public.techlog_history enable row level security;
 alter table public.briefings enable row level security;
@@ -360,6 +373,7 @@ grant select on public.profiles, public.sectors, public.roster to authenticated;
 grant insert, update, delete on public.sectors, public.roster to authenticated;
 grant select, update on public.settings to authenticated;
 grant select, insert, update, delete on public.preferences to authenticated;
+grant select, insert, update, delete on public.sector_actuals to authenticated;
 grant select, insert, update, delete on public.techlog to authenticated;
 grant usage on sequence public.techlog_seq to authenticated;
 grant select on public.techlog_history to authenticated;
@@ -413,6 +427,16 @@ create policy "set availability" on public.preferences
   for all to authenticated
   using ((user_id = auth.uid() and public.is_member()) or public.can_edit())
   with check ((user_id = auth.uid() and public.is_member()) or public.can_edit());
+
+-- Everyone reads the actual times; the flight deck stamps them, the same
+-- people who keep the tech log.
+drop policy if exists "members read actuals" on public.sector_actuals;
+create policy "members read actuals" on public.sector_actuals
+  for select to authenticated using (public.is_member());
+
+drop policy if exists "flight deck stamps actuals" on public.sector_actuals;
+create policy "flight deck stamps actuals" on public.sector_actuals
+  for all to authenticated using (public.can_log()) with check (public.can_log());
 
 -- Members read the tech log; the cockpit tablets, dispatchers and admins write
 -- in it; only admins and dispatchers can delete an entry.

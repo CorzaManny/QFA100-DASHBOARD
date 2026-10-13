@@ -1131,3 +1131,23 @@ body.efb textarea {
 body.efb .tabs a {
   font-size: 0.75rem;
 }
+
+/* Stamping off and on blocks on the flight deck */
+.stamps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+.stamps .btn {
+  min-height: 52px;
+  font-size: 1.05rem;
+}
+/* A published time that the running has moved on from */
+.dim-time {
+  color: var(--dim);
+  text-decoration: line-through;
+  font-weight: 500;
+}

@@ -20,6 +20,8 @@ export const DEFAULT_RULES = {
   maxSectors: 0, // per person for the whole event; 0 = no limit
   reliefOverHours: 6, // sectors longer than this also need a relief pilot; 0 = never
   unmarkedAvailable: true, // everyone counts as available until they say otherwise
+  turnaroundMinutes: 45, // the least time on the ground between two sectors
+  taxiInMinutes: 5, // from overhead the arrival airport to on blocks, for live estimates
   reportLeadMinutes: 45, // report this long before the departure window opens
   firstReportLeadMinutes: 60, // ...and this long before the first sector of the event
 };

@@ -4,7 +4,9 @@
 import { state } from '../store.js';
 import { saveSector, deleteSector } from '../api.js';
 import { esc, zulu, zdate, span, ago, depWindow, simLocal, isoDate, isoTime, icao, icon, rerender } from '../ui.js';
-import { sortedSectors, currentSector, isMine, canEdit, crewLabel, simbriefPlanUrl, syncTeam, scheduleDrift, officialCheck, watchingSchedule } from '../ops.js';
+import { sortedSectors, currentSector, isMine, canEdit, crewLabel, simbriefPlanUrl, syncTeam, scheduleDrift, officialCheck, watchingSchedule, running, canLog, actualOf, rules } from '../ops.js';
+import { round5 } from '../running.js';
+import { saveActual } from '../api.js';
 
 let applying = '';
 let applyError = '';
@@ -79,6 +81,7 @@ function officialChanges() {
 function list() {
   const now = Date.now();
   const cur = currentSector(now);
+  const run = running(now);
   let day = '';
   const rows = sortedSectors()
     .map((s) => {
@@ -92,16 +95,25 @@ function list() {
             : isMine(s)
               ? '<span class="badge warn">YOU</span>'
               : '';
+      const row = run.times.get(s.id);
+      // The published time always stays on screen; the estimate sits under it.
+      const moved = run.trusted && row && Math.abs(row.delay) >= 5 * 60000 && !row.on;
       return `${header}
         <a class="row ${new Date(s.sta) < now && s !== cur ? 'past' : ''}" href="#/schedule/${esc(s.id)}">
           <div class="row-main">
-            <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${status}</div>
+            <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${status}${
+              row?.off ? ` <span class="badge mute">OFF ${zulu(row.off)}</span>` : ''
+            }</div>
             <div class="sub">${esc(s.flight)} · ${simLocal(s.std)}</div>
             <div class="sub">${esc(crewLabel(s))}</div>
           </div>
           <div class="right">
-            <div class="row-t">${zulu(s.std)}</div>
-            <div class="sub">${s.window ? `${depWindow(s)} · ` : `${zulu(s.sta)} · `}${span(new Date(s.sta) - new Date(s.std))}</div>
+            <div class="row-t ${moved ? 'dim-time' : ''}">${zulu(s.std)}</div>
+            ${
+              moved
+                ? `<div class="row-t ${row.delay > 0 ? 'warn-text' : 'ok-text'}">${zulu(round5(row.estOff))}</div>`
+                : `<div class="sub">${s.window ? `${depWindow(s)} · ` : `${zulu(s.sta)} · `}${span(new Date(s.sta) - new Date(s.std))}</div>`
+            }
           </div>
         </a>`;
     })
@@ -112,7 +124,34 @@ function list() {
       ${canEdit() ? `<a class="btn primary" href="#/schedule/new">${icon('plus')} Add sector</a>` : ''}</div>
     ${officialChanges()}
     <section class="card list">${rows || '<p class="note">No sectors in the schedule yet.</p>'}</section>
-    <p class="tiny center">Times are Zulu, with sim local (Sydney) time under each sector. WorldFlight sectors show when the departure window opens, then the window and block time.</p>`;
+    <p class="tiny center">Times are Zulu, with sim local (Sydney) time under each sector. WorldFlight sectors show when the departure window opens, then the window and block time.${
+      run.trusted && run.late ? ' A second time under a departure is what it is really expected to be, worked out from the times stamped on the flight deck.' : ''
+    }</p>`;
+}
+
+// What actually happened, for correcting a stamp made at the wrong moment or
+// entering one nobody made at the time.
+function actualsForm(s) {
+  if (!canLog()) return '';
+  const a = actualOf(s.id) || {};
+  const row = running().times.get(s.id);
+  const field = (name, label, value) => `
+    <div class="grid2">
+      <label class="field">${label} date (UTC)<input type="date" name="${name}Date" value="${value ? isoDate(value) : ''}"></label>
+      <label class="field">${label} time (UTC)<input type="time" name="${name}Time" value="${value ? isoTime(value) : ''}"></label>
+    </div>`;
+  return `
+    <form class="card form" data-form="actuals">
+      <div class="card-head"><h2>What actually happened</h2>${
+        a.off_blocks && row ? `<span class="badge ${row.delay > 0 ? 'warn' : 'ok'}">${row.delay > 0 ? `${span(row.delay)} LATE` : 'ON TIME'}</span>` : ''
+      }</div>
+      <p class="note">The flight deck stamps these as they happen; this is for fixing one afterwards. Leave both empty for a sector that has not gone yet. The published times above never change.</p>
+      ${field('off', 'Off blocks', a.off_blocks)}
+      ${field('on', 'On blocks', a.on_blocks)}
+      <label class="check"><input type="checkbox" name="skipped" ${a.skipped ? 'checked' : ''}> This sector was not flown</label>
+      <p class="form-error" hidden></p>
+      <div class="btn-row"><button class="btn primary" type="submit">Save times</button></div>
+    </form>`;
 }
 
 function detail(id) {
@@ -123,7 +162,7 @@ function detail(id) {
   }
   const last = sortedSectors().at(-1);
   // A new sector defaults to continuing on from the last one.
-  const std = existing?.std || (last ? new Date(new Date(last.sta).getTime() + state.profile.turnaround * 60000) : new Date());
+  const std = existing?.std || (last ? new Date(new Date(last.sta).getTime() + rules().turnaroundMinutes * 60000) : new Date());
   const sta = existing?.sta || new Date(new Date(std).getTime() + 2 * 3600000);
   const s = existing || { flight: '', dep: last?.arr || '', arr: '', route: '', notes: '' };
   const lock = admin ? '' : 'disabled';
@@ -158,6 +197,7 @@ function detail(id) {
           : '<p class="tiny">Only admins and dispatchers can change the schedule.</p>'
       }
     </form>
+    ${existing ? actualsForm(existing) : ''}
     ${
       existing
         ? `<section class="card">
@@ -191,6 +231,30 @@ function fail(formEl, text) {
 }
 
 export const forms = {
+  async actuals(data, formEl) {
+    const at = (name) => {
+      const date = data.get(`${name}Date`);
+      const time = data.get(`${name}Time`);
+      if (!date || !time) return null;
+      const t = new Date(`${date}T${time}:00Z`);
+      return isNaN(t) ? null : t.toISOString();
+    };
+    const button = formEl.querySelector('[type=submit]');
+    button.disabled = true;
+    try {
+      await saveActual(currentId(), {
+        off_blocks: at('off'),
+        on_blocks: at('on'),
+        skipped: data.get('skipped') === 'on',
+      });
+      await syncTeam();
+      rerender();
+    } catch (err) {
+      button.disabled = false;
+      fail(formEl, `Could not save: ${err.message}`);
+    }
+  },
+
   async sector(data, formEl) {
     const std = new Date(`${data.get('stdDate')}T${data.get('stdTime')}:00Z`);
     const sta = new Date(`${data.get('staDate')}T${data.get('staTime')}:00Z`);

@@ -54,10 +54,7 @@ export function render() {
         <label class="field">VATSIM callsign to track<input name="callsign" required autocapitalize="characters" value="${esc(p.callsign)}"></label>
         <label class="field">Aircraft type (ICAO)<input name="aircraft" required autocapitalize="characters" maxlength="4" value="${esc(p.aircraft)}"></label>
       </div>
-      <div class="grid2">
-        <label class="field">SimBrief username or Pilot ID<input name="simbrief" autocapitalize="none" autocorrect="off" value="${esc(p.simbrief)}"></label>
-        <label class="field">Minimum turnaround (minutes)<input name="turnaround" type="number" min="0" max="600" required value="${esc(p.turnaround)}"></label>
-      </div>
+      <label class="field">SimBrief username or Pilot ID<input name="simbrief" autocapitalize="none" autocorrect="off" value="${esc(p.simbrief)}"></label>
       <label class="field">Simulator status API address (optional)<input name="statusUrl" type="url" inputmode="url" autocapitalize="none" autocorrect="off" value="${esc(p.statusUrl)}" placeholder="https://…/status"></label>
       <p class="tiny">When set, the Dashboard reads the aircraft's position straight from the simulator and only falls back to VATSIM if that fails. Leave blank to use VATSIM.</p>
       <div class="btn-row"><button class="btn primary" type="submit">Save device settings</button></div>
@@ -133,7 +130,6 @@ export const forms = {
       aircraft: String(data.get('aircraft')).trim().toUpperCase(),
       simbrief: String(data.get('simbrief')).trim(),
       statusUrl,
-      turnaround: Math.max(0, Number(data.get('turnaround')) || 0),
     });
     save();
     message = 'Device settings saved.';

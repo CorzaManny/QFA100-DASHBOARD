@@ -4,6 +4,7 @@ import { state, save } from './store.js';
 import { configured, getSession, loadAll, saveBriefing } from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
+import { running as runningOf, reportAt as reportAtOf } from './running.js';
 
 const VATSIM_FEED = 'https://data.vatsim.net/v3/vatsim-data.json';
 const EARTH_NM = 3440.065;
@@ -185,7 +186,7 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], official: [], officialCheck: null, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
+  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], official: [], officialCheck: null, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 
@@ -237,22 +238,19 @@ export function nextSector(now = Date.now(), mineOnly = false) {
   );
 }
 
-// If the aircraft's estimated arrival plus the team's minimum turnaround runs
-// past the following sector's scheduled departure, that departure is at risk.
 // The sector to prepare for: my next rostered one, else the team's next.
 export const upcomingSector = (now = Date.now()) => nextSector(now, true) || nextSector(now);
 
-export function turnaroundRisk(now = Date.now()) {
-  const t = state.track;
-  const cur = currentSector(now);
-  if (!t?.online || !t.eta || !cur) return null;
-  const sectors = sortedSectors();
-  const following = sectors[sectors.indexOf(cur) + 1];
-  if (!following) return null;
-  const earliest = t.eta + state.profile.turnaround * 60000;
-  const late = earliest - new Date(following.std);
-  return late > 0 ? { sector: following, earliest, late } : null;
-}
+// How the day is actually running: stamped times, the live feed and the
+// knock-on effect on everything still to come. See js/running.js.
+export const running = (now = Date.now()) =>
+  runningOf({ sectors: state.sectors, actuals: state.actuals || [], track: state.track, rules: rules(), now });
+
+// What one sector's crew should really report, given the running.
+export const reportAt = reportAtOf;
+
+// The times stamped for a sector, if any.
+export const actualOf = (sectorId) => (state.actuals || []).find((a) => a.sector_id === sectorId) || null;
 
 // ---- Live VATSIM tracking ----
 

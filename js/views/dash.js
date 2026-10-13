@@ -2,12 +2,17 @@
 
 import { state } from '../store.js';
 import { esc, zulu, zdate, span, ago, depWindow, simLocal, icon, rerender } from '../ui.js';
+import { round5 } from '../running.js';
+import { saveActual } from '../api.js';
 import {
   briefingOf,
   currentSector,
   nextSector,
   upcomingSector,
-  turnaroundRisk,
+  running,
+  reportAt,
+  canLog,
+  syncTeam,
   refreshTrack,
   airport,
   isMine,
@@ -20,6 +25,7 @@ import {
   scheduleDrift,
   isDraft,
   isEfb,
+  me,
   pendingPeople,
 } from '../ops.js';
 import { nextIncomplete } from './checklists.js';
@@ -153,7 +159,7 @@ function liveCard(now) {
     </section>`;
 }
 
-function sectorCard(now) {
+function sectorCard(now, run) {
   const mine = nextSector(now, true);
   const s = mine || nextSector(now);
   if (!s) {
@@ -162,13 +168,14 @@ function sectorCard(now) {
       <a class="btn ghost" href="#/schedule">Open schedule</a></section>`;
   }
   const duty = mine ? myDuty(mine) : null;
-  const risk = turnaroundRisk(now);
-  const atRisk = risk && risk.sector === s;
+  const row = run.times.get(s.id);
+  const moved = run.trusted && row && Math.abs(row.delay) >= 5 * 60000 && !row.on;
+  const report = duty && moved ? reportAt(duty, row) : duty?.report_at;
   return `
     <section class="card">
       <div class="card-head">
         <h2>${mine ? 'Your next rostered sector' : 'Next sector'}</h2>
-        ${atRisk ? '<span class="badge bad">DELAY LIKELY</span>' : `<span class="badge info">${zdate(s.std)}</span>`}
+        ${moved && row.delay > 0 ? `<span class="badge warn">${span(row.delay)} LATE</span>` : `<span class="badge info">${zdate(s.std)}</span>`}
       </div>
       <a class="sector-link" href="#/schedule/${esc(s.id)}">
         <div>
@@ -184,14 +191,17 @@ function sectorCard(now) {
         duty
           ? `<div class="report">
               <span class="badge warn">${esc(duty.duty.toUpperCase())}</span>
-              <span><strong>Report ${zdate(duty.report_at)} ${zulu(duty.report_at)} · ${simLocal(duty.report_at)}</strong>
-                <span class="sub" data-until="${esc(duty.report_at)}" data-verb="Report">${countdown(duty.report_at, now, 'Report')}</span></span>
+              <span><strong>Report ${zdate(report)} ${zulu(report)} · ${simLocal(report)}</strong>
+                <span class="sub" data-until="${esc(new Date(report).toISOString())}" data-verb="Report">${countdown(report, now, 'Report')}</span>
+                ${moved ? `<span class="sub">Moved by the delay. Published report time ${zulu(duty.report_at)}.</span>` : ''}</span>
             </div>${duty.notes ? `<p class="note"><strong>Roster note:</strong> ${esc(duty.notes)}</p>` : ''}`
           : ''
       }
       ${
-        atRisk
-          ? `<p class="note warn">${icon('alert')} Aircraft ETA ${zulu(state.track.eta)} plus a ${state.profile.turnaround} min turnaround puts departure at about ${zulu(risk.earliest)}, ${span(risk.late)} late.</p>`
+        moved
+          ? `<p class="note warn">${icon('alert')} Expect to go about <strong>${zulu(round5(row.estOff))}</strong>, ${lateWords(row.delay)}${
+              row.basis === 'live' ? ', from the live aircraft position' : ''
+            }.</p>`
           : ''
       }
       <div class="tiny">${s.window ? `DEPARTURE WINDOW ${depWindow(s)} · ` : ''}SIM LOCAL ${simLocal(s.std)}</div>
@@ -208,8 +218,57 @@ function sectorCard(now) {
     </section>`;
 }
 
-function crewRow(s, now, label) {
+// "35 minutes behind" is only worth printing when somebody stamped a time or
+// the aeroplane is being tracked; see js/running.js.
+const lateWords = (ms) =>
+  `${span(Math.abs(ms))} ${ms < 0 ? 'ahead of' : 'behind'} the published schedule`;
+
+function runningBanner(run) {
+  if (!run.late) return '';
+  const r = run.late;
+  return `<a class="banner ${r.delay > 0 ? 'warn' : 'info'}" href="#/schedule">${icon('refresh')}
+    <span><strong>Running ${lateWords(r.delay)}</strong> · ${esc(r.sector.flight)} ${
+      r.state === 'airborne' ? `lands about ${zulu(round5(r.estOn))}` : `now about ${zulu(round5(r.estOff))}`
+    }</span>${icon('chevron')}</a>`;
+}
+
+// The two buttons the flight deck presses. Everything downstream is worked out
+// from these, so they are the only numbers anybody has to enter.
+function stamps(row, now) {
+  if (!canLog() || !row) return '';
+  const s = row.sector;
+  const live = state.track;
+  // The feed cannot stamp anything by itself, but it can offer the time.
+  const suggest =
+    live?.online && live.at && (!live.dep || live.dep === s.dep) && (!live.arr || live.arr === s.arr) ? live.at : now;
+  const at = (t) => `${zulu(t)} · ${simLocal(t)}`;
+  return `
+    <div class="stamps">
+      <div class="tiny">${esc(s.flight)} ${esc(s.dep)} → ${esc(s.arr)}</div>
+      ${
+        row.off
+          ? `<div class="row-t">Off blocks ${at(row.off)}${
+              row.delay ? ` · <span class="${row.delay > 0 ? 'warn-text' : 'ok-text'}">${lateWords(row.delay)}</span>` : ''
+            }</div>`
+          : `<button class="btn primary" data-act="stamp" data-sector="${esc(s.id)}" data-field="off_blocks" data-at="${suggest}">Off blocks now</button>`
+      }
+      ${
+        row.on
+          ? `<div class="row-t">On blocks ${at(row.on)}</div>`
+          : row.off
+            ? `<button class="btn ${live?.phase === 'ARRIVED' ? 'primary' : 'ghost'}" data-act="stamp" data-sector="${esc(s.id)}" data-field="on_blocks" data-at="${suggest}">On blocks${
+                live?.phase === 'ARRIVED' ? ` at ${zulu(suggest)}` : ' now'
+              }</button>`
+            : ''
+      }
+      ${row.off || row.on ? '<button class="btn ghost small" data-act="unstamp" data-sector="' + esc(s.id) + '">Clear</button>' : ''}
+    </div>`;
+}
+
+function crewRow(s, now, label, run) {
   const crew = crewOf(s);
+  const row = run?.times.get(s.id);
+  const moved = run?.trusted && row && Math.abs(row.delay) >= 5 * 60000 && !row.on;
   return `
     <section class="card">
       <div class="card-head"><h2>${label}</h2><span class="badge info">${zdate(s.std)}</span></div>
@@ -223,6 +282,7 @@ function crewRow(s, now, label) {
           <div class="sub" data-until="${esc(s.std)}">${countdown(s.std, now)}</div>
         </div>
       </a>
+      ${moved ? `<p class="note warn">${icon('alert')} Expect to go about <strong>${zulu(round5(row.estOff))}</strong>, ${lateWords(row.delay)}.</p>` : ''}
       <div class="list">
         ${
           crew.length
@@ -234,35 +294,45 @@ function crewRow(s, now, label) {
                 <div class="row-t">${esc(person(r.user_id)?.display_name || 'Unknown')}</div>
                 <div class="sub">${esc(r.duty)}${r.notes ? ` · ${esc(r.notes)}` : ''}</div>
               </div>
-              <div class="right"><div class="sub">report ${zulu(r.report_at)}</div></div>
+              <div class="right"><div class="sub">report ${zulu(moved ? reportAt(r, row) : r.report_at)}${
+                moved ? ' *' : ''
+              }</div></div>
             </div>`,
                 )
                 .join('')
             : '<p class="note">Nobody rostered on this sector yet.</p>'
         }
       </div>
-      <div class="tiny">SIM LOCAL ${simLocal(s.std)}${s.notes ? ` · ${esc(s.notes)}` : ''}</div>
+      <div class="tiny">${moved && crew.length ? 'REPORT TIMES MARKED * ARE MOVED BY THE DELAY · ' : ''}SIM LOCAL ${simLocal(s.std)}${
+        s.notes ? ` · ${esc(s.notes)}` : ''
+      }</div>
     </section>`;
 }
 
 // What a cockpit tablet shows: the aeroplane, who is flying it now, and who
 // takes it next. No personal roster, because the tablet is not a person.
-function flightDeck(now) {
+function flightDeck(now, run) {
   const cur = currentSector(now);
   const next = nextSector(now);
-  const risk = turnaroundRisk(now);
+  const stamping = run.airborne || run.next;
   return `
-    ${cur ? crewRow(cur, now, 'Flying now') : ''}
-    ${next ? crewRow(next, now, cur ? 'Next crew' : 'Next sector') : ''}
+    ${
+      stamping
+        ? `<section class="card">
+            <div class="card-head"><h2>Times</h2>${
+              run.trusted && run.late ? `<span class="badge ${run.late.delay > 0 ? 'warn' : 'info'}">${span(Math.abs(run.late.delay))} ${run.late.delay > 0 ? 'LATE' : 'EARLY'}</span>` : ''
+            }</div>
+            <p class="note">Stamp these as they happen. Every report time and departure after this one is worked out from them.</p>
+            ${stamps(stamping, now)}
+          </section>`
+        : ''
+    }
+    ${cur ? crewRow(cur, now, 'Flying now', run) : ''}
+    ${next ? crewRow(next, now, cur ? 'Next crew' : 'Next sector', run) : ''}
     ${
       !cur && !next
         ? `<section class="card"><h2>Next sector</h2><p class="note">No upcoming sectors in the schedule.</p>
             <a class="btn ghost" href="#/schedule">Open schedule</a></section>`
-        : ''
-    }
-    ${
-      risk
-        ? `<p class="note warn">${icon('alert')} Aircraft ETA ${zulu(state.track.eta)} plus a ${state.profile.turnaround} min turnaround puts ${esc(risk.sector.flight)} at about ${zulu(risk.earliest)}, ${span(risk.late)} late.</p>`
         : ''
     }`;
 }
@@ -302,16 +372,18 @@ function tile(href, ic, title, sub) {
 
 export function render() {
   const now = Date.now();
+  const run = running(now);
   const next = upcomingSector(now);
   const resume = nextIncomplete();
   const open = state.defects.filter((d) => d.status !== 'RECTIFIED').length;
   const o = next ? briefingOf(next.id).ofp : null;
   return `
     ${approvalBanner()}
+    ${runningBanner(run)}
     ${scheduleBanner()}
     ${statusBanner()}
     ${liveCard(now)}
-    ${isEfb() ? flightDeck(now) : sectorCard(now)}
+    ${isEfb() ? flightDeck(now, run) : sectorCard(now, run)}
     <div class="tiles">
       ${tile('#/checklists', 'checks', '737 Checklists', resume ? `Resume: ${resume.name}` : 'All complete')}
       ${tile('#/airports', 'pin', 'Airport Briefings', next ? `${next.dep} · ${next.arr}` : 'All airports')}
@@ -326,4 +398,29 @@ export function mounted() {
 
 export const actions = {
   refresh: () => poll(true),
+
+  // One press, one timestamp. The delay for every later sector follows from it.
+  async stamp(el) {
+    el.disabled = true;
+    const at = new Date(Number(el.dataset.at) || Date.now());
+    try {
+      await saveActual(el.dataset.sector, { [el.dataset.field]: at.toISOString(), by_name: me()?.display_name || '' });
+      await syncTeam();
+    } catch (err) {
+      alert(`Could not save that time: ${err.message}`);
+    }
+    rerender();
+  },
+
+  async unstamp(el) {
+    if (!confirm('Clear the times stamped for this sector? The schedule goes back to the published times.')) return;
+    el.disabled = true;
+    try {
+      await saveActual(el.dataset.sector, { off_blocks: null, on_blocks: null, by_name: me()?.display_name || '' });
+      await syncTeam();
+    } catch (err) {
+      alert(`Could not clear those times: ${err.message}`);
+    }
+    rerender();
+  },
 };

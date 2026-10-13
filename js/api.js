@@ -200,7 +200,7 @@ const fromDefect = (d) => ({
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck] =
+  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals] =
     await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
@@ -212,6 +212,7 @@ export async function loadAll() {
     rest('GET', 'briefings?select=*').catch(() => null),
     rest('GET', 'official_schedule?select=*&order=std.asc').catch(() => null),
     rest('GET', 'official_schedule_check?select=*').catch(() => null),
+    rest('GET', 'sector_actuals?select=*').catch(() => null),
   ]);
   return {
     sectors: sectors.map(toSector),
@@ -225,6 +226,7 @@ export async function loadAll() {
     // null: this database is not watching the WorldFlight schedule yet.
     official: official ? official.map(toSector) : null,
     officialCheck: officialCheck?.[0] || null,
+    actuals: actuals || [],
   };
 }
 
@@ -236,6 +238,16 @@ export function saveSector(fields, sectorId) {
 }
 
 export const deleteSector = (sectorId) => rest('DELETE', `sectors?id=eq.${id(sectorId)}`);
+
+// The times the flight deck stamped for a sector. One row per sector, so
+// stamping the same sector again updates it.
+export const saveActual = (sectorId, fields) =>
+  rest(
+    'POST',
+    'sector_actuals?on_conflict=sector_id',
+    { sector_id: sectorId, ...fields, updated_at: new Date().toISOString() },
+    'resolution=merge-duplicates',
+  );
 
 // Rostering someone twice on a sector updates their existing entry.
 export const saveRoster = (entry) =>

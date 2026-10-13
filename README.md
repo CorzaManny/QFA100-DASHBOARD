@@ -116,6 +116,32 @@ The Schedule page says when the site was last read ("Read from the WorldFlight s
 
 Until that SQL is run, the app compares against the copy it was built with (`js/data/schedule.js`), which is rebuilt by `tools/build_schedule.py`. To read the site by hand at any time, run `select public.refresh_official_schedule();` in the SQL Editor.
 
+## Running late
+
+WorldFlight slips, and a late sector in Indonesia is still late over Canada two days later. The app keeps the published schedule exactly as it is and lays the real running over the top of it.
+
+The flight deck stamps two times per sector, **Off blocks** and **On blocks**, from the Dashboard — two big buttons, nothing else to fill in. Admins and dispatchers can correct one afterwards, or enter one nobody stamped at the time, from the sector's page on the Schedule.
+
+From those stamps the app works out, for every sector still to come:
+
+```
+estimated off = later of ( published departure , previous arrival + turnaround )
+estimated on  = live ETA while airborne, otherwise estimated off + the published block time
+delay         = estimated off - published departure
+```
+
+Two things follow from that. A sector cannot leave before its window opens, so **slack in the schedule absorbs the delay** instead of passing it on — the app says so rather than claiming everything for the next three days is 35 minutes late. And because each sector waits for the aeroplane plus the turnaround, a delay does carry through a tight run of sectors, which is exactly what happens in the event.
+
+What you see:
+
+- a banner on the Dashboard — **Running 35m behind the published schedule · WF2601 lands about 1505Z**;
+- on the Schedule, the published time struck through with the real expected time under it;
+- on your own sector card, your report time moved by the delay, with the published one still shown underneath, keeping whatever lead you were given when you were rostered.
+
+Nothing is shown until somebody stamps a time or the aircraft is being tracked, and estimates are rounded to five minutes, because a guess printed to the minute reads as more certain than it is. Stamped times are shown exactly. **Minimum turnaround** and **Taxi in** are in **Admin → Rules**, so the whole team works from the same numbers.
+
+The estimate takes the best source it has, in this order: a stamped time, the simulator API, the live VATSIM position, then the published block time. With nothing connected at all it is simply the published schedule, which is where you started.
+
 ## Notifications
 
 Not built yet. The roster stores what a notification needs: who is on each sector, their duty and their report time. Sending one to a phone that has the app closed needs two more pieces: each device registering for push notifications, and a scheduled job in Supabase that checks for upcoming report times and sends them. On iPhone this only works once the app has been added to the home screen.

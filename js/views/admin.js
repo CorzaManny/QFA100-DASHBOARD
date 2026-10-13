@@ -221,6 +221,12 @@ function rulesPage() {
         ${num('maxSectors', 'Sectors per person', 'For the event; 0 = no limit')}
         ${num('reliefOverHours', 'Relief pilot over (hours)', 'Sectors longer than this carry three pilots; 0 = never', 0.5)}
       </div>
+      <h3>Running on the day</h3>
+      <div class="grid2">
+        ${num('turnaroundMinutes', 'Minimum turnaround (minutes)', 'On the ground between two sectors', 5)}
+        ${num('taxiInMinutes', 'Taxi in (minutes)', 'Landing to on blocks, for live estimates')}
+      </div>
+      <p class="tiny">These two work out how a late sector moves the ones after it. The published schedule is never changed.</p>
       <h3>Back of the clock (sim local time)</h3>
       <div class="grid2">
         ${num('bocStart', 'Starts at hour', '0 to 23')}
