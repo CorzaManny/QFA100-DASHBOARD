@@ -11,7 +11,8 @@
 --   3. any secret you like, so only the database can call that function
 --
 -- Fill them in here in the SQL Editor, not in the file on your computer: this
--- repository is public.
+-- repository is public. They are only written the first time, so it is safe to
+-- run this file again later without pasting them in again.
 
 create extension if not exists http with schema extensions;
 create extension if not exists pg_cron;
@@ -29,12 +30,20 @@ create table if not exists public.push_config (
 );
 insert into public.push_config (id) values (true) on conflict (id) do nothing;
 
+-- Each of these is only written the first time, so running this file again
+-- keeps what you already saved and you never have to paste them in twice.
 update public.push_config set
   vapid_public  = 'BBQNk0GT1-Fa1AgSql6WRll_GHErZz6o8picqXFW65tNfiRRNBc0OvcGaf0X7WfZUujkX25tRhodSEK2oTdEChE',
-  vapid_private = 'PASTE-THE-PRIVATE-KEY-HERE',                      -- <= fill in
-  edge_url      = 'https://YOUR-PROJECT.supabase.co/functions/v1/send-push',  -- <= fill in
-  secret        = 'PICK-ANY-LONG-RANDOM-STRING'                      -- <= fill in
+  vapid_private = coalesce(nullif(vapid_private, ''),
+    'PASTE-THE-PRIVATE-KEY-HERE'),                                   -- <= fill in
+  edge_url      = coalesce(nullif(edge_url, ''),
+    'https://YOUR-PROJECT.supabase.co/functions/v1/send-push'),      -- <= fill in
+  secret        = coalesce(nullif(secret, ''),
+    'PICK-ANY-LONG-RANDOM-STRING')                                   -- <= fill in
 where id;
+
+-- To change one of them later, run just this line with the new value:
+--   update public.push_config set secret = 'the new one' where id;
 
 -- One row per device somebody has turned notifications on for. A person can
 -- have several: their phone, their iPad, the computer at the sim.
@@ -310,7 +319,9 @@ begin
   if waiting = 0 then return 'nothing waiting'; end if;
 
   select * into cfg from public.push_config where id;
-  if cfg.edge_url = '' or cfg.vapid_private = '' then return 'push is not set up yet'; end if;
+  if cfg.edge_url like '%YOUR-PROJECT%' or cfg.vapid_private in ('', 'PASTE-THE-PRIVATE-KEY-HERE') then
+    return 'push is not set up yet: fill in the three lines at the top of supabase/notifications.sql';
+  end if;
 
   select * into answer from extensions.http((
     'POST',
