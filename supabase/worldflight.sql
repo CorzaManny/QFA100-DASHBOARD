@@ -96,7 +96,7 @@ declare
   shut_   integer;   -- ...and closes
   wide    integer;   -- how long it stays open
   std_    timestamptz;
-  found   integer := 0;
+  found   integer := 0;   -- how many sectors the page gave us
 begin
   page := (extensions.http_get(source)).content;
   if page is null or length(page) < 2000 then
@@ -109,7 +109,8 @@ begin
     extract(year from now())::integer
   );
 
-  create temporary table wf_new (like public.official_schedule) on commit drop;
+  drop table if exists pg_temp.wf_new;
+  create temporary table pg_temp.wf_new (like public.official_schedule including all) on commit drop;
 
   -- One table row per sector; everything needed is in the details button and
   -- the departure window beside it.
@@ -139,7 +140,7 @@ begin
 
     link := regexp_match(chunk, 'simbrief\.com/options/custom\?[^"]*route=([^&"]*)');
 
-    insert into wf_new (flight, dep, arr, std, sta, dep_window_min, route)
+    insert into pg_temp.wf_new (flight, dep, arr, std, sta, dep_window_min, route)
     values (
       sector[3], sector[1], sector[2], std_,
       std_ + make_interval(hours => sector[8]::integer, mins => sector[9]::integer),
@@ -147,19 +148,19 @@ begin
       coalesce(public.url_decode(link[1]), '')
     )
     on conflict (flight) do nothing;
-    found := found + 1;
   end loop;
 
+  select count(*) into found from pg_temp.wf_new;
   if found = 0 then
     raise exception 'no sectors found on the page; it may have been rebuilt';
   end if;
 
   insert into public.official_schedule as o (flight, dep, arr, std, sta, dep_window_min, route)
-  select flight, dep, arr, std, sta, dep_window_min, route from wf_new
+  select flight, dep, arr, std, sta, dep_window_min, route from pg_temp.wf_new
   on conflict (flight) do update set
     dep = excluded.dep, arr = excluded.arr, std = excluded.std, sta = excluded.sta,
     dep_window_min = excluded.dep_window_min, route = excluded.route;
-  delete from public.official_schedule where flight not in (select flight from wf_new);
+  delete from public.official_schedule where flight not in (select flight from pg_temp.wf_new);
 
   update public.official_schedule_check
   set checked_at = now(), ok = true, sectors = found, note = '';
