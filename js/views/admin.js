@@ -12,6 +12,7 @@ import {
   saveSettings,
   saveRosterMany,
   clearAutoRoster,
+  decideSwap,
 } from '../api.js';
 import { DEFAULT_RULES, planRoster, problems, isBoc } from '../autoroster.js';
 import { esc, zulu, zdate, depWindow, simLocal, span, isoDate, isoTime, icon, rerender } from '../ui.js';
@@ -32,6 +33,11 @@ import {
   workload,
   flyers,
   rosterable,
+  claimedSwaps,
+  openSwaps,
+  swapSector,
+  swapEntry,
+  wouldBreak,
   defaultReport,
   rules,
   isDraft,
@@ -344,6 +350,50 @@ function seat(s, duty, fit) {
 const CHOICE_WORDS = { prefer: 'asked for this sector', available: 'available', unavailable: "can't fly it", none: 'has not answered' };
 const blankWord = () => (rules().unmarkedAvailable ? 'available until they say otherwise' : 'has not answered');
 
+// Somebody has offered a sector and somebody else has taken it: all that is
+// left is for ops to agree.
+function swapsCard() {
+  const waiting = claimedSwaps().filter((w) => swapSector(w));
+  const open = openSwaps().filter((w) => swapSector(w));
+  if (!waiting.length && !open.length) return '';
+  const rows = waiting
+    .map((w) => {
+      const s = swapSector(w);
+      const entry = swapEntry(w);
+      const breaks = wouldBreak(w.claimed_by, s);
+      return `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-t">${esc(s.flight)} · ${esc(s.dep)} → ${esc(s.arr)} <span class="badge warn">${esc((entry?.duty || '').toUpperCase())}</span></div>
+          <div class="sub">${name(w.from_user)} → <strong>${name(w.claimed_by)}</strong> · ${when(s.std)}</div>
+          ${w.reason ? `<div class="sub">${esc(w.reason)}</div>` : ''}
+          ${breaks.map((t) => `<div class="sub warn-text">${icon('alert')} ${esc(t)}</div>`).join('')}
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost small" data-act="swapNo" data-id="${esc(w.id)}">Turn down</button>
+          <button class="btn primary small" data-act="swapYes" data-id="${esc(w.id)}">Agree</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+  const waitingList = open
+    .map((w) => {
+      const s = swapSector(w);
+      return `<div class="row"><div class="row-main">
+        <div class="row-t">${esc(s.flight)} · ${esc(s.dep)} → ${esc(s.arr)}</div>
+        <div class="sub">${name(w.from_user)} cannot fly it. Nobody has taken it yet.</div>
+      </div><div class="right"><a class="tiny" href="#/admin/sector/${esc(s.id)}">Roster it</a></div></div>`;
+    })
+    .join('');
+  return `
+    <section class="card list ${waiting.length ? 'slot-card short' : ''}">
+      <div class="card-head"><div class="tiny">SWAPS</div>
+        <span class="badge ${waiting.length ? 'warn' : 'mute'}">${waiting.length ? `${waiting.length} TO AGREE` : `${open.length} WAITING FOR COVER`}</span></div>
+      ${rows}${waitingList}
+      <p class="tiny">Agreeing moves the sector to the person taking it and tells them both. A rule it would break is shown, and you can agree anyway.</p>
+    </section>`;
+}
+
 // The list of sectors to roster. Open one to crew it.
 function rosterEditor() {
   const now = Date.now();
@@ -395,6 +445,7 @@ function rosterEditor() {
       </div>
       <p class="tiny">Open a sector to crew it. Each sector page lists every pilot, what they said about it, what they are already flying and any duty rule that would be broken by rostering them.</p>
     </section>
+    ${swapsCard()}
     <section class="card list">${rows || '<p class="note">Every upcoming sector has its pilots.</p>'}</section>`;
 }
 
@@ -731,6 +782,23 @@ export const forms = {
 };
 
 export const actions = {
+  swapYes(el) {
+    el.disabled = true;
+    return change(async () => {
+      await decideSwap(el.dataset.id, true);
+      result = 'Swap agreed. Both of them have been told.';
+    });
+  },
+  swapNo(el) {
+    const why = prompt('Turn this swap down? You can say why (optional).', '');
+    if (why === null) return;
+    el.disabled = true;
+    return change(async () => {
+      await decideSwap(el.dataset.id, false, why);
+      result = 'Turned down. The sector is open for somebody else.';
+    });
+  },
+
   // Roster someone straight from the "who can fly this" list, rules or no
   // rules. Pressing the seat they already hold takes them off the sector.
   assign(el) {

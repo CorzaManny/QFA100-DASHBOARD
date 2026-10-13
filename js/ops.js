@@ -2,7 +2,7 @@
 
 import { state, save } from './store.js';
 import { configured, getSession, loadAll, saveBriefing } from './api.js';
-import { rulesOf, seatsFor, isBoc, blockHours } from './autoroster.js';
+import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
 import { running as runningOf, reportAt as reportAtOf } from './running.js';
 
@@ -171,6 +171,32 @@ export function workload(userId) {
 // Everyone who can be put on a sector at all: a tablet is not a person.
 export const rosterable = () => state.people.filter((p) => !['pending', 'efb'].includes(p.role));
 
+// Which duty rules taking on one more sector would break for somebody. Empty
+// when it breaks none, or when they are already on it.
+export function wouldBreak(userId, sector) {
+  const byId = new Map(state.sectors.map((s) => [s.id, s]));
+  const mine = state.roster
+    .filter((r) => r.user_id === userId && PILOT_DUTIES.includes(r.duty) && byId.has(r.sector_id))
+    .map((r) => byId.get(r.sector_id));
+  if (mine.some((x) => x.id === sector.id)) return [];
+  const before = problems(mine, rules());
+  return problems([...mine, sector], rules()).filter((text) => !before.includes(text));
+}
+
+// ---- Giving a sector away ----
+
+export const swaps = () => state.swaps || [];
+export const openSwaps = () => swaps().filter((w) => w.state === 'open');
+export const claimedSwaps = () => swaps().filter((w) => w.state === 'claimed');
+// The offer still live against a roster entry, if there is one.
+export const swapFor = (rosterId) => swaps().find((w) => w.roster_id === rosterId && ['open', 'claimed'].includes(w.state)) || null;
+// The sector an offer is about, and who is on it.
+export const swapEntry = (swap) => state.roster.find((r) => r.id === swap.roster_id) || null;
+export function swapSector(swap) {
+  const entry = swapEntry(swap);
+  return entry ? state.sectors.find((s) => s.id === entry.sector_id) || null : null;
+}
+
 // Everyone who can be rostered in a pilot's seat.
 export const flyers = () => state.people.filter((p) => ['admin', 'dispatcher', 'pilot'].includes(p.role));
 
@@ -206,7 +232,7 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], official: [], officialCheck: null, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
+  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], official: [], officialCheck: null, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 

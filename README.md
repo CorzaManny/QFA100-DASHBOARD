@@ -116,6 +116,14 @@ The Schedule page says when the site was last read ("Read from the WorldFlight s
 
 Until that SQL is run, the app compares against the copy it was built with (`js/data/schedule.js`), which is rebuilt by `tools/build_schedule.py`. To read the site by hand at any time, run `select public.refresh_official_schedule();` in the SQL Editor.
 
+### Giving a sector away
+
+Somebody who cannot make a sector after all opens it from the Roster, presses **I cannot fly this**, and says why. They stay rostered on it, so nothing is ever left uncovered while it is being sorted out.
+
+Everyone else sees it in **Cover needed** at the top of the Roster, with any duty rule it would break for them written out. Taking it marks it claimed; an admin then agrees it in **Admin → Roster**, where the same rule warnings are shown, and the sector moves across. Both people are told. Turning it down puts it back on offer, and the person who offered it can take the offer back at any point with **Keep this sector after all**.
+
+Nothing about this bypasses the duty rules: it shows them and lets a person decide, in the same way rostering by hand does.
+
 ## Running late
 
 WorldFlight slips, and a late sector in Indonesia is still late over Canada two days later. The app keeps the published schedule exactly as it is and lays the real running over the top of it.

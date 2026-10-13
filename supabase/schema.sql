@@ -84,6 +84,22 @@ create trigger roster_no_tablet
 -- and re-run without touching anyone rostered by hand.
 alter table public.roster add column if not exists auto boolean not null default false;
 
+-- A sector somebody cannot fly after all, offered to the rest of the team.
+-- open -> claimed -> approved, or withdrawn by the person who offered it, or
+-- sent back to open if an admin turns the claim down.
+create table if not exists public.swaps (
+  id         uuid primary key default gen_random_uuid(),
+  roster_id  uuid not null references public.roster (id) on delete cascade,
+  from_user  uuid not null references public.profiles (id) on delete cascade,
+  claimed_by uuid references public.profiles (id) on delete set null,
+  state      text not null default 'open' check (state in ('open', 'claimed', 'approved', 'withdrawn')),
+  reason     text not null default '',
+  note       text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists swaps_open_idx on public.swaps (state);
+
 -- What actually happened: the times the flight deck stamped for each sector.
 -- The published schedule in public.sectors is never changed, so the plan and
 -- the running of the day are both kept.
@@ -313,6 +329,136 @@ begin
 end;
 $$;
 
+-- ---------- Giving a sector away ----------
+
+-- Sends a notification if supabase/notifications.sql has been run, and does
+-- nothing if it has not, so swaps work either way.
+create or replace function public.tell(
+  target uuid, kind text, title text, body text, url text, dedupe text
+)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if to_regprocedure('public.notify(uuid,text,text,text,text,text,integer)') is not null then
+    execute 'select public.notify($1, $2, $3, $4, $5, $6, $7)'
+      using target, kind, title, body, url, dedupe, 86400;
+  end if;
+end;
+$$;
+
+-- Offer a sector you are rostered on. Only your own, only once, and only one
+-- that has not already gone.
+create or replace function public.offer_sector(entry uuid, why text default '')
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  r  record;
+  id uuid;
+begin
+  select ro.*, s.flight, s.dep, s.arr, s.std into r
+  from public.roster ro join public.sectors s on s.id = ro.sector_id
+  where ro.id = entry;
+  if r.id is null then raise exception 'That roster entry no longer exists'; end if;
+  if r.user_id <> auth.uid() then raise exception 'You can only offer a sector you are on'; end if;
+  if r.std < now() then raise exception 'That sector has already gone'; end if;
+  if exists (select 1 from public.swaps where roster_id = entry and state in ('open', 'claimed')) then
+    raise exception 'That sector is already offered';
+  end if;
+
+  insert into public.swaps (roster_id, from_user, reason) values (entry, auth.uid(), coalesce(why, ''))
+  returning swaps.id into id;
+
+  perform public.tell(p.id, 'roster', format('%s needs cover', r.flight),
+    format('%s to %s on %s. %s', r.dep, r.arr, to_char(r.std, 'DD Mon HH24:MI"Z"'),
+           case when coalesce(why, '') = '' then 'Open it to take it.' else why end),
+    '#/roster', 'swap-open-' || id || '-' || p.id)
+  from public.profiles p
+  where p.role in ('admin', 'dispatcher', 'pilot') and p.id <> auth.uid() and not p.is_test;
+  return id;
+end;
+$$;
+
+-- Take a sector somebody has offered. An admin still has to agree.
+create or replace function public.claim_swap(swap uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  w record;
+begin
+  select sw.*, ro.sector_id, s.flight, s.dep, s.arr, s.std into w
+  from public.swaps sw
+  join public.roster ro on ro.id = sw.roster_id
+  join public.sectors s on s.id = ro.sector_id
+  where sw.id = swap;
+  if w.id is null or w.state <> 'open' then raise exception 'That offer is no longer open'; end if;
+  if w.from_user = auth.uid() then raise exception 'That is your own sector'; end if;
+  if not exists (select 1 from public.profiles where id = auth.uid() and role in ('admin', 'dispatcher', 'pilot')) then
+    raise exception 'Only pilots can take a sector';
+  end if;
+  if exists (select 1 from public.roster where sector_id = w.sector_id and user_id = auth.uid()) then
+    raise exception 'You are already on that sector';
+  end if;
+
+  update public.swaps set state = 'claimed', claimed_by = auth.uid(), updated_at = now() where id = swap;
+
+  perform public.tell(t.id, 'roster', format('%s is covered', w.flight),
+    format('%s offered to take %s to %s. It needs an admin to agree.',
+           (select display_name from public.profiles where id = auth.uid()), w.dep, w.arr),
+    '#/admin', 'swap-claim-' || swap || '-' || t.id)
+  from public.profiles t
+  where t.id = w.from_user or t.role in ('admin', 'dispatcher');
+end;
+$$;
+
+-- Take back an offer, whether or not somebody has claimed it.
+create or replace function public.withdraw_swap(swap uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  w public.swaps%rowtype;
+begin
+  select * into w from public.swaps where id = swap;
+  if w.id is null or w.state in ('approved', 'withdrawn') then raise exception 'That offer is already settled'; end if;
+  if w.from_user <> auth.uid() and not public.can_edit() then
+    raise exception 'Only the person who offered it, or an admin, can take it back';
+  end if;
+  update public.swaps set state = 'withdrawn', updated_at = now() where id = swap;
+end;
+$$;
+
+-- An admin agrees to the swap, which moves the sector, or turns it down,
+-- which puts it back on offer.
+create or replace function public.decide_swap(swap uuid, agree boolean, why text default '')
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  w record;
+begin
+  if not public.can_edit() then raise exception 'Only admins and dispatchers can agree a swap'; end if;
+  select sw.*, ro.sector_id, ro.duty, s.flight, s.dep, s.arr, s.std into w
+  from public.swaps sw
+  join public.roster ro on ro.id = sw.roster_id
+  join public.sectors s on s.id = ro.sector_id
+  where sw.id = swap;
+  if w.id is null or w.state <> 'claimed' then raise exception 'That offer has not been claimed'; end if;
+
+  if agree then
+    update public.roster set user_id = w.claimed_by, auto = false where id = w.roster_id;
+    update public.swaps set state = 'approved', note = coalesce(why, ''), updated_at = now() where id = swap;
+    perform public.tell(w.claimed_by, 'roster', format('%s is yours', w.flight),
+      format('%s to %s as %s on %s.', w.dep, w.arr, w.duty, to_char(w.std, 'DD Mon HH24:MI"Z"')),
+      '#/roster', 'swap-done-' || swap || '-' || w.claimed_by);
+    perform public.tell(w.from_user, 'roster', format('%s has been taken', w.flight),
+      format('%s is flying it. You are off that sector.',
+             (select display_name from public.profiles where id = w.claimed_by)),
+      '#/roster', 'swap-done-' || swap || '-' || w.from_user);
+  else
+    update public.swaps set state = 'open', claimed_by = null, note = coalesce(why, ''), updated_at = now()
+    where id = swap;
+    perform public.tell(w.claimed_by, 'roster', format('%s is still open', w.flight),
+      case when coalesce(why, '') = '' then 'Your offer to take it was turned down.' else why end,
+      '#/roster', 'swap-no-' || swap || '-' || now()::date);
+  end if;
+end;
+$$;
+
+revoke all on function public.tell(uuid, text, text, text, text, text) from public, anon, authenticated;
+
 -- Removes one test account, or all of them when target is null. Their roster
 -- entries go with them. Real accounts are never touched.
 create or replace function public.remove_test_account(target uuid default null)
@@ -364,6 +510,7 @@ alter table public.sectors  enable row level security;
 alter table public.roster   enable row level security;
 alter table public.settings enable row level security;
 alter table public.preferences enable row level security;
+alter table public.swaps enable row level security;
 alter table public.sector_actuals enable row level security;
 alter table public.techlog  enable row level security;
 alter table public.techlog_history enable row level security;
@@ -376,6 +523,9 @@ grant select on public.profiles, public.sectors, public.roster to authenticated;
 grant insert, update, delete on public.sectors, public.roster to authenticated;
 grant select, update on public.settings to authenticated;
 grant select, insert, update, delete on public.preferences to authenticated;
+-- Swaps are only ever changed through the four functions below, so the app
+-- may read them but not write them.
+grant select on public.swaps to authenticated;
 grant select, insert, update, delete on public.sector_actuals to authenticated;
 grant select, insert, update, delete on public.techlog to authenticated;
 grant usage on sequence public.techlog_seq to authenticated;
@@ -430,6 +580,10 @@ create policy "set availability" on public.preferences
   for all to authenticated
   using ((user_id = auth.uid() and public.is_member()) or public.can_edit())
   with check ((user_id = auth.uid() and public.is_member()) or public.can_edit());
+
+drop policy if exists "members read swaps" on public.swaps;
+create policy "members read swaps" on public.swaps
+  for select to authenticated using (public.is_member());
 
 -- Everyone reads the actual times; the flight deck stamps them, the same
 -- people who keep the tech log.
