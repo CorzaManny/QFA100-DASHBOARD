@@ -45,6 +45,16 @@ where id;
 -- To change one of them later, run just this line with the new value:
 --   update public.push_config set secret = 'the new one' where id;
 
+-- Supabase's gateway wants an Authorization header before a function is
+-- allowed to run at all. The publishable key from js/config.js satisfies it --
+-- that key is public by design, and the real check is the secret above. If you
+-- would rather turn "Verify JWT" off on the function instead, leave this empty
+-- and no header is sent.
+alter table public.push_config add column if not exists auth_key text not null default '';
+update public.push_config
+set auth_key = coalesce(nullif(auth_key, ''), 'sb_publishable_294YXJrzcL-PXagMXnAFog_PM3CsjJH')
+where id;
+
 -- One row per device somebody has turned notifications on for. A person can
 -- have several: their phone, their iPad, the computer at the sim.
 create table if not exists public.push_subscriptions (
@@ -326,7 +336,14 @@ begin
   select * into answer from extensions.http((
     'POST',
     cfg.edge_url,
-    array[extensions.http_header('x-push-secret', cfg.secret)],
+    case
+      when cfg.auth_key = '' then array[extensions.http_header('x-push-secret', cfg.secret)]
+      else array[
+        extensions.http_header('x-push-secret', cfg.secret),
+        extensions.http_header('Authorization', 'Bearer ' || cfg.auth_key),
+        extensions.http_header('apikey', cfg.auth_key)
+      ]
+    end,
     'application/json',
     '{}'
   )::extensions.http_request);
