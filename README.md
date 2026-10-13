@@ -101,7 +101,17 @@ When a new version changes the database (new roles, new schedule times), run `su
 
 ### If the WorldFlight schedule changes
 
-Re-run `tools/build_schedule.py` (instructions at the top of that file), then run the new `supabase/schedule.sql` in the SQL Editor. It updates times and routes and keeps the roster.
+Nothing to run: the app watches for it. A scheduled job on GitHub ([`.github/workflows/worldflight-schedule.yml`](.github/workflows/worldflight-schedule.yml)) reads <https://planning.worldflight.center/schedule> every six hours, rebuilds `js/data/schedule.js` and `supabase/schedule.sql`, and commits them if anything moved. The published app picks the new file up on its next load.
+
+Admins and dispatchers then see it in the app:
+
+- a banner on the Dashboard — **WorldFlight schedule changed · 4 sectors differ from the official one**;
+- a card at the top of **Schedule** listing exactly what moved (departure and arrival times, airports, the departure window, the route) and any new sectors;
+- one button, **Update N sectors**, which writes them to the team's schedule. Roster entries, sector notes and briefings all stay where they are, and sectors you added yourself are listed but never touched.
+
+Nothing is applied to the database on its own, so a change to the official programme can never quietly move a sector somebody is about to fly. When the two match, the Schedule page says so.
+
+Two things worth knowing about the job: GitHub turns scheduled workflows off on a repository that has had no activity for 60 days (it emails you, and **Actions → Check the WorldFlight schedule → Run workflow** starts it again), and it commits to the `v0.1` branch, which is the one GitHub Pages serves. If the page's layout ever changes, the job fails and shows up red in the Actions tab rather than writing nonsense.
 
 ## Notifications
 

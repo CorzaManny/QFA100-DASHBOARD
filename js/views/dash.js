@@ -17,6 +17,7 @@ import {
   person,
   isAdmin,
   canEdit,
+  scheduleDrift,
   isDraft,
   isEfb,
   pendingPeople,
@@ -273,6 +274,16 @@ function approvalBanner() {
     <span><strong>${waiting} account${waiting === 1 ? '' : 's'}</strong> waiting for your approval</span>${icon('chevron')}</a>`;
 }
 
+// The official WorldFlight schedule is checked for changes without anyone
+// asking; this is where ops staff find out.
+function scheduleBanner() {
+  if (!canEdit() || !state.sectors.length) return '';
+  const { total } = scheduleDrift();
+  if (!total) return '';
+  return `<a class="banner warn" href="#/schedule">${icon('calendar')}
+    <span><strong>WorldFlight schedule changed</strong> · ${total} sector${total === 1 ? '' : 's'} differ from the official one</span>${icon('chevron')}</a>`;
+}
+
 function statusBanner() {
   const open = state.defects.filter((d) => d.status !== 'RECTIFIED');
   if (!open.length) return '';
@@ -297,6 +308,7 @@ export function render() {
   const o = next ? briefingOf(next.id).ofp : null;
   return `
     ${approvalBanner()}
+    ${scheduleBanner()}
     ${statusBanner()}
     ${liveCard(now)}
     ${isEfb() ? flightDeck(now) : sectorCard(now)}

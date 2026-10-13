@@ -18,7 +18,7 @@ export const OFFICIAL_SCHEDULE = [
   {"flight": "WF2613", "dep": "CYKA", "arr": "CYVR", "std": "2026-11-02T16:30:00.000Z", "sta": "2026-11-02T17:55:00.000Z", "window": 120, "route": "MERYT BOOTH CANUCK7"},
   {"flight": "WF2614", "dep": "CYVR", "arr": "KSLC", "std": "2026-11-02T18:40:00.000Z", "sta": "2026-11-02T20:55:00.000Z", "window": 120, "route": ""},
   {"flight": "WF2615", "dep": "KSLC", "arr": "MMMY", "std": "2026-11-02T21:40:00.000Z", "sta": "2026-11-03T00:45:00.000Z", "window": 120, "route": ""},
-  {"flight": "WF2616", "dep": "MMMY", "arr": "MMGL", "std": "2026-11-03T01:30:00.000Z", "sta": "2026-11-03T03:10:00.000Z", "window": 120, "route": ""},
+  {"flight": "WF2616", "dep": "MMMY", "arr": "MMGL", "std": "2026-11-03T01:30:00.000Z", "sta": "2026-11-03T03:10:00.000Z", "window": 120, "route": "KERGA UT44 MEZCA"},
   {"flight": "WF2617", "dep": "MMGL", "arr": "MSLP", "std": "2026-11-03T03:55:00.000Z", "sta": "2026-11-03T06:40:00.000Z", "window": 120, "route": ""},
   {"flight": "WF2618", "dep": "MSLP", "arr": "SKBO", "std": "2026-11-03T07:25:00.000Z", "sta": "2026-11-03T10:30:00.000Z", "window": 120, "route": ""},
   {"flight": "WF2619", "dep": "SKBO", "arr": "TBPB", "std": "2026-11-03T11:15:00.000Z", "sta": "2026-11-03T14:15:00.000Z", "window": 120, "route": ""},

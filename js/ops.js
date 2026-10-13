@@ -3,6 +3,7 @@
 import { state, save } from './store.js';
 import { configured, getSession, loadAll, saveBriefing } from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours } from './autoroster.js';
+import { OFFICIAL_SCHEDULE } from './data/schedule.js';
 
 const VATSIM_FEED = 'https://data.vatsim.net/v3/vatsim-data.json';
 const EARTH_NM = 3440.065;
@@ -39,6 +40,42 @@ export const byStd = (a, b) => new Date(a.std) - new Date(b.std);
 
 export function sortedSectors() {
   return [...state.sectors].sort(byStd);
+}
+
+// The official WorldFlight schedule the app ships with. A scheduled job on
+// GitHub re-reads planning.worldflight.center every few hours and commits any
+// change, so this file follows the real programme without anyone running a
+// command. Nothing is applied to the team's schedule automatically: an admin
+// sees what differs and presses the button.
+export const officialSchedule = () => OFFICIAL_SCHEDULE;
+
+const sameTime = (a, b) => new Date(a).getTime() === new Date(b).getTime();
+
+export function scheduleDrift() {
+  const byFlight = new Map(state.sectors.map((s) => [s.flight, s]));
+  const official = new Set(OFFICIAL_SCHEDULE.map((o) => o.flight));
+  const added = [];
+  const changed = [];
+  for (const o of OFFICIAL_SCHEDULE) {
+    const s = byFlight.get(o.flight);
+    if (!s) {
+      added.push(o);
+      continue;
+    }
+    const fields = [];
+    if (s.dep !== o.dep) fields.push({ what: 'Departure airport', was: s.dep, now: o.dep });
+    if (s.arr !== o.arr) fields.push({ what: 'Arrival airport', was: s.arr, now: o.arr });
+    if (!sameTime(s.std, o.std)) fields.push({ what: 'Departs', was: s.std, now: o.std, time: true });
+    if (!sameTime(s.sta, o.sta)) fields.push({ what: 'Arrives', was: s.sta, now: o.sta, time: true });
+    if ((s.window || 0) !== (o.window || 0)) {
+      fields.push({ what: 'Departure window', was: `${s.window || 0} min`, now: `${o.window || 0} min` });
+    }
+    if ((s.route || '') !== (o.route || '')) fields.push({ what: 'Route', was: s.route || 'none', now: o.route || 'none', long: true });
+    if (fields.length) changed.push({ sector: s, official: o, fields });
+  }
+  // Sectors the team has added themselves are left alone, only pointed out.
+  const extra = state.sectors.filter((s) => !official.has(s.flight));
+  return { added, changed, extra, total: added.length + changed.length };
 }
 
 // ---- Accounts and roster ----

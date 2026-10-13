@@ -1,0 +1,45 @@
+# Checks the official WorldFlight schedule a few times a day and commits any
+# change, so the app follows the real programme without anyone running a
+# command. The app then shows ops staff what differs from the team's own
+# schedule and offers to apply it; nothing is changed in the database here.
+#
+# It can also be run by hand: Actions -> Check the WorldFlight schedule -> Run workflow.
+name: Check the WorldFlight schedule
+
+on:
+  schedule:
+    - cron: '20 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v0.1
+
+      - name: Download the published schedule
+        run: curl -sSfL --retry 3 --max-time 60 https://planning.worldflight.center/schedule -o /tmp/schedule.html
+
+      - name: Rebuild the schedule files
+        # The event runs in November, so the current year is the right one. If
+        # the page ever moves to the next year's programme early, this step
+        # fails loudly rather than writing wrong dates.
+        run: python3 tools/build_schedule.py /tmp/schedule.html "$(date -u +%Y)" js/data/schedule.js supabase/schedule.sql
+
+      - name: Commit anything that changed
+        run: |
+          if git diff --quiet -- js/data/schedule.js supabase/schedule.sql; then
+            echo "The official schedule has not changed."
+            exit 0
+          fi
+          git config user.name "worldflight-schedule"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update the official WorldFlight schedule" -- js/data/schedule.js supabase/schedule.sql
+          git push
+          echo "### The WorldFlight schedule changed" >> "$GITHUB_STEP_SUMMARY"
+          git show --stat --oneline HEAD >> "$GITHUB_STEP_SUMMARY"
