@@ -336,6 +336,16 @@ begin
     return 'push is not set up yet: fill in the three lines at the top of supabase/notifications.sql';
   end if;
 
+  -- A function that has gone cold takes a few seconds to wake up, and the
+  -- default here is five. Each cron run gets a fresh session, so this is set
+  -- every time.
+  begin
+    perform extensions.http_set_curlopt('CURLOPT_TIMEOUT_MS', '25000');
+    perform extensions.http_set_curlopt('CURLOPT_CONNECTTIMEOUT_MS', '10000');
+  exception when others then
+    null;  -- an older http extension without this; the default timeout applies
+  end;
+
   select * into answer from extensions.http((
     'POST',
     cfg.edge_url,

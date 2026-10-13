@@ -169,14 +169,22 @@ async function run() {
   const vapid = { publicKey: config.vapid_public, privateKey: config.vapid_private, subject: config.subject };
 
   // Oldest first, and never more than a burst at a time.
-  const waiting = await db('notifications?select=*&sent_at=is.null&order=created_at.asc&limit=200');
+  const waiting = await db('notifications?select=*&sent_at=is.null&order=created_at.asc&limit=100');
+  if (!waiting.length) return { waiting: 0, sent: 0, gone: 0, trouble: [] };
+
+  // Every device in one read, rather than one read per message.
+  const devices = new Map();
+  for (const sub of await db('push_subscriptions?select=*')) {
+    if (!devices.has(sub.user_id)) devices.set(sub.user_id, []);
+    devices.get(sub.user_id).push(sub);
+  }
   let sent = 0;
   let gone = 0;
 
   const trouble = [];
 
   for (const note of waiting) {
-    const subs = await db(`push_subscriptions?select=*&user_id=eq.${note.user_id}`);
+    const subs = devices.get(note.user_id) || [];
     const payload = JSON.stringify({ title: note.title, body: note.body, url: note.url, tag: note.kind });
     let took = 0;
     let why = subs.length ? '' : 'nobody has notifications turned on for this person';
