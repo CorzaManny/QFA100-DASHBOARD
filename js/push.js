@@ -14,11 +14,18 @@ function keyBytes(b64) {
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
 
-const b64 = (buffer) => {
-  let s = '';
-  for (const byte of new Uint8Array(buffer)) s += String.fromCharCode(byte);
-  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-};
+// A subscription is tied to the key it was made with. If the team's key has
+// changed since, the push service will refuse every message sent to it, so the
+// old one has to go.
+function madeWithOurKey(sub) {
+  const used = sub.options?.applicationServerKey;
+  // A browser that does not say which key was used gets the benefit of the
+  // doubt, rather than being made to subscribe again every time.
+  if (!used) return true;
+  const a = new Uint8Array(used);
+  const b = keyBytes(PUSH_PUBLIC_KEY);
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
 
 export const pushSupported = () =>
   'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && !!PUSH_PUBLIC_KEY;
@@ -41,10 +48,13 @@ export function pushProblem() {
 
 const registration = () => navigator.serviceWorker.ready;
 
+// On, as far as the team is concerned: subscribed, and with the key the team
+// is signing with now. One made with an older key cannot be delivered to, so
+// it counts as off and turning it on again replaces it.
 export async function pushEnabled() {
   if (!pushSupported()) return false;
   const sub = await (await registration()).pushManager.getSubscription();
-  return !!sub;
+  return !!sub && madeWithOurKey(sub);
 }
 
 // Asks for permission, subscribes, and tells the team database where to send.
@@ -52,9 +62,18 @@ export async function enablePush(label) {
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') throw new Error('Notifications were not allowed on this device.');
   const reg = await registration();
-  const sub =
-    (await reg.pushManager.getSubscription()) ||
-    (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(PUSH_PUBLIC_KEY) }));
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && !madeWithOurKey(sub)) {
+    // Take the old one out of the team database too; messages sent to it are
+    // refused rather than reported as gone, so nothing else would remove it.
+    await deletePushSubscription(sub.endpoint).catch(() => {});
+    await sub.unsubscribe().catch(() => {});
+    sub = null;
+  }
+  sub ||= await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: keyBytes(PUSH_PUBLIC_KEY),
+  });
   const json = sub.toJSON();
   await savePushSubscription({
     endpoint: sub.endpoint,

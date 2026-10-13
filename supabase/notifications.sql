@@ -24,7 +24,7 @@ create table if not exists public.push_config (
   id            boolean primary key default true check (id),
   vapid_public  text not null default '',
   vapid_private text not null default '',
-  subject       text not null default 'mailto:ops@qfa100.example',
+  subject       text not null default 'https://corzamanny.github.io/QFA100-DASHBOARD',
   edge_url      text not null default '',
   secret        text not null default ''
 );
@@ -44,6 +44,13 @@ where id;
 
 -- To change one of them later, run just this line with the new value:
 --   update public.push_config set secret = 'the new one' where id;
+
+-- Who the push services can contact about this app. It has to be a real
+-- https address or a real mailto:, and some of them refuse a made-up one, so
+-- the app's own address is used. Change it to your email if you would rather.
+update public.push_config
+set subject = 'https://corzamanny.github.io/QFA100-DASHBOARD'
+where id and subject in ('', 'mailto:ops@qfa100.example');
 
 -- Supabase's gateway wants an Authorization header before a function is
 -- allowed to run at all. The publishable key from js/config.js satisfies it --

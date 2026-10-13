@@ -171,7 +171,7 @@ This is the one part of the app with a piece outside Supabase's SQL editor: the 
 
 The database builds the messages and asks the function to deliver them once a minute. A message is encrypted for the one device it is going to ([RFC 8291](https://www.rfc-editor.org/rfc/rfc8291)), so the push service that carries it cannot read it. A device that has uninstalled the app or turned notifications off is dropped automatically the next time something is sent to it.
 
-If notifications stop working, run `select public.push_tick();` in the SQL editor: it returns what it did, including anything the sending function complained about.
+If notifications stop working, run `select public.push_tick();` in the SQL editor: it returns what it did, and the `error` column on `public.notifications` keeps the reason against each message. `403 ... BadJwtToken` from the push service means the signature was refused: either the contact address in `push_config.subject` is not a real `https://` address or `mailto:`, or the device subscribed with a different key than the database is signing with. Turning notifications off and on again on that device fixes the second — the app now notices a subscription made with an older key and replaces it.
 
 ## Install it on a phone or tablet
 
