@@ -173,9 +173,14 @@ async function run() {
   let sent = 0;
   let gone = 0;
 
+  const trouble = [];
+
   for (const note of waiting) {
     const subs = await db(`push_subscriptions?select=*&user_id=eq.${note.user_id}`);
     const payload = JSON.stringify({ title: note.title, body: note.body, url: note.url, tag: note.kind });
+    let took = 0;
+    let why = subs.length ? '' : 'nobody has notifications turned on for this person';
+
     for (const sub of subs) {
       try {
         const res = await sendOne(sub, payload, vapid, note.ttl);
@@ -183,21 +188,34 @@ async function run() {
           // The device has unsubscribed or been wiped.
           await db(`push_subscriptions?endpoint=eq.${encodeURIComponent(sub.endpoint)}`, { method: 'DELETE' });
           gone += 1;
+          why = `${res.status} from the push service: that device is gone`;
         } else if (res.ok) {
+          took += 1;
           sent += 1;
         } else {
-          console.error('push rejected', res.status, await res.text());
+          why = `${res.status} from the push service: ${(await res.text()).slice(0, 160)}`;
+          console.error('push rejected', why);
         }
       } catch (err) {
+        why = `could not reach the push service: ${err.message}`;
         console.error('push failed', err.message);
       }
     }
+
+    // Only count it as sent once a device has taken it. Three failed goes and
+    // it is given up on, with the reason kept so it can be read later.
+    const tries = (note.tries || 0) + 1;
     await db(`notifications?id=eq.${note.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ sent_at: new Date().toISOString() }),
+      body: JSON.stringify({
+        tries,
+        error: took ? '' : why,
+        sent_at: took || tries >= 3 ? new Date().toISOString() : null,
+      }),
     });
+    if (!took) trouble.push(why);
   }
-  return { waiting: waiting.length, sent, gone };
+  return { waiting: waiting.length, sent, gone, trouble: [...new Set(trouble)].slice(0, 3) };
 }
 
 if (typeof Deno !== 'undefined' && Deno.serve) {

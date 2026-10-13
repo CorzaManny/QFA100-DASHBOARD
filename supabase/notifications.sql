@@ -82,6 +82,9 @@ create table if not exists public.notifications (
   sent_at    timestamptz
 );
 create index if not exists notifications_waiting_idx on public.notifications (created_at) where sent_at is null;
+-- How many goes it has had, and what went wrong on the last one.
+alter table public.notifications add column if not exists tries integer not null default 0;
+alter table public.notifications add column if not exists error text not null default '';
 
 -- The report time each person was last told about, so a delay is only
 -- mentioned when it has actually moved.
@@ -366,3 +369,27 @@ select cron.schedule('push-tidy', '40 3 * * *',
 
 -- Run it once now and see what it says.
 select public.push_tick();
+
+-- ---------- If notifications are not arriving ----------
+-- Run these three and read them together.
+--
+--   1. Is everything filled in, and does the app's key match the database's?
+select vapid_private not in ('', 'PASTE-THE-PRIVATE-KEY-HERE') as private_key_set,
+       edge_url <> '' and edge_url not like '%YOUR-PROJECT%'   as function_url_set,
+       secret not in ('', 'PICK-ANY-LONG-RANDOM-STRING')       as secret_set,
+       left(vapid_public, 12) || '...'                         as public_key_starts,
+       edge_url
+from public.push_config;
+
+--   2. Has anybody turned notifications on, and where do they go?
+select p.display_name, s.label, left(s.endpoint, 45) || '...' as sent_to, s.created_at
+from public.push_subscriptions s join public.profiles p on p.id = s.user_id;
+
+--   3. What happened to the last few messages?
+select id, kind, title, created_at, sent_at, tries, error
+from public.notifications order by id desc limit 10;
+
+--   To have another go at the last few, whatever happened to them:
+--     update public.notifications set sent_at = null, tries = 0
+--     where id in (select id from public.notifications order by id desc limit 5);
+--     select public.push_tick();
