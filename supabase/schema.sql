@@ -350,8 +350,8 @@ $$;
 create or replace function public.offer_sector(entry uuid, why text default '')
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
-  r  record;
-  id uuid;
+  r        record;
+  new_swap uuid;
 begin
   select ro.*, s.flight, s.dep, s.arr, s.std into r
   from public.roster ro join public.sectors s on s.id = ro.sector_id
@@ -364,15 +364,15 @@ begin
   end if;
 
   insert into public.swaps (roster_id, from_user, reason) values (entry, auth.uid(), coalesce(why, ''))
-  returning swaps.id into id;
+  returning swaps.id into new_swap;
 
   perform public.tell(p.id, 'roster', format('%s needs cover', r.flight),
     format('%s to %s on %s. %s', r.dep, r.arr, to_char(r.std, 'DD Mon HH24:MI"Z"'),
            case when coalesce(why, '') = '' then 'Open it to take it.' else why end),
-    '#/roster', 'swap-open-' || id || '-' || p.id)
+    '#/roster', 'swap-open-' || new_swap || '-' || p.id)
   from public.profiles p
   where p.role in ('admin', 'dispatcher', 'pilot') and p.id <> auth.uid() and not p.is_test;
-  return id;
+  return new_swap;
 end;
 $$;
 
