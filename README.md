@@ -59,7 +59,14 @@ New accounts start as **Awaiting approval** and see nothing; approving one makes
 
 ### EFB tablet accounts
 
-The tablets that live in the cockpit sign in to their own shared accounts, so they show the aeroplane rather than one person. Make one each the same way as anyone else (**Create account**, say `efb1@yourteam…` and name it "EFB 1"), then set its role to **EFB tablet** in **Admin → People and roles**. Two accounts means each tablet keeps its own sign-in, and nobody has to sign out of their own.
+The tablets that live in the cockpit sign in to their own shared accounts, so they show the aeroplane rather than one person. **Both accounts are built in**: `supabase/schema.sql` creates them, there is no email address to make up and nothing to approve. On the login page they sign in by name:
+
+| Tablet | Sign in as | Password |
+|---|---|---|
+| Captain's side | `captain` | the flight deck password |
+| First officer's side | `first_officer` | the same |
+
+The password is set in `supabase/schema.sql` (it starts as `flightdeck`, on a line marked for you to change before you run it). To change it afterwards, edit `supabase/efb-password.sql` and run that in the SQL Editor. Capitals and spaces do not matter when signing in, so "First Officer" works as well as `first_officer`.
 
 A tablet account:
 
@@ -67,7 +74,7 @@ A tablet account:
 - shows the crew flying now and the crew taking the next sector on its Dashboard, with their duties and report times;
 - **keeps the tech log**: it is the only account besides ops staff that can add, change or rectify a defect, and the **Reported by** field is a drop-down of the team, so the tablet records whoever actually found it;
 - cannot be rostered onto a sector, and is not offered as crew anywhere;
-- says **FLIGHT DECK TABLET · SHARED** at the top, so nobody mistakes it for their own device.
+- says **FLIGHT DECK · CAPTAIN EFB** (or FIRST OFFICER EFB) at the top, so nobody mistakes it for their own device.
 
 Pilots still read the whole tech log and the MEL on their own phones; they just cannot write in it. Anything they find goes to the flight deck, which is where the log is kept.
 
@@ -90,7 +97,7 @@ To try out the roster without waiting for real people to sign up, an admin can a
 
 ### After updating the app
 
-When a new version changes the database (new roles, new schedule times), run `supabase/schema.sql` and then `supabase/schedule.sql` again in the SQL Editor. Both are safe to re-run and keep your accounts and roster.
+When a new version changes the database (new roles, new schedule times), run `supabase/schema.sql` and then `supabase/schedule.sql` again in the SQL Editor. Both are safe to re-run and keep your accounts and roster, and re-running the schema does not reset a tablet password you have changed.
 
 ### If the WorldFlight schedule changes
 

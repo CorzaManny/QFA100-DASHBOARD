@@ -2,6 +2,7 @@
 
 import { state, save } from '../store.js';
 import { configured, signIn, signUp, signOut, getSession, requestReset, setPassword } from '../api.js';
+import { EFB_DOMAIN, EFB_LOGINS } from '../config.js';
 import { esc, icon, rerender } from '../ui.js';
 import { syncTeam, clearTeam, isPending, me } from '../ops.js';
 
@@ -90,6 +91,12 @@ export async function emailLink(link, signInWith) {
   rerender();
 }
 
+// A cockpit tablet signs in as "captain" or "first officer" rather than with
+// an email address, so a name is turned into the address behind that account.
+const efbName = (value) => value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+export const isEfbLogin = (value) => !value.includes('@') && EFB_LOGINS.includes(efbName(value));
+const signInAs = (value) => (isEfbLogin(value) ? `${efbName(value)}@${EFB_DOMAIN}` : value.trim());
+
 function form() {
   const signup = mode === 'signup';
   return `
@@ -103,12 +110,19 @@ function form() {
           ? '<label class="field">Your name (shown on the roster)<input name="name" required maxlength="60" autocomplete="name" placeholder="e.g. Corey Manning"></label>'
           : ''
       }
-      <label class="field">Email<input name="email" type="email" required autocomplete="email" autocapitalize="none" value="${esc(email)}"></label>
-      <label class="field">Password<input name="password" type="password" required minlength="8" autocomplete="${signup ? 'new-password' : 'current-password'}"></label>
+      <label class="field">${signup ? 'Email' : 'Email, or the tablet name on a flight deck tablet'}<input name="email" type="${
+        signup ? 'email' : 'text'
+      }" required inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" value="${esc(email)}"></label>
+      <label class="field">Password<input name="password" type="password" required minlength="${signup ? 8 : 6}" autocomplete="${signup ? 'new-password' : 'current-password'}"></label>
       ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
       ${notice ? `<p class="note ok">${esc(notice)}</p>` : ''}
       <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Please wait…' : signup ? 'Create account' : 'Sign in'}</button>
-      ${signup ? '<p class="tiny">Use at least 8 characters. A team admin has to approve your account before you can use the app.</p>' : '<button class="btn ghost" type="button" data-act="mode" data-mode="forgot">Forgot your password?</button>'}
+      ${
+        signup
+          ? '<p class="tiny">Use at least 8 characters. A team admin has to approve your account before you can use the app.</p>'
+          : `<button class="btn ghost" type="button" data-act="mode" data-mode="forgot">Forgot your password?</button>
+             <p class="tiny">On a tablet that stays in the cockpit, sign in as <strong>${EFB_LOGINS.join('</strong> or <strong>')}</strong> with the flight deck password.</p>`
+      }
     </form>`;
 }
 
@@ -141,7 +155,7 @@ export const forms = {
           notice = 'Account created. Check your email for a confirmation link, then sign in here. A team admin then approves your account.';
         }
       } else {
-        await signIn(email, password);
+        await signIn(signInAs(email), password);
       }
       await syncTeam();
       // Whoever uses this page next starts from Sign in.

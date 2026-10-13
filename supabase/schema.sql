@@ -448,3 +448,56 @@ create policy "crew add briefings" on public.briefings
 drop policy if exists "crew update briefings" on public.briefings;
 create policy "crew update briefings" on public.briefings
   for update to authenticated using (public.can_report()) with check (public.can_report());
+
+-- ---------- Flight deck tablets ----------
+-- Two accounts that belong to the app rather than to a person, for the tablets
+-- that stay in the cockpit. They sign in on the app's login page by name:
+--
+--     captain          first_officer
+--
+-- and share one password, set here. Change it before you run this file the
+-- first time, and tell the crew. To change it later, use
+-- Authentication -> Users in Supabase, or edit the line below and run
+-- supabase/efb-password.sql.
+--
+-- Running this file again does not touch a password you have already changed.
+create extension if not exists pgcrypto with schema extensions;
+
+do $$
+declare
+  password constant text := 'flightdeck';   -- <= the tablets' password
+  tablet record;
+  uid uuid;
+begin
+  for tablet in
+    select * from (values
+      ('captain@qfa100.efb', 'Captain EFB'),
+      ('first_officer@qfa100.efb', 'First Officer EFB')
+    ) as t (email, display_name)
+  loop
+    select id into uid from auth.users where email = tablet.email;
+    if uid is null then
+      uid := gen_random_uuid();
+      insert into auth.users (
+        instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+        raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+      ) values (
+        '00000000-0000-0000-0000-000000000000', uid, 'authenticated', 'authenticated',
+        tablet.email, extensions.crypt(password, extensions.gen_salt('bf')), now(),
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        jsonb_build_object('display_name', tablet.display_name), now(), now()
+      );
+      insert into auth.identities (provider_id, user_id, identity_data, provider, created_at, updated_at)
+      values (
+        tablet.email, uid,
+        jsonb_build_object('sub', uid::text, 'email', tablet.email, 'email_verified', true),
+        'email', now(), now()
+      );
+    end if;
+    insert into public.profiles (id, display_name, role)
+    values (uid, tablet.display_name, 'efb')
+    on conflict (id) do update set display_name = excluded.display_name, role = 'efb';
+  end loop;
+exception when others then
+  raise warning 'Could not create the flight deck tablet accounts (%). Everything else was set up. Create them by hand in Authentication -> Users with the addresses captain@qfa100.efb and first_officer@qfa100.efb, then set their role to EFB tablet in Admin.', sqlerrm;
+end $$;

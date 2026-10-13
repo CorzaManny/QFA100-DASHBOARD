@@ -3,7 +3,7 @@
 import { zulu, simClock } from './ui.js';
 import { state } from './store.js';
 import { configured, getSession, useEmailLink } from './api.js';
-import { loadAirports, syncTeam, canEdit, isPending, isEfb } from './ops.js';
+import { loadAirports, syncTeam, canEdit, isPending, isEfb, me } from './ops.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
 import * as admin from './views/admin.js';
@@ -49,8 +49,12 @@ function render() {
   document.body.classList.toggle('locked', gate);
   document.body.classList.toggle('editor', !gate && canEdit());
   document.body.classList.toggle('efb', !gate && isEfb());
-  // Both tablets look the same and say so, so nobody mistakes one for their own device.
-  brand.textContent = !gate && isEfb() ? 'FLIGHT DECK TABLET · SHARED' : 'WORLDFLIGHT · 737 OPERATIONS';
+  // A tablet says so, and which of the two it is, so nobody mistakes one for
+  // their own device.
+  brand.textContent =
+    !gate && isEfb()
+      ? `FLIGHT DECK · ${(me()?.display_name || 'TABLET').toUpperCase()}`
+      : 'WORLDFLIGHT · 737 OPERATIONS';
   route = gate ? { name: 'login', args: [], view: login } : parse();
   root.innerHTML = route.view.render(route.args);
   for (const tab of document.querySelectorAll('[data-tab]')) {
