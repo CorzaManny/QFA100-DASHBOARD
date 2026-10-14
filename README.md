@@ -60,13 +60,14 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 4. In another query, paste in [`supabase/pickups.sql`](supabase/pickups.sql) and press **Run**. This lets pilots ask for an empty seat once the roster is published, for an admin or dispatcher to agree.
 5. In another query, paste in [`supabase/accounts.sql`](supabase/accounts.sql) and press **Run**. This is how an admin makes accounts for the team, and it removes test accounts.
 6. In another query, paste in [`supabase/operations-role.sql`](supabase/operations-role.sql) and press **Run**. This adds the Operations role: ops staff who run the roster but do not fly.
-7. In another query, paste in [`supabase/bidding.sql`](supabase/bidding.sql) and press **Run**. This lets an admin set a deadline for everyone's availability. It is optional; without it availability stays open and the roster can be published whenever you like.
-8. In another query, paste in [`supabase/weather.sql`](supabase/weather.sql) and press **Run**. This lets the airport pages show TAFs. It is optional; without it they show the METAR and the VATSIM ATIS only.
-9. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
-10. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-11. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
-12. Push the change to GitHub.
-13. Open the app and **create your own account first**. The first account becomes the admin.
+7. In another query, paste in [`supabase/simbrief.sql`](supabase/simbrief.sql) and press **Run**. This limits the aeroplane and SimBrief settings to admins and operations.
+8. In another query, paste in [`supabase/bidding.sql`](supabase/bidding.sql) and press **Run**. This lets an admin set a deadline for everyone's availability. It is optional; without it availability stays open and the roster can be published whenever you like.
+9. In another query, paste in [`supabase/weather.sql`](supabase/weather.sql) and press **Run**. This lets the airport pages show TAFs. It is optional; without it they show the METAR and the VATSIM ATIS only.
+10. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
+11. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+12. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
+13. Push the change to GitHub.
+14. Open the app and **create your own account first**. The first account becomes the admin.
 
 Nobody signs themselves up. An admin makes each account in **Admin → People
 and roles → Add a team member**: a name, a role, and a password to pass on. The
@@ -293,7 +294,9 @@ If notifications stop working, run `select public.push_tick();` in the SQL edito
 
 ## The aeroplane, and device settings
 
-There is one aeroplane, so there is one set of answers about it. The **VATSIM callsign**, the **aircraft type** and the **team SimBrief account** are set once by an admin in **Admin → Settings**, and everyone's app follows them. Nobody sets their own: a pilot pointing the app at their own callsign would quietly stop seeing the team's aircraft on the Dashboard, and a second SimBrief account would mean two crews briefing different flight plans.
+There is one aeroplane, so there is one set of answers about it. The **VATSIM callsign**, the **aircraft type**, an optional **custom airframe** and the **team SimBrief account** are set once in **Admin → SimBrief**, by an admin or operations, and everyone's app follows them.
+
+A custom airframe is one saved in the team's SimBrief account with its own weights, cabin layout and registration. Put its **internal ID** (from Aircraft in SimBrief, something like `123456_1582090020`) in that field and the app sends it in place of the aircraft type, so every sector is planned with that aeroplane rather than a generic one. Leave it empty and the ICAO type is used. The page shows the real link for the next sector, so a change can be checked before anybody uses it. It needs [`supabase/simbrief.sql`](supabase/simbrief.sql), which stops anybody but an admin or operations changing any of it. Nobody sets their own: a pilot pointing the app at their own callsign would quietly stop seeing the team's aircraft on the Dashboard, and a second SimBrief account would mean two crews briefing different flight plans.
 
 **Settings**, under your initials in the top right, is left with the one thing that really does belong to a device: the **Simulator status API address**, which only the computer at the sim normally needs (see below). Leave it blank to use VATSIM.
 
@@ -343,7 +346,7 @@ These are still saved on each person's own device, not in the database. To share
 |---|---|
 | Checklist items and wording | `js/data/checklists.js` (`kind: 'normal'` or `'non-normal'` puts one in a group) |
 | Colours and layout | `css/app.css` |
-| Callsign, aircraft type and team SimBrief | in the app: **Admin → Settings** |
+| Callsign, aircraft type, custom airframe and team SimBrief | in the app: **Admin → SimBrief** |
 | Duty rules and report times | in the app: **Admin → Settings** (starting values are in `js/autoroster.js`) |
 | Minimum pilots per sector (`MIN_PILOTS`) | `js/ops.js` |
 | MEL items | rebuild `js/data/mel.json` with `tools/build_mel.py` |

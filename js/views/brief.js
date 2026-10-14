@@ -10,7 +10,7 @@ import {
   currentSector,
   crewLabel,
   canEdit,
-  isAdmin,
+  canSetSimbrief,
   canReport,
   sharedLog,
   me,
@@ -99,9 +99,9 @@ function ofpCard(s, b) {
       ${
         id
           ? ''
-          : isAdmin()
-            ? '<p class="tiny">No team SimBrief account yet. Set it in <a href="#/admin/rules">Admin → Settings</a> and everyone imports the same flight plan.</p>'
-            : '<p class="tiny">No team SimBrief account yet. An admin sets it in Admin → Settings.</p>'
+          : canSetSimbrief()
+            ? '<p class="tiny">No team SimBrief account yet. Set it in <a href="#/admin/simbrief">Admin → SimBrief</a> and everyone imports the same flight plan.</p>'
+            : '<p class="tiny">No team SimBrief account yet. An admin or operations sets it in Admin → SimBrief.</p>'
       }
     </section>`;
 }

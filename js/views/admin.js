@@ -46,6 +46,9 @@ import {
   teamCallsign,
   teamAircraft,
   teamSimbrief,
+  canSetSimbrief,
+  teamAirframe,
+  simbriefPlanUrl,
   isDraft,
   biddingOn,
   biddingOpen,
@@ -88,9 +91,10 @@ function tabs(active) {
   return `
     <div class="page-head"><h1>Admin</h1>
       <span class="badge ${isDraft() ? 'warn' : 'ok'}">ROSTER ${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span></div>
-    <nav class="seg on-card tabs4">
+    <nav class="seg on-card tabs5">
       ${tab('roster', '#/admin', 'Roster')}
       ${tab('balance', '#/admin/balance', 'Balance')}
+      ${canSetSimbrief() ? tab('simbrief', '#/admin/simbrief', 'SimBrief') : ''}
       ${isAdmin() ? tab('rules', '#/admin/rules', 'Settings') : ''}
       ${isAdmin() ? tab('people', '#/admin/people', `People${waiting ? ` (${waiting})` : ''}`) : ''}
     </nav>
@@ -246,6 +250,44 @@ function resetTimesCard() {
     </section>`;
 }
 
+// The aeroplane, the team's SimBrief account and the addresses the app talks
+// to SimBrief on. Admins and operations only: this is the team's identity,
+// not everyday roster work.
+function simbriefPage() {
+  if (!canSetSimbrief()) {
+    return `${tabs('roster')}<section class="card"><p class="note">The aeroplane and SimBrief are set by an admin or operations.</p></section>`;
+  }
+  const s = state.settings || {};
+  return `
+    ${tabs('simbrief')}
+    <form class="card form" data-form="aircraft">
+      <h2>The aeroplane</h2>
+      <p class="note">One callsign, one aircraft and one SimBrief account for the whole team. Everybody's app follows these; nobody sets their own.</p>
+      <div class="grid2">
+        <label class="field">VATSIM callsign<input name="callsign" required autocapitalize="characters" maxlength="10" value="${esc(teamCallsign())}">
+          <span class="tiny">Tracked on the Dashboard, and sent to SimBrief as the callsign</span></label>
+        <label class="field">Aircraft type (ICAO)<input name="aircraft" required autocapitalize="characters" maxlength="4" value="${esc(teamAircraft())}">
+          <span class="tiny">Used for SimBrief and the tech log</span></label>
+      </div>
+      <label class="field">Team SimBrief username or Pilot ID<input name="simbrief" autocapitalize="none" autocorrect="off" value="${esc(teamSimbrief())}" placeholder="Not set yet">
+        <span class="tiny">The one account every flight plan is imported from</span></label>
+      <label class="field">Custom airframe (optional)<input name="airframe" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(teamAirframe())}" placeholder="e.g. 123456_1582090020">
+        <span class="tiny">The airframe's <strong>internal ID</strong>, from Aircraft in the team's SimBrief account. Set it and SimBrief plans with that aeroplane's own weights, layout and registration instead of a generic ${esc(teamAircraft())}. Leave it empty to use the type above.</span></label>
+      <div class="btn-row"><button class="btn primary" type="submit">Save the aeroplane</button></div>
+    </form>
+    <section class="card">
+      <h2>What this looks like</h2>
+      <p class="note">The next sector, as <strong>Plan in SimBrief</strong> would open it:</p>
+      <pre class="metar">${esc(example())}</pre>
+    </section>`;
+}
+
+// The real link for the next sector, so a change can be seen before it is used.
+function example() {
+  const next = sortedSectors().find((x) => new Date(x.std) > Date.now()) || sortedSectors()[0];
+  return next ? simbriefPlanUrl(next) : 'No sectors in the schedule yet.';
+}
+
 function rulesPage() {
   // The aeroplane, the duty rules and the stamped times belong to the whole
   // team, so they are an admin's to change rather than a dispatcher's.
@@ -257,19 +299,6 @@ function rulesPage() {
     `<label class="field">${label}<input type="number" name="${name}" min="0" step="${step}" required value="${esc(r[name])}"><span class="tiny">${hint}</span></label>`;
   return `
     ${tabs('rules')}
-    <form class="card form" data-form="aircraft">
-      <h2>The aeroplane</h2>
-      <p class="note">One callsign, one aircraft and one SimBrief account for the whole team. Everybody's app follows these; nobody sets their own.</p>
-      <div class="grid2">
-        <label class="field">VATSIM callsign<input name="callsign" required autocapitalize="characters" maxlength="10" value="${esc(teamCallsign())}">
-          <span class="tiny">Tracked on the Dashboard</span></label>
-        <label class="field">Aircraft type (ICAO)<input name="aircraft" required autocapitalize="characters" maxlength="4" value="${esc(teamAircraft())}">
-          <span class="tiny">Used for SimBrief and the tech log</span></label>
-      </div>
-      <label class="field">Team SimBrief username or Pilot ID<input name="simbrief" autocapitalize="none" autocorrect="off" value="${esc(teamSimbrief())}" placeholder="Not set yet">
-        <span class="tiny">The one account every flight plan is imported from</span></label>
-      <div class="btn-row"><button class="btn primary" type="submit">Save the aeroplane</button></div>
-    </form>
     ${resetTimesCard()}
     <form class="card form" data-form="bidding">
       <div class="card-head"><h2>Bidding</h2><span class="badge ${
@@ -829,6 +858,7 @@ export function render(args) {
   else if (args[0] === 'auto') out = rosterEditor();
   else if (args[0] === 'balance') out = balancePage();
   else if (args[0] === 'rules') out = rulesPage();
+  else if (args[0] === 'simbrief') out = simbriefPage();
   else if (args[0] === 'sector') out = sectorCrew(args[1]);
   else out = rosterEditor();
   error = '';
@@ -924,7 +954,7 @@ export const forms = {
     const aircraft = String(data.get('aircraft')).trim().toUpperCase();
     return change(async () => {
       await saveSettings({
-        rules: { ...(state.settings?.rules || {}), callsign, aircraft },
+        rules: { ...(state.settings?.rules || {}), callsign, aircraft, airframe: String(data.get('airframe')).trim() },
         simbrief: String(data.get('simbrief')).trim(),
       });
       // The next look at the feed should use the new callsign.

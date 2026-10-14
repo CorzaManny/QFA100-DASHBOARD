@@ -2,7 +2,7 @@
 
 This is the contract between the simulator PC and the QFA100 Ops Dashboard. The simulator side publishes one small JSON document describing the flight right now; the Dashboard reads it every 15 seconds and shows the position, progress and ETA.
 
-Nothing publishes this yet. This document defines what a publisher has to produce. Until one exists, leave the address blank in Settings and the Dashboard uses VATSIM.
+Nothing publishes this yet. This document defines what a publisher has to produce. Until one exists, leave the address unset and the Dashboard uses VATSIM.
 
 ## The endpoint
 
@@ -13,7 +13,7 @@ GET <your address>      e.g. https://example.com/qfa100/status
 - Returns `200` with a JSON body (`Content-Type: application/json`).
 - Must be served over **HTTPS** and must send the header `Access-Control-Allow-Origin: *` (or the app's own address), otherwise browsers will refuse to read it.
 - No login. If you want to keep it private, put a hard-to-guess token in the address itself.
-- The address is entered in the app under **Settings → Simulator status API address**.
+- There is no setting for the address in the app, because only the computer at the simulator wants one. On that machine, open the browser console and run `qfa100.setStatusUrl('https://example.com/qfa100/status')`, or `qfa100.setStatusUrl('')` to go back to VATSIM.
 
 ## The response
 
