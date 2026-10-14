@@ -60,15 +60,6 @@ export async function signIn(email, password) {
   keep(await auth('token?grant_type=password', { email, password }));
 }
 
-// Returns false when the account was created but the email still has to be
-// confirmed before signing in (Supabase's default).
-export async function signUp(email, password, displayName) {
-  const data = await auth('signup', { email, password, data: { display_name: displayName } });
-  if (!data.access_token) return false;
-  keep(data);
-  return true;
-}
-
 // Emails a link that comes back to this app and lets the person choose a new password.
 export const requestReset = (email) =>
   auth(`recover?redirect_to=${encodeURIComponent(location.origin + location.pathname)}`, { email });
@@ -299,11 +290,15 @@ export const deleteRoster = (rosterId) => rest('DELETE', `roster?id=eq.${id(rost
 
 export const updateProfile = (userId, fields) => rest('PATCH', `profiles?id=eq.${id(userId)}`, fields);
 
-// Test accounts are stand-in team members nobody can sign in as.
-export const addTestAccount = (name, role) => rest('POST', 'rpc/add_test_account', { account_name: name, account_role: role });
+// Makes an account for somebody, from supabase/accounts.sql. Nobody signs
+// themselves up. Returns { email, password } to pass on to them: a placeholder
+// address they replace with their own the first time they sign in.
+export const createAccount = (name, role, password) =>
+  rest('POST', 'rpc/create_account', { display_name: name, account_role: role, temp_password: password });
 
-// Pass null to remove every test account.
-export const removeTestAccount = (userId) => rest('POST', 'rpc/remove_test_account', { target: userId });
+// That first sign-in: their own email, and a password only they know.
+export const finishSetup = (email, password) =>
+  rest('POST', 'rpc/finish_setup', { new_email: email, new_password: password });
 
 // Deletes a real account for good: rejects a sign-up, or removes a member.
 export const removeAccount = (userId) => rest('POST', 'rpc/remove_account', { target: userId });

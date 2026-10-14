@@ -3,7 +3,7 @@
 import { zulu, simClock } from './ui.js';
 import { state } from './store.js';
 import { configured, getSession, useEmailLink, signOut } from './api.js';
-import { loadAirports, syncTeam, canEdit, isPending, isEfb, me, clearTeam, roleName } from './ops.js';
+import { loadAirports, syncTeam, canEdit, isPending, needsSetup, isEfb, me, clearTeam, roleName } from './ops.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
 import * as admin from './views/admin.js';
@@ -80,7 +80,8 @@ function parse() {
 // page explains that and offers a preview on this device.
 // Signed-in accounts still waiting for an admin's approval stay on that page too.
 // Someone choosing a new password from a reset email stays there until it is done.
-const locked = () => login.resetting() || (configured ? !getSession() || isPending() : !state.preview);
+const locked = () =>
+  login.resetting() || (configured ? !getSession() || isPending() || needsSetup() : !state.preview);
 
 function render() {
   const gate = locked();

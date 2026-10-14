@@ -1563,6 +1563,24 @@ body.efb .tabs a {
   margin-top: 6px;
 }
 
+/* The email and password a new account was made with, shown once */
+.made {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(79, 155, 240, 0.45);
+  border-radius: var(--r-sm);
+  background: rgba(79, 155, 240, 0.08);
+}
+.made .kvs {
+  margin-top: 8px;
+}
+.made .kv strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 /* ATIS as published, under the controllers working the airport */
 .atis {
   margin-top: 10px;

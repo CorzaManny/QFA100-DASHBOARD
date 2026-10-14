@@ -1,12 +1,13 @@
-// The first page: sign in or create an account.
+// The first page: signing in, and the setting up that follows an account an
+// admin has just made. Nobody signs themselves up.
 
 import { state, save } from '../store.js';
-import { configured, signIn, signUp, signOut, getSession, requestReset, setPassword } from '../api.js';
+import { configured, signIn, signOut, getSession, requestReset, setPassword, finishSetup } from '../api.js';
 import { EFB_DOMAIN, EFB_LOGINS } from '../config.js';
 import { esc, icon, rerender } from '../ui.js';
-import { syncTeam, clearTeam, isPending, me } from '../ops.js';
+import { syncTeam, clearTeam, isPending, needsSetup, me } from '../ops.js';
 
-let mode = 'signin'; // signin, signup, forgot (ask for a reset email) or newpass (arrived from that email)
+let mode = 'signin'; // signin, forgot (ask for a reset email) or newpass (arrived from that email)
 let error = '';
 let notice = '';
 let busy = false;
@@ -33,6 +34,26 @@ function awaitingApproval() {
         <button class="btn ghost" data-act="signout">Sign out</button>
       </div>
     </section>`;
+}
+
+// An admin made this account with a placeholder address and a password they
+// passed on. Nothing else opens until the person makes it their own.
+function setup() {
+  return `
+    <form class="card form" data-form="setup">
+      <div><span class="badge warn">FINISH SETTING UP</span></div>
+      <h2>Welcome, ${esc(me()?.display_name || '')}.</h2>
+      <p class="note">Your account was made for you by an admin. Put in your own email address and choose a password, and you are in. You will sign in with these from now on.</p>
+      <label class="field">Your email<input name="email" type="email" required autocomplete="email" autocapitalize="none" autocorrect="off" placeholder="you@example.com"></label>
+      <label class="field">New password<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+      <label class="field">New password again<input name="again" type="password" required minlength="8" autocomplete="new-password"></label>
+      ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
+      <div class="btn-row">
+        <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Please wait…' : 'Save and continue'}</button>
+        <button class="btn ghost" type="button" data-act="signout">Sign out</button>
+      </div>
+      <p class="tiny">At least 8 characters. Nothing is emailed to you; the address is so the team knows who you are and so you can reset your own password later.</p>
+    </form>`;
 }
 
 function forgot() {
@@ -98,31 +119,18 @@ export const isEfbLogin = (value) => !value.includes('@') && EFB_LOGINS.includes
 const signInAs = (value) => (isEfbLogin(value) ? `${efbName(value)}@${EFB_DOMAIN}` : value.trim());
 
 function form() {
-  const signup = mode === 'signup';
   return `
     <form class="card form" data-form="auth">
-      <div class="seg">
-        <button type="button" class="${signup ? '' : 'on'}" data-act="mode" data-mode="signin">Sign in</button>
-        <button type="button" class="${signup ? 'on' : ''}" data-act="mode" data-mode="signup">Create account</button>
-      </div>
-      ${
-        signup
-          ? '<label class="field">Your name (shown on the roster)<input name="name" required maxlength="60" autocomplete="name" placeholder="e.g. Corey Manning"></label>'
-          : ''
-      }
-      <label class="field">${signup ? 'Email' : 'Email, or the tablet name on a flight deck tablet'}<input name="email" type="${
-        signup ? 'email' : 'text'
-      }" required inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" value="${esc(email)}"></label>
-      <label class="field">Password<input name="password" type="password" required minlength="${signup ? 8 : 6}" autocomplete="${signup ? 'new-password' : 'current-password'}"></label>
+      <h2>Sign in</h2>
+      <label class="field">Email, or the tablet name on a flight deck tablet<input name="email" type="text" required inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" value="${esc(email)}"></label>
+      <label class="field">Password<input name="password" type="password" required minlength="6" autocomplete="current-password"></label>
       ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
       ${notice ? `<p class="note ok">${esc(notice)}</p>` : ''}
-      <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Please wait…' : signup ? 'Create account' : 'Sign in'}</button>
-      ${
-        signup
-          ? '<p class="tiny">Use at least 8 characters. A team admin has to approve your account before you can use the app.</p>'
-          : `<button class="btn ghost" type="button" data-act="mode" data-mode="forgot">Forgot your password?</button>
-             <p class="tiny">On a tablet that stays in the cockpit, sign in as <strong>${EFB_LOGINS.join('</strong> or <strong>')}</strong> with the flight deck password.</p>`
-      }
+      <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Please wait…' : 'Sign in'}</button>
+      <button class="btn ghost" type="button" data-act="mode" data-mode="forgot">Forgot your password?</button>
+      <p class="tiny">Accounts are made by a team admin: ask one for your email and password, and you choose your own when you first sign in. On a tablet that stays in the cockpit, sign in as <strong>${EFB_LOGINS.join(
+        '</strong> or <strong>',
+      )}</strong> with the flight deck password.</p>
     </form>`;
 }
 
@@ -134,11 +142,48 @@ export function render() {
         <h1>QFA100 Ops</h1>
         <div class="tiny">WORLDFLIGHT · 737 OPERATIONS</div>
       </div>
-      ${!configured ? notConnected() : mode === 'newpass' ? newPassword() : mode === 'forgot' ? forgot() : getSession() && isPending() ? awaitingApproval() : form()}
+      ${
+        !configured
+          ? notConnected()
+          : mode === 'newpass'
+            ? newPassword()
+            : mode === 'forgot'
+              ? forgot()
+              : getSession() && needsSetup()
+                ? setup()
+                : getSession() && isPending()
+                  ? awaitingApproval()
+                  : form()
+      }
     </div>`;
 }
 
 export const forms = {
+  // The person's own email and password, replacing what the admin set up. They
+  // are signed in again straight away with the new ones, which both proves
+  // they work and puts the right address on the session.
+  async setup(data) {
+    if (busy) return;
+    const addr = String(data.get('email')).trim();
+    const password = String(data.get('password'));
+    if (password !== String(data.get('again'))) {
+      error = 'Those two passwords are not the same.';
+      return rerender();
+    }
+    busy = true;
+    error = '';
+    rerender();
+    try {
+      await finishSetup(addr, password);
+      await signIn(addr, password);
+      await syncTeam();
+    } catch (err) {
+      error = err.message;
+    }
+    busy = false;
+    rerender();
+  },
+
   async auth(data) {
     if (busy) return;
     email = String(data.get('email')).trim();
@@ -148,15 +193,7 @@ export const forms = {
     notice = '';
     rerender();
     try {
-      if (mode === 'signup') {
-        const signedIn = await signUp(email, password, String(data.get('name')).trim());
-        if (!signedIn) {
-          mode = 'signin';
-          notice = 'Account created. Check your email for a confirmation link, then sign in here. A team admin then approves your account.';
-        }
-      } else {
-        await signIn(signInAs(email), password);
-      }
+      await signIn(signInAs(email), password);
       await syncTeam();
       // Whoever uses this page next starts from Sign in.
       mode = 'signin';

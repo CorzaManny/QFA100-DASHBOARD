@@ -103,7 +103,7 @@ export function render() {
     <form class="card form" data-form="profile">
       <h2>This device</h2>
       <p class="note">The callsign, the aircraft and the team's SimBrief account are the same for everyone and are set in ${
-        canEdit() ? '<a href="#/admin/rules">Admin → Settings</a>' : 'Admin → Settings by an admin'
+        isAdmin() ? '<a href="#/admin/rules">Admin → Settings</a>' : 'Admin → Settings by an admin'
       }. This is the only setting that belongs to this device.</p>
       <label class="field">Simulator status API address (optional)<input name="statusUrl" type="url" inputmode="url" autocapitalize="none" autocorrect="off" value="${esc(p.statusUrl)}" placeholder="https://…/status"></label>
       <p class="tiny">When set, the Dashboard reads the aircraft's position straight from the simulator and only falls back to VATSIM if that fails. Leave blank to use VATSIM. The computer at the sim is usually the only one that needs it.</p>

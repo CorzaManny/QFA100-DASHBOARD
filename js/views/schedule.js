@@ -132,7 +132,7 @@ function list(editing) {
     .join('');
 
   return `
-    <div class="page-head"><h1>${editing ? 'Edit schedule' : 'Schedule'}</h1>
+    <div class="page-head"><h1>${editing ? 'Edit WF Schedule' : 'WF Schedule'}</h1>
       ${
         editing
           ? `<div class="btn-row"><a class="btn ghost" href="#/schedule/new">${icon('plus')} Add sector</a>
@@ -205,7 +205,7 @@ const kv = (label, value) => `<div class="kv"><span>${label}</span><strong>${val
 // A sector to read: what everyone sees, admins included.
 function view(s) {
   return `
-    <div class="page-head"><a class="back" href="#/schedule">${icon('back')} Schedule</a>
+    <div class="page-head"><a class="back" href="#/schedule">${icon('back')} WF Schedule</a>
       ${canEdit() ? `<a class="btn ghost" href="#/schedule/${esc(s.id)}/edit">Edit</a>` : ''}</div>
     <section class="card">
       <h2>${esc(s.dep)} → ${esc(s.arr)}</h2>
@@ -255,7 +255,7 @@ function detail(id, mode) {
   const s = existing || { flight: '', dep: last?.arr || '', arr: '', route: '', notes: '' };
 
   return `
-    <div class="page-head"><a class="back" href="#/schedule/edit">${icon('back')} Edit schedule</a></div>
+    <div class="page-head"><a class="back" href="#/schedule/edit">${icon('back')} Edit WF Schedule</a></div>
     <form class="card form" data-form="sector">
       <h2>${existing ? `${esc(s.dep)} → ${esc(s.arr)}` : 'New sector'}</h2>
       ${existing?.window ? `<p class="note">Official departure window <strong>${depWindow(s)}</strong>. The time below is when it opens.</p>` : ''}

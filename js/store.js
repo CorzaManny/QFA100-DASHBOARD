@@ -23,7 +23,7 @@ function defaults() {
     roster: [], // copy of the team database's roster: { id, sector_id, user_id, duty, report_at, notes }
     settings: null, // team-wide: { roster_state, rules }
     prefs: [], // availability: { user_id, sector_id, choice }; mine, or everyone's for editors
-    people: [], // copy of the team's accounts: { id, display_name, role, is_test }
+    people: [], // copy of the team's accounts: { id, display_name, role, must_setup }
     defects: [], // tech log: a copy of the team database's, or this device's own in preview mode
     defectSeq: 0,
     briefings: [], // per sector: { sector_id, notes, wf_url, wf_notes, handover, ofp, ofp_by, ofp_at }

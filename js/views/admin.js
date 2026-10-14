@@ -6,8 +6,7 @@ import {
   saveRoster,
   deleteRoster,
   setRole,
-  addTestAccount,
-  removeTestAccount,
+  createAccount,
   removeAccount,
   saveSettings,
   saveRosterMany,
@@ -61,6 +60,12 @@ let filter = 'all';
 
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// A password worth giving somebody: easy to read out, hard to guess.
+const newPassword = () => `qfa${Math.random().toString(36).slice(2, 8)}${Math.floor(Math.random() * 90 + 10)}`;
+// The account just made, shown once so the admin can pass it on.
+let madeAccount = null;
+let suggestedPassword = newPassword();
 const name = (id) => esc(person(id)?.display_name || 'Unknown');
 const sectorCount = (userId) => state.roster.filter((r) => r.user_id === userId).length;
 
@@ -83,7 +88,7 @@ function tabs(active) {
     <nav class="seg on-card tabs4">
       ${tab('roster', '#/admin', 'Roster')}
       ${tab('balance', '#/admin/balance', 'Balance')}
-      ${tab('rules', '#/admin/rules', 'Settings')}
+      ${isAdmin() ? tab('rules', '#/admin/rules', 'Settings') : ''}
       ${isAdmin() ? tab('people', '#/admin/people', `People${waiting ? ` (${waiting})` : ''}`) : ''}
     </nav>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
@@ -114,7 +119,7 @@ function autoPanels() {
       return `
       <a class="row" href="#/availability/${esc(p.id)}">
         <div class="row-main">
-          <div class="row-t">${esc(p.display_name)}${p.is_test ? ' <span class="badge info">TEST</span>' : ''}</div>
+          <div class="row-t">${esc(p.display_name)}</div>
           <div class="sub">${n.prefer} prefer · ${n.available} available · ${n.unavailable} can't · ${n.none} ${r.unmarkedAvailable ? 'not said' : 'blank'}</div>
         </div>
         <div class="right">${
@@ -183,7 +188,7 @@ function balancePage() {
     .map(
       ({ p, load }) => `
       <tr class="${load.total ? '' : 'dim'}">
-        <td>${esc(p.display_name)}${p.is_test ? ' <span class="badge info">TEST</span>' : ''}</td>
+        <td>${esc(p.display_name)}</td>
         <td class="num">${load.total}</td>
         <td class="num">${load.Captain}</td>
         <td class="num">${load['First Officer']}</td>
@@ -230,6 +235,11 @@ function resetTimesCard() {
 }
 
 function rulesPage() {
+  // The aeroplane, the duty rules and the stamped times belong to the whole
+  // team, so they are an admin's to change rather than a dispatcher's.
+  if (!isAdmin()) {
+    return `${tabs('roster')}<section class="card"><p class="note">The team's settings are changed by an admin.</p></section>`;
+  }
   const r = rules();
   const num = (name, label, hint, step = 1) =>
     `<label class="field">${label}<input type="number" name="${name}" min="0" step="${step}" required value="${esc(r[name])}"><span class="tiny">${hint}</span></label>`;
@@ -545,8 +555,8 @@ function people() {
       (p) => `
       <div class="row">
         <div class="row-main">
-          <div class="row-t">${esc(p.display_name)}${p.is_test ? ' <span class="badge info">TEST</span>' : ''}</div>
-          <div class="sub">${p.full_name && p.full_name !== p.display_name ? `${esc(p.full_name)} · ` : ''}Signed up and waiting</div>
+          <div class="row-t">${esc(p.display_name)}</div>
+          <div class="sub">${p.full_name && p.full_name !== p.display_name ? `${esc(p.full_name)} · ` : ''}Waiting for approval</div>
         </div>
         <div class="btn-row">
           <button class="btn danger small" data-act="reject" data-id="${esc(p.id)}" data-name="${esc(p.display_name)}">Reject</button>
@@ -561,13 +571,14 @@ function people() {
       (p) => `
       <div class="row">
         <div class="row-main">
-          <div class="row-t">${esc(p.display_name)}${p.id === myId ? ' <span class="badge mute">YOU</span>' : ''}${p.is_test ? ' <span class="badge info">TEST</span>' : ''}</div>
+          <div class="row-t">${esc(p.display_name)}${p.id === myId ? ' <span class="badge mute">YOU</span>' : ''}${
+            p.must_setup ? ' <span class="badge warn">NOT SET UP</span>' : ''
+          }</div>
           <div class="sub">${p.full_name && p.full_name !== p.display_name ? `${esc(p.full_name)} · ` : ''}${plural(sectorCount(p.id), 'sector')} rostered</div>
         </div>
         <div class="btn-row">
           <select class="role-select" data-change="role" data-id="${esc(p.id)}" aria-label="Role for ${esc(p.display_name)}" ${p.id === myId ? 'disabled' : ''}>
             ${Object.entries(ROLES)
-              .filter(([key]) => !(p.is_test && key === 'admin'))
               .map(([key, [label]]) => `<option value="${key}" ${p.role === key ? 'selected' : ''}>${label}</option>`)
               .join('')}
           </select>
@@ -591,7 +602,7 @@ function people() {
       <div class="card-head"><div class="tiny">TEAM ACCOUNTS</div><span class="badge mute">${state.people.length - pendingPeople().length}</span></div>
       ${rows}
     </section>
-    ${testAccounts()}
+    ${newAccount()}
     <section class="card">
       <h2>What each role can do</h2>
       <dl class="legend">${Object.values(ROLES)
@@ -601,35 +612,37 @@ function people() {
     </section>`;
 }
 
-function testAccounts() {
-  const tests = state.people.filter((p) => p.is_test);
-  const rows = tests
-    .map(
-      (p) => `
-      <div class="row">
-        <div class="row-main">
-          <div class="row-t">${esc(p.display_name)}</div>
-          <div class="sub">${esc(ROLES[p.role]?.[0] || p.role)} · ${plural(sectorCount(p.id), 'sector')} rostered</div>
-        </div>
-        <button class="btn danger small" data-act="removeTest" data-id="${esc(p.id)}">Remove</button>
-      </div>`,
-    )
-    .join('');
+// Nobody signs themselves up, so this is how somebody joins the team. What it
+// gives back is shown once, for the admin to pass on; the person replaces both
+// the first time they sign in.
+function newAccount() {
   return `
-    <form class="card form" data-form="test">
-      <div class="card-head"><h2>Test accounts</h2><span class="badge ${tests.length ? 'info' : 'mute'}">${tests.length}</span></div>
-      <p class="note">Stand-in team members for trying out the roster and roles. Nobody can sign in as one, and everyone on the team sees them until you remove them.</p>
+    <form class="card form" data-form="account">
+      <h2>Add a team member</h2>
+      <p class="note">Makes an account and gives you an email and password to pass on. They put in their own email and choose their own password the first time they sign in. Nothing is emailed to anybody.</p>
       <div class="grid2">
-        <label class="field">Name<input name="name" required maxlength="60" value="Test Pilot ${tests.length + 1}"></label>
+        <label class="field">Name on the roster<input name="name" required maxlength="60" autocomplete="off" placeholder="e.g. John Smith"></label>
         <label class="field">Role<select name="role">
-          ${['pilot', 'dispatcher', 'observer', 'pending'].map((key) => `<option value="${key}">${ROLES[key][0]}</option>`).join('')}
+          ${['pilot', 'dispatcher', 'observer', 'admin']
+            .map((key) => `<option value="${key}" ${key === 'pilot' ? 'selected' : ''}>${ROLES[key][0]}</option>`)
+            .join('')}
         </select></label>
       </div>
-      <div class="btn-row">
-        <button class="btn primary" type="submit">Add test account</button>
-        <button class="btn ghost" type="button" data-act="addFour">Add 4 test pilots</button>
-      </div>
-      ${rows ? `<div class="list">${rows}</div><button class="btn danger" type="button" data-act="removeTests">Remove all ${tests.length} test accounts</button>` : ''}
+      <label class="field">Password to give them<input name="password" required minlength="8" autocomplete="off" value="${esc(suggestedPassword)}">
+        <span class="tiny">At least 8 characters. They choose their own as soon as they sign in.</span></label>
+      <div class="btn-row"><button class="btn primary" type="submit">Make the account</button></div>
+      ${
+        madeAccount
+          ? `<div class="made">
+              <div class="tiny">PASS THESE ON TO ${esc(madeAccount.name.toUpperCase())}</div>
+              <div class="kvs">
+                <div class="kv"><span>Email</span><strong>${esc(madeAccount.email)}</strong></div>
+                <div class="kv"><span>Password</span><strong>${esc(madeAccount.password)}</strong></div>
+              </div>
+              <p class="tiny">Shown once. If you lose them, delete the account below and make it again.</p>
+            </div>`
+          : ''
+      }
     </form>`;
 }
 
@@ -865,9 +878,16 @@ export const forms = {
       result = 'Saved. Everyone sees this.';
     });
   },
-  test(data, formEl) {
+  account(data, formEl) {
+    const who = String(data.get('name')).trim();
     formEl.querySelector('[type=submit]').disabled = true;
-    return change(() => addTestAccount(String(data.get('name')).trim(), data.get('role')));
+    return change(async () => {
+      const made = await createAccount(who, data.get('role'), String(data.get('password')));
+      madeAccount = { name: who, email: made?.email || '', password: made?.password || '' };
+      // The next account needs a password of its own.
+      suggestedPassword = newPassword();
+      result = `Account made for ${who}.`;
+    });
   },
   // Used both to add someone and to edit an existing entry.
   entry(data, formEl) {
@@ -998,30 +1018,12 @@ export const actions = {
       result = 'Rules reset to defaults.';
     });
   },
-  addFour(el) {
-    el.disabled = true;
-    const start = state.people.filter((p) => p.is_test).length;
-    return change(async () => {
-      for (let i = 1; i <= 4; i++) await addTestAccount(`Test Pilot ${start + i}`, 'pilot');
-    });
-  },
-  removeTest(el) {
-    if (!confirm('Remove this test account and its roster entries?')) return;
-    el.disabled = true;
-    return change(() => removeTestAccount(el.dataset.id));
-  },
-  removeTests(el) {
-    if (!confirm('Remove every test account and their roster entries? Real accounts are not affected.')) return;
-    el.disabled = true;
-    return change(() => removeTestAccount(null));
-  },
   reject(el) {
-    const person = state.people.find((p) => p.id === el.dataset.id);
     const count = sectorCount(el.dataset.id);
     const rostered = count ? ` They come off the ${plural(count, 'sector')} they are rostered on.` : '';
     if (!confirm(`Delete the account for ${el.dataset.name}? They will not be able to sign in, and this cannot be undone.${rostered}`)) return;
     el.disabled = true;
-    return change(() => (person?.is_test ? removeTestAccount(el.dataset.id) : removeAccount(el.dataset.id)));
+    return change(() => removeAccount(el.dataset.id));
   },
   clearAllTimes(el) {
     if (!confirm('Clear every off and on block time for every sector? This cannot be undone.')) return;

@@ -103,6 +103,9 @@ export const ROLES = {
 export const roleName = (role) => (ROLES[role] || ROLES.pilot)[0];
 export const isAdmin = () => me()?.role === 'admin';
 export const isPending = () => me()?.role === 'pending';
+// An account an admin made, still carrying the placeholder address it was
+// created with. Nothing else in the app opens until the person replaces it.
+export const needsSetup = () => !!me()?.must_setup;
 export const pendingPeople = () => state.people.filter((p) => p.role === 'pending');
 export const canEdit = () => ['admin', 'dispatcher'].includes(me()?.role);
 // A tablet left in the cockpit, signed in to a shared account. It shows the

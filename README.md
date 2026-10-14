@@ -58,16 +58,26 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 2. Open **SQL Editor**, paste in the whole of [`supabase/schema.sql`](supabase/schema.sql) and press **Run**. This creates the accounts, sectors and roster tables and their permissions.
 3. In a new query, paste in [`supabase/schedule.sql`](supabase/schedule.sql) and press **Run**. This loads the 43 WorldFlight sectors.
 4. In another query, paste in [`supabase/pickups.sql`](supabase/pickups.sql) and press **Run**. This lets pilots ask for an empty seat once the roster is published, for an admin or dispatcher to agree.
-5. In another query, paste in [`supabase/weather.sql`](supabase/weather.sql) and press **Run**. This lets the airport pages show TAFs. It is optional; without it they show the METAR and the VATSIM ATIS only.
-6. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
-7. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-8. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
-9. Push the change to GitHub.
-10. Open the app and **create your own account first**. The first account becomes the admin.
+5. In another query, paste in [`supabase/accounts.sql`](supabase/accounts.sql) and press **Run**. This is how an admin makes accounts for the team, and it removes test accounts.
+6. In another query, paste in [`supabase/weather.sql`](supabase/weather.sql) and press **Run**. This lets the airport pages show TAFs. It is optional; without it they show the METAR and the VATSIM ATIS only.
+7. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
+8. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+9. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
+10. Push the change to GitHub.
+11. Open the app and **create your own account first**. The first account becomes the admin.
 
-Then send the link to the team. Each person presses **Create account** and is signed straight in, with no email to confirm. A new account then waits on an "Awaiting approval" page and can see nothing until an admin approves it in **Admin → People and roles**. Admins get a banner on the Dashboard when someone is waiting.
+Nobody signs themselves up. An admin makes each account in **Admin → People
+and roles → Add a team member**: a name, a role, and a password to pass on. The
+app hands back that password and a placeholder email address, shown once, for
+the admin to give the person however they like. The first time that person signs
+in, the only thing they can do is put in their own email address and choose
+their own password; the rest of the app opens once they have.
 
-Optional once everyone has joined: **Authentication → Sign In / Providers**, turn off **Allow new users to sign up**, so strangers with the link cannot create accounts at all.
+Nothing is ever emailed to anybody, and the placeholder address is at a domain
+that can never exist, so it cannot reach a real inbox by accident.
+
+Close the door at the server too, not just in the app: **Authentication → Sign
+In / Providers → Email**, and switch off **Allow new users to sign up**.
 
 ### Roles
 
@@ -118,9 +128,16 @@ The duty rules are edited in **Admin → Settings** and apply to the whole team:
 
 Auto roster is a sensible-rules fill, not a perfect optimiser: it works through the sectors in order, evening out the number of sectors each person flies and the time they spend in each seat, favouring sectors people asked for and keeping a crew together on back-to-back sectors. Expect to adjust a few by hand.
 
-### Test accounts
+### Accounts
 
-To try out the roster without waiting for real people to sign up, an admin can add stand-in team members in **Admin → People and roles → Test accounts**. They can be rostered and given roles like anyone else, they are marked TEST, and nobody can sign in as one. Everyone on the team sees them until you remove them, which also removes their roster entries.
+Every account is made by an admin, in **Admin → People and roles**. Somebody who
+has not set theirs up yet is marked **NOT SET UP**, which means they have not
+signed in for the first time. **Remove** deletes an account for good and takes
+the person off every sector they were rostered on.
+
+Test accounts have been removed. If an old database still has some, running
+[`supabase/accounts.sql`](supabase/accounts.sql) deletes them and takes away the
+functions that made them.
 
 ### After updating the app
 

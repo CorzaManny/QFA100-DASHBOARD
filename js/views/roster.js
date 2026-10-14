@@ -25,7 +25,7 @@ function needBadge(s) {
 
 function noAccounts() {
   return `
-    <div class="page-head"><h1>Roster</h1></div>
+    <div class="page-head"><h1>Team Roster</h1></div>
     <section class="card">
       <p class="note">The roster is linked to user accounts, and this app is not connected to its database yet. Follow "Set up accounts" in the README, then everyone signs in and can be rostered here.</p>
     </section>`;
@@ -34,7 +34,7 @@ function noAccounts() {
 // While the roster is a draft, pilots only get the availability page.
 function draft() {
   return `
-    <div class="page-head"><h1>Roster</h1><span class="badge warn">DRAFT</span></div>
+    <div class="page-head"><h1>Team Roster</h1><span class="badge warn">DRAFT</span></div>
     <section class="card">
       <h2>The roster is being put together</h2>
       ${
@@ -182,7 +182,7 @@ function list() {
 
   const short = sectors.filter((s) => new Date(s.sta) > now && pilotsShort(s)).length;
   return `
-    <div class="page-head"><h1>Roster</h1>
+    <div class="page-head"><h1>Team Roster</h1>
       ${isDraft() ? '<span class="badge warn">DRAFT · NOT VISIBLE TO PILOTS</span>' : ''}</div>
     <div class="btn-row">
       ${isEfb() ? '' : '<a class="btn ghost" href="#/availability">My availability</a>'}
@@ -190,7 +190,6 @@ function list() {
     </div>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
     ${isEfb() ? '' : coverCard()}
-    ${openSeatsCard()}
     ${
       isEfb()
         ? ''
@@ -198,7 +197,8 @@ function list() {
             <div class="card-head"><div class="tiny">MY ROSTER · ${esc((me()?.display_name || '').toUpperCase())}</div>
               <span class="badge ${mine.length ? 'info' : 'mute'}">${mine.length} SECTOR${mine.length === 1 ? '' : 'S'}</span></div>
             ${myRows || '<p class="note">You are not rostered on any sectors yet.</p>'}
-          </section>`
+          </section>
+          ${openSeatsCard()}`
     }
     <section class="card list">
       <div class="card-head"><div class="tiny">FULL ROSTER</div>
@@ -229,7 +229,7 @@ function detail(id) {
   const gone = new Date(s.std) < Date.now();
 
   return `
-    <div class="page-head"><a class="back" href="#/roster">${icon('back')} Roster</a></div>
+    <div class="page-head"><a class="back" href="#/roster">${icon('back')} Team Roster</a></div>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
     <section class="card list">
       <div class="card-head"><div>
