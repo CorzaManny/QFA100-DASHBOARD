@@ -1,8 +1,11 @@
 // Airport briefings: facts, live METAR, runways, team notes, chart links.
 
 import { state, save } from '../store.js';
-import { esc, ago, icao, icon } from '../ui.js';
+import { esc, ago, icao, icon, rerender } from '../ui.js';
 import { airport, sortedSectors, upcomingSector, fetchMetar } from '../ops.js';
+
+// The airport whose team notes are open for editing. They read until then.
+let editing = '';
 
 function list() {
   const next = upcomingSector();
@@ -72,12 +75,21 @@ function detail(code) {
       <div id="metar">${metarBlock(code)}</div>
     </section>
     <section class="card"><h2>Runways</h2>${runways}</section>
-    <form class="card form" data-form="notes">
-      <h2>Team notes</h2>
-      <label class="field">Scenery issues, taxi routing, local procedures, gotchas
-        <textarea name="notes" rows="6" placeholder="e.g. Default scenery has no gates on the international apron. Expect the RNP approach to 16R.">${esc(state.notes[code] || '')}</textarea></label>
-      <div class="btn-row"><button class="btn primary" type="submit">Save notes</button><span class="saved tiny" hidden>Saved</span></div>
-    </form>`;
+    ${
+      editing === code
+        ? `<form class="card form" data-form="notes">
+            <h2>Team notes</h2>
+            <label class="field">Scenery issues, taxi routing, local procedures, gotchas
+              <textarea name="notes" rows="6" placeholder="e.g. Default scenery has no gates on the international apron. Expect the RNP approach to 16R.">${esc(state.notes[code] || '')}</textarea></label>
+            <div class="btn-row"><button class="btn primary" type="submit">Save notes</button>
+              <button class="btn ghost" type="button" data-act="edit" data-code="">Cancel</button></div>
+          </form>`
+        : `<section class="card">
+            <div class="card-head"><h2>Team notes</h2>
+              <button class="btn ghost" data-act="edit" data-code="${esc(code)}">${state.notes[code] ? 'Edit' : 'Add'}</button></div>
+            ${state.notes[code] ? `<p class="mel-text">${esc(state.notes[code])}</p>` : '<p class="note">No notes for this airport yet.</p>'}
+          </section>`
+    }`;
 }
 
 export function render(args) {
@@ -118,11 +130,16 @@ export const forms = {
     if (text) state.notes[code] = text;
     else delete state.notes[code];
     save();
-    formEl.querySelector('.saved').hidden = false;
+    editing = '';
+    rerender();
   },
 };
 
 export const actions = {
+  edit(el) {
+    editing = el.dataset.code;
+    rerender();
+  },
   metar(el) {
     loadMetar(el.closest('main'), currentCode());
   },

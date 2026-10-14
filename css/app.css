@@ -1429,50 +1429,59 @@ body.efb .tabs a {
   font-size: 0.64rem;
 }
 
-/* Stamping off and on blocks on the flight deck */
+/* Stamping off and on blocks on the flight deck: two big boxes side by side */
 .stamps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 8px 0;
+}
+.stamp-box {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 110px;
   padding: 12px;
+  border: 2px dashed var(--dim);
   border-radius: 12px;
   background: var(--bg);
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
 }
-.stamps .btn {
-  min-height: 56px;
-  font-size: 1.05rem;
-}
-/* "Off blocks" on the left, the time it will record on the right */
-.stamps .btn .stamp-label {
-  font-weight: 600;
-}
-.stamps .btn .stamp-time {
+.stamp-box strong {
+  font-size: 1.9rem;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
   letter-spacing: 0.02em;
 }
-.stamps .btn[data-act='stamp'] {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 16px;
+.stamp-box.done {
+  border-style: solid;
+  border-color: var(--ok);
 }
-.stamps .btn.small {
-  min-height: 36px;
-  font-size: 0.85rem;
+.stamp-box:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
-.stamped {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.stamp-box.editing {
+  cursor: default;
+  border-style: solid;
+  border-color: var(--link);
 }
-.stamp-pick {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.stamp-box.editing input[name='time'] {
+  width: 100%;
+  max-width: 8ch;
+  font-size: 1.6rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
+.stamp-box.editing .btn-row {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
 /* A published time that the running has moved on from */
 .dim-time {
   color: var(--dim);

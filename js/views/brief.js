@@ -27,6 +27,9 @@ const TEXT_FIELDS = ['notes', 'wf_url', 'wf_notes', 'handover'];
 let busy = false;
 let error = '';
 let notice = '';
+// The text card being edited, as "<sector id>:<card>". Every card reads until
+// someone presses its Edit button.
+let editing = '';
 
 const isLink = (url) => /^https?:\/\/\S+$/i.test(url || '');
 
@@ -127,13 +130,25 @@ function defectsCard() {
     </section>`;
 }
 
-// A card whose text the crew can edit and everyone else can read.
-function textCard(title, help, fields) {
-  if (!canReport()) {
+// A card of text everyone reads. The crew press Edit to change it.
+function textCard(sectorId, title, help, fields) {
+  const key = `${sectorId}:${fields[0].name}`;
+  if (!canReport() || editing !== key) {
     const shown = fields.filter((f) => f.value);
     return `
-      <section class="card"><h2>${title}</h2>
-        ${shown.map((f) => `<p class="mel-text">${esc(f.value)}</p>`).join('') || '<p class="note">Nothing here yet.</p>'}
+      <section class="card">
+        <div class="card-head"><h2>${title}</h2>${
+          canReport() ? `<button class="btn ghost" data-act="edit" data-card="${esc(key)}">${shown.length ? 'Edit' : 'Add'}</button>` : ''
+        }</div>
+        ${
+          shown
+            .map((f) =>
+              f.url && isLink(f.value)
+                ? `<p class="note"><a href="${esc(f.value)}" target="_blank" rel="noopener">${esc(f.value)}</a></p>`
+                : `<p class="mel-text">${esc(f.value)}</p>`,
+            )
+            .join('') || '<p class="note">Nothing here yet.</p>'
+        }
       </section>`;
   }
   return `
@@ -147,7 +162,10 @@ function textCard(title, help, fields) {
             : `<label class="field">${f.label}<textarea name="${f.name}" rows="${f.rows || 4}" placeholder="${esc(f.placeholder)}">${esc(f.value)}</textarea></label>`,
         )
         .join('')}
-      <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>Save</button>
+      <div class="btn-row">
+        <button class="btn primary" type="submit" ${busy ? 'disabled' : ''}>Save</button>
+        <button class="btn ghost" type="button" data-act="edit" data-card="">Cancel</button>
+      </div>
     </form>`;
 }
 
@@ -191,7 +209,7 @@ export function render(args) {
         : ''
     }
     ${ofpCard(s, b)}
-    ${textCard('Team notes', 'Anything the team wants the crew of this sector to know.', [
+    ${textCard(s.id, 'Team notes', 'Anything the team wants the crew of this sector to know.', [
       { name: 'notes', label: 'Notes', value: b.notes || '', placeholder: 'e.g. Expect holding into WSSS, ATC is busy' },
     ])}
     <section class="card">
@@ -201,11 +219,11 @@ export function render(args) {
         <a class="btn ghost" href="${WF_SCHEDULE}" target="_blank" rel="noopener">WorldFlight schedule ${icon('external')}</a>
       </div>
     </section>
-    ${textCard("WorldFlight's page and briefing notes", "Paste the address of WorldFlight's page for this sector, and their briefing notes, so nobody has to go looking.", [
+    ${textCard(s.id, "WorldFlight's page and briefing notes", "Paste the address of WorldFlight's page for this sector, and their briefing notes, so nobody has to go looking.", [
       { name: 'wf_url', label: 'Official page address', value: b.wf_url || '', placeholder: 'https://…', url: true },
       { name: 'wf_notes', label: "WorldFlight's briefing notes", value: b.wf_notes || '', placeholder: 'Paste their notes for this sector', rows: 6 },
     ])}
-    ${textCard('Handover to the next crew', 'Written by this sector’s crew: fuel state, quirks, what is already set up. It shows on the next sector’s briefing.', [
+    ${textCard(s.id, 'Handover to the next crew', 'Written by this sector’s crew: fuel state, quirks, what is already set up. It shows on the next sector’s briefing.', [
       { name: 'handover', label: 'Handover notes', value: b.handover || '', placeholder: 'e.g. Parked gate 54, APU running, 6.2 t on board' },
     ])}
     <p class="tiny center">${sharedLog() ? 'Saved for the whole team.' : 'Saved on this device only.'}</p>`;
@@ -246,11 +264,19 @@ export const forms = {
       error = 'The page address has to start with https://';
       return rerender();
     }
-    return run(() => saveBrief(currentSectorId(), fields), 'Saved.');
+    return run(async () => {
+      await saveBrief(currentSectorId(), fields);
+      editing = '';
+    }, 'Saved.');
   },
 };
 
 export const actions = {
+  edit(el) {
+    editing = el.dataset.card;
+    error = '';
+    rerender();
+  },
   importOfp() {
     const s = sortedSectors().find((x) => x.id === currentSectorId());
     return run(async () => {

@@ -239,6 +239,15 @@ export function clearTeam() {
 // True when the tech log is the team's shared one rather than this device's own.
 export const sharedLog = () => configured && !!getSession() && state.sharedLog;
 
+// Names are shown as first name and last initial: "John Smith" -> "John S".
+// The cockpit tablets keep their names. full_name keeps what was typed, for
+// editing it and for telling two people apart in Admin -> People.
+export function shortName(full) {
+  const words = String(full || '').trim().split(/\s+/).filter(Boolean);
+  return words.length > 1 ? `${words[0]} ${words.at(-1)[0].toUpperCase()}` : words[0] || '';
+}
+const withShortName = (p) => ({ ...p, full_name: p.display_name, display_name: p.role === 'efb' ? p.display_name : shortName(p.display_name) });
+
 // Pull the latest schedule, roster, accounts and tech log from the team database.
 // On failure the copy already on the device stays in use.
 export async function syncTeam() {
@@ -246,6 +255,7 @@ export async function syncTeam() {
   try {
     const { defects, official, ...team } = await loadAll();
     Object.assign(state, team);
+    state.people = (state.people || []).map(withShortName);
     // null means the database has no official schedule table; keep the copy
     // the app ships with rather than blanking it.
     state.official = official || [];
@@ -520,12 +530,29 @@ export async function fetchMetar(code) {
 
 // ---- SimBrief ----
 
+// Opens SimBrief with the sector filled in: the team's callsign (QFA100, not the
+// WorldFlight sector number), and the scheduled departure date, time and block
+// time, all in UTC.
 export function simbriefPlanUrl(sector) {
-  const m = /^([A-Z]{3})(\d.*)$/.exec(sector.flight.toUpperCase());
-  const q = new URLSearchParams({ orig: sector.dep, dest: sector.arr, type: teamAircraft() });
+  const callsign = teamCallsign();
+  const q = new URLSearchParams({ orig: sector.dep, dest: sector.arr, type: teamAircraft(), callsign });
+  const m = /^([A-Z]{3})(\d+[A-Z]?)$/.exec(callsign);
   if (m) {
     q.set('airline', m[1]);
     q.set('fltnum', m[2]);
+  }
+  const std = new Date(sector.std);
+  if (!isNaN(std)) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const mon = 'JANFEBMARAPRMAYJUNJULAUGSEPOCTNOVDEC'.substr(std.getUTCMonth() * 3, 3);
+    q.set('date', `${pad(std.getUTCDate())}${mon}${pad(std.getUTCFullYear() % 100)}`);
+    q.set('deph', pad(std.getUTCHours()));
+    q.set('depm', pad(std.getUTCMinutes()));
+    const block = Math.round((new Date(sector.sta) - std) / 60000);
+    if (block > 0) {
+      q.set('steh', pad(Math.floor(block / 60)));
+      q.set('stem', pad(block % 60));
+    }
   }
   if (sector.route) q.set('route', sector.route);
   return `https://dispatch.simbrief.com/options/custom?${q}`;

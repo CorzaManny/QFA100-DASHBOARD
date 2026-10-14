@@ -257,6 +257,11 @@ export const deletePushSubscription = (endpoint) =>
 
 // The times the flight deck stamped for a sector. One row per sector, so
 // stamping the same sector again updates it.
+// Deletes the off and on block times for one sector, or for every sector when
+// sectorId is null, putting the schedule back on the published times.
+export const clearActuals = (sectorId) =>
+  rest('DELETE', sectorId ? `sector_actuals?sector_id=eq.${id(sectorId)}` : 'sector_actuals?sector_id=not.is.null');
+
 export const saveActual = (sectorId, fields) =>
   rest(
     'POST',

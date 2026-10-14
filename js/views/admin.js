@@ -13,6 +13,7 @@ import {
   saveRosterMany,
   clearAutoRoster,
   decideSwap,
+  clearActuals,
 } from '../api.js';
 import { DEFAULT_RULES, planRoster, problems, isBoc } from '../autoroster.js';
 import { esc, zulu, zdate, depWindow, simLocal, span, isoDate, isoTime, icon, rerender } from '../ui.js';
@@ -213,6 +214,18 @@ function balancePage() {
     </section>`;
 }
 
+// Wipes every stamped off and on block time, e.g. after testing the stamp
+// buttons. The published schedule is never touched.
+function resetTimesCard() {
+  const stamped = (state.actuals || []).filter((a) => a.off_blocks || a.on_blocks || a.skipped).length;
+  return `
+    <section class="card">
+      <div class="card-head"><h2>Off and on block times</h2><span class="badge ${stamped ? 'warn' : 'mute'}">${stamped} STAMPED</span></div>
+      <p class="note">Clears every off and on block time stamped so far, so every sector goes back to its published times. Use it after testing the stamp buttons. The schedule itself is not changed.</p>
+      <div class="btn-row"><button class="btn danger" data-act="clearAllTimes" ${stamped ? '' : 'disabled'}>Clear all stamped times</button></div>
+    </section>`;
+}
+
 function rulesPage() {
   const r = rules();
   const num = (name, label, hint, step = 1) =>
@@ -232,6 +245,7 @@ function rulesPage() {
         <span class="tiny">The one account every flight plan is imported from</span></label>
       <div class="btn-row"><button class="btn primary" type="submit">Save the aeroplane</button></div>
     </form>
+    ${resetTimesCard()}
     <form class="card form" data-form="rules">
       <h2>Duty rules</h2>
       <p class="note">Auto roster follows these, and the rule check flags anyone rostered by hand who breaks them. They apply to the whole team.</p>
@@ -478,7 +492,7 @@ function people() {
       <div class="row">
         <div class="row-main">
           <div class="row-t">${esc(p.display_name)}${p.is_test ? ' <span class="badge info">TEST</span>' : ''}</div>
-          <div class="sub">Signed up and waiting${p.vatsim_cid ? ` · CID ${esc(p.vatsim_cid)}` : ''}</div>
+          <div class="sub">${p.full_name && p.full_name !== p.display_name ? `${esc(p.full_name)} · ` : ''}Signed up and waiting</div>
         </div>
         <div class="btn-row">
           <button class="btn danger small" data-act="reject" data-id="${esc(p.id)}" data-name="${esc(p.display_name)}">Reject</button>
@@ -494,14 +508,17 @@ function people() {
       <div class="row">
         <div class="row-main">
           <div class="row-t">${esc(p.display_name)}${p.id === myId ? ' <span class="badge mute">YOU</span>' : ''}${p.is_test ? ' <span class="badge info">TEST</span>' : ''}</div>
-          <div class="sub">${plural(sectorCount(p.id), 'sector')} rostered${p.vatsim_cid ? ` · CID ${esc(p.vatsim_cid)}` : ''}</div>
+          <div class="sub">${p.full_name && p.full_name !== p.display_name ? `${esc(p.full_name)} · ` : ''}${plural(sectorCount(p.id), 'sector')} rostered</div>
         </div>
-        <select class="role-select" data-change="role" data-id="${esc(p.id)}" aria-label="Role for ${esc(p.display_name)}" ${p.id === myId ? 'disabled' : ''}>
-          ${Object.entries(ROLES)
-            .filter(([key]) => !(p.is_test && key === 'admin'))
-            .map(([key, [label]]) => `<option value="${key}" ${p.role === key ? 'selected' : ''}>${label}</option>`)
-            .join('')}
-        </select>
+        <div class="btn-row">
+          <select class="role-select" data-change="role" data-id="${esc(p.id)}" aria-label="Role for ${esc(p.display_name)}" ${p.id === myId ? 'disabled' : ''}>
+            ${Object.entries(ROLES)
+              .filter(([key]) => !(p.is_test && key === 'admin'))
+              .map(([key, [label]]) => `<option value="${key}" ${p.role === key ? 'selected' : ''}>${label}</option>`)
+              .join('')}
+          </select>
+          ${p.id === myId ? '' : `<button class="btn danger small" data-act="reject" data-id="${esc(p.id)}" data-name="${esc(p.display_name)}">Remove</button>`}
+        </div>
       </div>`,
     )
     .join('');
@@ -526,7 +543,7 @@ function people() {
       <dl class="legend">${Object.values(ROLES)
         .map(([label, what]) => `<dt>${label}</dt><dd>${what}</dd>`)
         .join('')}</dl>
-      <p class="tiny">You cannot change your own role, so there is always at least one admin. New accounts wait for approval. To remove someone, set them back to "Awaiting approval" (they lose access at once), then press Reject to delete the account.</p>
+      <p class="tiny">You cannot change or remove your own account, so there is always at least one admin. New accounts wait for approval. Remove deletes someone's account for good and takes them off every sector they were rostered on.</p>
     </section>`;
 }
 
@@ -906,9 +923,16 @@ export const actions = {
   },
   reject(el) {
     const person = state.people.find((p) => p.id === el.dataset.id);
-    if (!confirm(`Delete the account for ${el.dataset.name}? They will not be able to sign in, and this cannot be undone.`)) return;
+    const count = sectorCount(el.dataset.id);
+    const rostered = count ? ` They come off the ${plural(count, 'sector')} they are rostered on.` : '';
+    if (!confirm(`Delete the account for ${el.dataset.name}? They will not be able to sign in, and this cannot be undone.${rostered}`)) return;
     el.disabled = true;
     return change(() => (person?.is_test ? removeTestAccount(el.dataset.id) : removeAccount(el.dataset.id)));
+  },
+  clearAllTimes(el) {
+    if (!confirm('Clear every off and on block time for every sector? This cannot be undone.')) return;
+    el.disabled = true;
+    return change(() => clearActuals(null));
   },
   approve(el) {
     el.disabled = true;

@@ -22,10 +22,8 @@ function account() {
       <div class="card-head"><h2>Your account</h2>
         <span class="badge ${p?.role === 'admin' ? 'warn' : 'info'}">${esc(roleName(p?.role).toUpperCase())}</span></div>
       <p class="note">Signed in as <strong>${esc(getSession()?.email || '')}</strong></p>
-      <div class="grid2">
-        <label class="field">Name on the roster<input name="name" required maxlength="60" value="${esc(p?.display_name || '')}"></label>
-        <label class="field">VATSIM CID (optional)<input name="cid" inputmode="numeric" maxlength="10" value="${esc(p?.vatsim_cid || '')}"></label>
-      </div>
+      <label class="field">Name on the roster<input name="name" required maxlength="60" value="${esc(p?.full_name || p?.display_name || '')}"></label>
+      <p class="tiny">Everyone sees your first name and last initial, e.g. John S.</p>
       <div class="btn-row">
         <button class="btn primary" type="submit">Save account</button>
         <button class="btn ghost" type="button" data-act="signout">Sign out</button>
@@ -193,7 +191,6 @@ export const forms = {
       () =>
         updateProfile(me().id, {
           display_name: String(data.get('name')).trim(),
-          vatsim_cid: String(data.get('cid')).trim() || null,
         }),
       'Account saved.',
     );

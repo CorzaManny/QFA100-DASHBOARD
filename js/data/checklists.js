@@ -4,14 +4,12 @@ import { NON_NORMAL_QRH } from './non-normal.js';
 // FOR FLIGHT SIMULATION USE ONLY. Edit this file to match your team's
 // add-on and SOPs: each item is ['Challenge', 'Response'].
 
-// Checklists are grouped: the normal ones you run every sector, the
-// non-normal ones for a failure, and the memory items that are actioned
-// before anybody opens a book. Add to the last two by giving a checklist
-// kind: 'non-normal' or kind: 'memory'.
+// Checklists are grouped: the normal ones you run every sector and the
+// non-normal ones for a failure. Add to the second by giving a checklist
+// kind: 'non-normal'.
 export const CHECKLIST_KINDS = [
   ['normal', 'Normal'],
   ['non-normal', 'Non-normal'],
-  ['memory', 'Memory items'],
 ];
 
 export const CHECKLISTS = [

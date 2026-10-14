@@ -155,11 +155,6 @@ function tick() {
   for (const el of root.querySelectorAll('[data-until]')) {
     el.textContent = dash.countdown(el.dataset.until, now, el.dataset.verb);
   }
-  // A button that records "now" shows the minute it would record.
-  for (const el of root.querySelectorAll('[data-live]')) {
-    el.dataset.at = now;
-    el.textContent = zulu(now);
-  }
 }
 
 setInterval(tick, 1000);

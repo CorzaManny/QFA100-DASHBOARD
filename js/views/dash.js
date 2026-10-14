@@ -1,7 +1,7 @@
 // Dashboard: current flight status, your next sector, aircraft status.
 
 import { state } from '../store.js';
-import { esc, zulu, zdate, span, ago, depWindow, simLocal, isoTime, icon, rerender } from '../ui.js';
+import { esc, zulu, zdate, span, ago, depWindow, simLocal, icon, rerender } from '../ui.js';
 import { round5 } from '../running.js';
 import { saveActual } from '../api.js';
 import {
@@ -233,76 +233,54 @@ function runningBanner(run) {
     }</span>${icon('chevron')}</a>`;
 }
 
-// Which sector and field a different time is being typed for, so the picker
-// only opens on the one that was asked for.
+// The stamp box being corrected, as "<sector id>|<field>".
 let picking = '';
 
-// The two buttons the flight deck presses. One press records the time on the
-// button, which is the time now in Zulu; the time itself can be changed after
-// if the press was late. These are the only numbers anybody has to enter.
-function stamps(row, now) {
+// Off blocks and on blocks: two boxes. Tap an empty one and it records the
+// time now. Tap a filled one to correct it or clear it.
+function stamps(row) {
   if (!canLog() || !row) return '';
   const s = row.sector;
-  const live = state.track;
-  // The feed cannot stamp anything by itself, but it can offer the time it saw
-  // the aeroplane stop.
-  const suggest =
-    live?.online && live.at && (!live.dep || live.dep === s.dep) && (!live.arr || live.arr === s.arr) ? live.at : now;
-
-  // The feed knows when the aeroplane actually stopped; otherwise the button
-  // simply offers now, and keeps up with the clock while it sits there.
-  const fromFeed = live?.phase === 'ARRIVED' && suggest !== now;
-  const button = (field, label, at, kind) => {
+  const box = (field, label, t, ready) => {
     const key = `${s.id}|${field}`;
-    if (picking === key) return timePicker(s, field, at);
-    const follows = !(field === 'on_blocks' && fromFeed);
+    if (picking === key) return timePicker(s, field, label, t);
+    if (t) {
+      return `
+        <button class="stamp-box done" data-act="pick" data-key="${esc(key)}">
+          <span class="tiny">${label}</span>
+          <strong>${zulu(t)}</strong>
+          <span class="tiny">Tap to change</span>
+        </button>`;
+    }
     return `
-      <button class="btn ${kind}" data-act="stamp" data-sector="${esc(s.id)}" data-field="${field}">
-        <span class="stamp-label">${label}</span>
-        <span class="stamp-time" data-at="${at}" ${follows ? 'data-live="1"' : ''}>${zulu(at)}</span>
-      </button>
-      <button class="btn ghost small" data-act="pick" data-key="${esc(key)}">Different time</button>`;
+      <button class="stamp-box" data-act="stamp" data-sector="${esc(s.id)}" data-field="${field}" ${ready ? '' : 'disabled'}>
+        <span class="tiny">${label}</span>
+        <strong>—</strong>
+        <span class="tiny">${ready ? 'Tap to stamp now' : 'After off blocks'}</span>
+      </button>`;
   };
-
-  const done = (field, label, t) => `
-    <div class="stamped">
-      <div><span class="tiny">${label}</span> <strong>${zulu(t)}</strong> <span class="tiny">${simLocal(t)}</span></div>
-      <button class="btn ghost small" data-act="pick" data-key="${esc(`${s.id}|${field}`)}">Change</button>
-    </div>
-    ${picking === `${s.id}|${field}` ? timePicker(s, field, t) : ''}`;
-
   return `
+    <div class="tiny">${esc(s.flight)} ${esc(s.dep)} → ${esc(s.arr)}</div>
     <div class="stamps">
-      <div class="tiny">${esc(s.flight)} ${esc(s.dep)} → ${esc(s.arr)}</div>
-      ${
-        row.off
-          ? `${done('off_blocks', 'Off blocks', row.off)}${
-              row.delay ? `<div class="tiny ${row.delay > 0 ? 'warn-text' : 'ok-text'}">${lateWords(row.delay)}</div>` : ''
-            }`
-          : button('off_blocks', 'Off blocks', suggest, 'primary')
-      }
-      ${
-        row.on
-          ? done('on_blocks', 'On blocks', row.on)
-          : row.off
-            ? button('on_blocks', 'On blocks', suggest, live?.phase === 'ARRIVED' ? 'primary' : 'ghost')
-            : ''
-      }
-      ${row.off || row.on ? `<button class="btn ghost small" data-act="unstamp" data-sector="${esc(s.id)}">Clear both</button>` : ''}
-    </div>`;
+      ${box('off_blocks', 'Off blocks', row.off, true)}
+      ${box('on_blocks', 'On blocks', row.on, !!row.off)}
+    </div>
+    ${row.off && row.delay ? `<div class="tiny ${row.delay > 0 ? 'warn-text' : 'ok-text'}">${lateWords(row.delay)}</div>` : ''}`;
 }
 
-// Typing a time instead: Zulu, hours and minutes, on the day the sector flies.
-function timePicker(sector, field, at) {
+// Correcting a stamped time: four digits in Zulu, e.g. 1435.
+function timePicker(sector, field, label, at) {
   return `
-    <form class="stamp-pick" data-form="pickTime">
+    <form class="stamp-box editing" data-form="pickTime">
       <input type="hidden" name="sector" value="${esc(sector.id)}">
       <input type="hidden" name="field" value="${field}">
-      <input type="hidden" name="near" value="${at}">
-      <label class="field">Time (Zulu)<input type="time" name="time" required value="${isoTime(at)}"></label>
+      <input type="hidden" name="near" value="${new Date(at).getTime()}">
+      <label class="tiny" for="stamp-${field}">${label} (Zulu)</label>
+      <input id="stamp-${field}" name="time" inputmode="numeric" autocomplete="off" maxlength="5" required value="${zulu(at).replace(/\D/g, '')}">
       <div class="btn-row">
-        <button class="btn primary" type="submit">Save</button>
-        <button class="btn ghost" type="button" data-act="pick" data-key="">Cancel</button>
+        <button class="btn primary small" type="submit">Save</button>
+        <button class="btn ghost small" type="button" data-act="pick" data-key="">Cancel</button>
+        <button class="btn danger small" type="button" data-act="unstamp" data-sector="${esc(sector.id)}" data-field="${field}">Clear</button>
       </div>
     </form>`;
 }
@@ -364,8 +342,8 @@ function flightDeck(now, run) {
             <div class="card-head"><h2>Times</h2>${
               run.trusted && run.late ? `<span class="badge ${run.late.delay > 0 ? 'warn' : 'info'}">${span(Math.abs(run.late.delay))} ${run.late.delay > 0 ? 'LATE' : 'EARLY'}</span>` : ''
             }</div>
-            <p class="note">Stamp these as they happen. Every report time and departure after this one is worked out from them.</p>
-            ${stamps(stamping, now)}
+            <p class="note">Tap a box as it happens and it records the time now. Every later report time and departure is worked out from them.</p>
+            ${stamps(stamping)}
           </section>`
         : ''
     }
@@ -392,7 +370,7 @@ function scheduleBanner() {
   if (!canEdit() || !state.sectors.length) return '';
   const { total } = scheduleDrift();
   if (!total) return '';
-  return `<a class="banner warn" href="#/schedule">${icon('calendar')}
+  return `<a class="banner warn" href="#/schedule/edit">${icon('calendar')}
     <span><strong>WorldFlight schedule changed</strong> · ${total} sector${total === 1 ? '' : 's'} differ from the official one</span>${icon('chevron')}</a>`;
 }
 
@@ -439,13 +417,18 @@ export function mounted() {
 }
 
 export const forms = {
-  // A time typed in Zulu, on whichever day the sector is flying. A time that
-  // lands more than half a day from the moment it is replacing has rolled over
-  // midnight, so the day moves with it.
+  // A time typed in Zulu (1435 or 14:35), on whichever day the sector is
+  // flying. A time more than half a day from the one it replaces has rolled
+  // over midnight, so the day moves with it.
   async pickTime(data, formEl) {
     const near = Number(data.get('near'));
-    const [h, m] = String(data.get('time')).split(':').map(Number);
-    if (!isFinite(h) || !isFinite(m)) return;
+    const digits = String(data.get('time')).replace(/\D/g, '').padStart(4, '0');
+    const h = Number(digits.slice(0, 2));
+    const m = Number(digits.slice(2, 4));
+    if (digits.length !== 4 || h > 23 || m > 59) {
+      alert('Type the time as four digits in Zulu, e.g. 1435.');
+      return;
+    }
     const at = new Date(near);
     at.setUTCHours(h, m, 0, 0);
     const drift = at - near;
@@ -466,21 +449,18 @@ export const forms = {
 export const actions = {
   refresh: () => poll(true),
 
-  // One press, one timestamp. The delay for every later sector follows from it.
-  // Opens or closes the "different time" box.
+  // Opens or closes the box for correcting a stamped time.
   pick(el) {
     picking = el.dataset.key || '';
     rerender();
   },
 
+  // One tap, one timestamp: the time now. Every later sector follows from it.
   async stamp(el) {
     el.disabled = true;
     picking = '';
-    // The time shown on the button is the time recorded, kept in step with the
-    // clock so a button sitting on screen does not record a stale minute.
-    const at = new Date(Number(el.querySelector('.stamp-time')?.dataset.at) || Date.now());
     try {
-      await saveActual(el.dataset.sector, { [el.dataset.field]: at.toISOString(), by_name: me()?.display_name || '' });
+      await saveActual(el.dataset.sector, { [el.dataset.field]: new Date().toISOString(), by_name: me()?.display_name || '' });
       await syncTeam();
     } catch (err) {
       alert(`Could not save that time: ${err.message}`);
@@ -488,14 +468,17 @@ export const actions = {
     rerender();
   },
 
+  // Clears one stamped time. Clearing off blocks clears on blocks with it.
   async unstamp(el) {
-    if (!confirm('Clear the times stamped for this sector? The schedule goes back to the published times.')) return;
+    const off = el.dataset.field === 'off_blocks';
+    if (!confirm(off ? 'Clear off blocks (and on blocks)?' : 'Clear on blocks?')) return;
     el.disabled = true;
+    picking = '';
     try {
-      await saveActual(el.dataset.sector, { off_blocks: null, on_blocks: null, by_name: me()?.display_name || '' });
+      await saveActual(el.dataset.sector, { ...(off ? { off_blocks: null } : {}), on_blocks: null, by_name: me()?.display_name || '' });
       await syncTeam();
     } catch (err) {
-      alert(`Could not clear those times: ${err.message}`);
+      alert(`Could not clear that time: ${err.message}`);
     }
     rerender();
   },

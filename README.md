@@ -48,7 +48,7 @@ Optional once everyone has joined: **Authentication → Sign In / Providers**, t
 | | Observer | Pilot | EFB tablet | Dispatcher | Admin |
 |---|---|---|---|---|---|
 | See the schedule, the full roster and their own roster | yes | yes | full roster only | yes | yes |
-| Change their own name and VATSIM CID | yes | yes | yes | yes | yes |
+| Change their own name | yes | yes | yes | yes | yes |
 | Write in the tech log | | | yes | yes | yes |
 | Write sector briefings and the handover | | yes | yes | yes | yes |
 | Be rostered as a pilot | | yes | | yes | yes |
@@ -236,7 +236,7 @@ These are still saved on each person's own device, not in the database. To share
 
 | To change | Edit |
 |---|---|
-| Checklist items and wording | `js/data/checklists.js` (`kind: 'normal'`, `'non-normal'` or `'memory'` puts one in a group) |
+| Checklist items and wording | `js/data/checklists.js` (`kind: 'normal'` or `'non-normal'` puts one in a group) |
 | Colours and layout | `css/app.css` |
 | Callsign, aircraft type and team SimBrief | in the app: **Admin → Settings** |
 | Duty rules and report times | in the app: **Admin → Settings** (starting values are in `js/autoroster.js`) |
