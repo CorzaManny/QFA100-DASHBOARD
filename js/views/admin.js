@@ -47,6 +47,9 @@ import {
   teamAircraft,
   teamSimbrief,
   isDraft,
+  biddingOn,
+  biddingOpen,
+  bidsCloseAt,
   prefOf,
   PILOT_DUTIES,
   syncTeam,
@@ -145,7 +148,16 @@ function autoPanels() {
           ? 'The roster is a draft. Pilots cannot see it; they can only fill in their availability. Publish it when it is ready.'
           : 'The roster is published and everyone can see it. Move it back to draft to hide it while you rework it.'
       }</p>
-      <button class="btn ${isDraft() ? 'primary' : 'ghost'}" data-act="state" data-state="${isDraft() ? 'published' : 'draft'}">${isDraft() ? 'Publish roster' : 'Move back to draft'}</button>
+      ${
+        isDraft() && biddingOpen()
+          ? `<p class="note warn">${icon('alert')} Bidding is open until <strong>${zdate(bidsCloseAt())} ${zulu(
+              bidsCloseAt(),
+            )}</strong>. The roster can be published once it closes.</p>`
+          : ''
+      }
+      <button class="btn ${isDraft() ? 'primary' : 'ghost'}" data-act="state" data-state="${isDraft() ? 'published' : 'draft'}" ${
+        isDraft() && biddingOpen() ? 'disabled' : ''
+      }>${isDraft() ? 'Publish roster' : 'Move back to draft'}</button>
     </section>`,
     `<section class="card">
       <h2>Auto roster</h2>
@@ -259,6 +271,30 @@ function rulesPage() {
       <div class="btn-row"><button class="btn primary" type="submit">Save the aeroplane</button></div>
     </form>
     ${resetTimesCard()}
+    <form class="card form" data-form="bidding">
+      <div class="card-head"><h2>Bidding</h2><span class="badge ${
+        biddingOn() ? (biddingOpen() ? 'warn' : 'ok') : 'mute'
+      }">${biddingOn() ? (biddingOpen() ? 'OPEN' : 'CLOSED') : 'OFF'}</span></div>
+      <p class="note">Give the team a deadline for their availability. Until it passes everyone can bid and the roster cannot be published; after it, availability is sealed and you build the roster from it. Ops staff can still change somebody's availability afterwards.</p>
+      <label class="check"><input type="checkbox" name="enabled" ${state.settings?.bidding_enabled ? 'checked' : ''}> Use a bidding deadline</label>
+      <div class="grid2">
+        <label class="field">Bidding closes, date (UTC)<input type="date" name="closeDate" value="${
+          state.settings?.bids_close_at ? isoDate(state.settings.bids_close_at) : ''
+        }"></label>
+        <label class="field">Bidding closes, time (UTC)<input type="time" name="closeTime" value="${
+          state.settings?.bids_close_at ? isoTime(state.settings.bids_close_at) : ''
+        }"></label>
+      </div>
+      <p class="form-error" hidden></p>
+      <div class="btn-row"><button class="btn primary" type="submit">Save bidding</button></div>
+      <p class="tiny">${
+        biddingOn()
+          ? biddingOpen()
+            ? `Everyone sees a banner counting down to ${zdate(bidsCloseAt())} ${zulu(bidsCloseAt())}.`
+            : 'Bidding has closed. Availability is sealed and the roster can be published.'
+          : 'Switched off: availability can be changed at any time and the roster can be published whenever you like.'
+      }</p>
+    </form>
     <form class="card form" data-form="rules">
       <h2>Duty rules</h2>
       <p class="note">Auto roster follows these, and the rule check flags anyone rostered by hand who breaks them. They apply to the whole team.</p>
@@ -849,6 +885,24 @@ export const changes = {
 };
 
 export const forms = {
+  bidding(data, formEl) {
+    const enabled = data.get('enabled') === 'on';
+    const date = data.get('closeDate');
+    const time = data.get('closeTime');
+    const at = date && time ? new Date(`${date}T${time}:00Z`) : null;
+    const error = formEl.querySelector('.form-error');
+    if (enabled && (!at || isNaN(at))) {
+      error.textContent = 'Give the date and time bidding closes, or switch bidding off.';
+      error.hidden = false;
+      return;
+    }
+    formEl.querySelector('[type=submit]').disabled = true;
+    return change(async () => {
+      await saveSettings({ bidding_enabled: enabled, bids_close_at: at ? at.toISOString() : null });
+      result = enabled ? 'Bidding deadline saved.' : 'Bidding switched off.';
+    });
+  },
+
   // Anything the team has set that is not a duty rule, such as the aeroplane,
   // is kept as it is rather than wiped by saving this form.
   rules(data) {

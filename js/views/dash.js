@@ -33,6 +33,10 @@ import {
   claimedSwaps,
   sortedSectors,
   actualOf,
+  isOps,
+  biddingOn,
+  biddingOpen,
+  bidsCloseAt,
 } from '../ops.js';
 import { nextIncomplete } from './checklists.js';
 
@@ -243,7 +247,9 @@ function sectorCard(now, run) {
           : state.preview
             ? '<div class="tiny">Accounts are not set up yet, so this is the team\'s next sector.</div>'
             : isDraft() && !canEdit()
-              ? '<div class="tiny">The roster is still a draft. <a href="#/availability">Set your availability</a> so you can be rostered.</div>'
+              ? `<div class="tiny">The roster is still a draft.${
+                  isOps() ? '' : ' <a href="#/availability">Set your availability</a> so you can be rostered.'
+                }</div>`
               : '<div class="tiny">You are not rostered on an upcoming sector, so this is the team\'s next one. See the <a href="#/roster">Roster</a>.</div>'
       }
     </section>`;
@@ -394,6 +400,25 @@ function approvalBanner() {
     <span><strong>${waiting} account${waiting === 1 ? '' : 's'}</strong> waiting for your approval</span>${icon('chevron')}</a>`;
 }
 
+// While bidding is open, everyone who flies is told when it shuts. Ops staff
+// see it too, since they are the ones waiting on it.
+function biddingBanner(now) {
+  if (!biddingOn() || isEfb()) return '';
+  const at = bidsCloseAt();
+  if (biddingOpen(now)) {
+    const mine = isOps() ? '' : ' · set your availability';
+    return `<a class="banner warn" href="${isOps() ? '#/admin' : '#/availability'}">${icon('calendar')}
+      <span><strong>Bidding closes ${zdate(at)} ${zulu(at)}</strong> · <span data-until="${esc(
+        at.toISOString(),
+      )}" data-verb="Closes">${countdown(at, now, 'Closes')}</span>${mine}</span>${icon('chevron')}</a>`;
+  }
+  // Once it has closed it is only worth saying while the roster is still being
+  // built; after that the roster itself is the news.
+  if (!isDraft()) return '';
+  return `<a class="banner info" href="#/roster">${icon('calendar')}
+    <span><strong>Bidding has closed</strong> · the roster is being built from everyone's availability</span>${icon('chevron')}</a>`;
+}
+
 // Swaps somebody has taken and empty seats somebody has asked for, waiting
 // for an admin or dispatcher to agree.
 function requestsBanner() {
@@ -451,6 +476,7 @@ export function render() {
   const o = next ? briefingOf(next.id).ofp : null;
   return `
     ${approvalBanner()}
+    ${biddingBanner(now)}
     ${requestsBanner()}
     ${runningBanner(run)}
     ${scheduleBanner()}

@@ -3,7 +3,7 @@
 import { zulu, simClock } from './ui.js';
 import { state } from './store.js';
 import { configured, getSession, useEmailLink, signOut } from './api.js';
-import { loadAirports, syncTeam, canEdit, isPending, needsSetup, isEfb, me, clearTeam, roleName } from './ops.js';
+import { loadAirports, syncTeam, canEdit, isPending, needsSetup, isEfb, isOps, me, clearTeam, roleName } from './ops.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
 import * as admin from './views/admin.js';
@@ -73,7 +73,7 @@ function safeDecode(part) {
 function parse() {
   const [name, ...args] = location.hash.replace(/^#\/?/, '').split('/').map(safeDecode);
   // A cockpit tablet has no availability of its own.
-  const key = ROUTES[name] && !(name === 'availability' && isEfb()) ? name : 'dashboard';
+  const key = ROUTES[name] && !(name === 'availability' && (isEfb() || isOps())) ? name : 'dashboard';
   return { name: key, args, view: ROUTES[key] };
 }
 

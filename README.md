@@ -59,12 +59,14 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 3. In a new query, paste in [`supabase/schedule.sql`](supabase/schedule.sql) and press **Run**. This loads the 43 WorldFlight sectors.
 4. In another query, paste in [`supabase/pickups.sql`](supabase/pickups.sql) and press **Run**. This lets pilots ask for an empty seat once the roster is published, for an admin or dispatcher to agree.
 5. In another query, paste in [`supabase/accounts.sql`](supabase/accounts.sql) and press **Run**. This is how an admin makes accounts for the team, and it removes test accounts.
-6. In another query, paste in [`supabase/weather.sql`](supabase/weather.sql) and press **Run**. This lets the airport pages show TAFs. It is optional; without it they show the METAR and the VATSIM ATIS only.
-7. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
-8. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-9. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
-10. Push the change to GitHub.
-11. Open the app and **create your own account first**. The first account becomes the admin.
+6. In another query, paste in [`supabase/operations-role.sql`](supabase/operations-role.sql) and press **Run**. This adds the Operations role: ops staff who run the roster but do not fly.
+7. In another query, paste in [`supabase/bidding.sql`](supabase/bidding.sql) and press **Run**. This lets an admin set a deadline for everyone's availability. It is optional; without it availability stays open and the roster can be published whenever you like.
+8. In another query, paste in [`supabase/weather.sql`](supabase/weather.sql) and press **Run**. This lets the airport pages show TAFs. It is optional; without it they show the METAR and the VATSIM ATIS only.
+9. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
+10. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+11. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
+12. Push the change to GitHub.
+13. Open the app and **create your own account first**. The first account becomes the admin.
 
 Nobody signs themselves up. An admin makes each account in **Admin → People
 and roles → Add a team member**: a name, a role, and a password to pass on. The
@@ -81,16 +83,23 @@ In / Providers → Email**, and switch off **Allow new users to sign up**.
 
 ### Roles
 
-| | Observer | Pilot | EFB tablet | Dispatcher | Admin |
-|---|---|---|---|---|---|
-| See the schedule, the full roster and their own roster | yes | yes | full roster only | yes | yes |
-| Change their own name | yes | yes | yes | yes | yes |
-| Write in the tech log | | | yes | yes | yes |
-| Write sector briefings and the handover | | yes | yes | yes | yes |
-| Be rostered as a pilot | | yes | | yes | yes |
-| Add, edit and delete sectors | | | | yes | yes |
-| Build the roster, set duties and report times | | | | yes | yes |
-| Change other people's roles | | | | | yes |
+| | Observer | Pilot | EFB tablet | Operations | Dispatcher | Admin |
+|---|---|---|---|---|---|---|
+| See the schedule, the full roster and their own roster | yes | yes | full roster only | yes | yes | yes |
+| Change their own name | yes | yes | yes | yes | yes | yes |
+| Write in the tech log | | | yes | yes | yes | yes |
+| Write sector briefings and the handover | | yes | yes | yes | yes | yes |
+| Be rostered as a pilot | | yes | | | yes | yes |
+| Set their own availability | | yes | | | yes | yes |
+| Add, edit and delete sectors | | | | yes | yes | yes |
+| Build the roster, set duties and report times | | | | yes | yes | yes |
+| Change the team's settings and other people's roles | | | | | | yes |
+
+**Operations** is for people who run the event but do not fly it. They can do
+everything a dispatcher can — build the roster, edit the schedule, agree swaps
+and seat pickups, keep the tech log — but they are never on the roster
+themselves, so the app never asks them for availability and never offers them a
+seat. It needs [`supabase/operations-role.sql`](supabase/operations-role.sql).
 
 New accounts start as **Awaiting approval** and see nothing; approving one makes it a Pilot. An admin changes roles, or sets someone back to Awaiting approval to remove their access, in **Admin → People and roles**. These rules are enforced by the database, not just by hiding buttons. A forgotten password is reset from **Authentication → Users** in Supabase.
 
@@ -117,6 +126,7 @@ Pilots still read the whole tech log and the MEL on their own phones; they just 
 
 ### Building the roster with Auto roster
 
+0. **Bidding (optional).** An admin can set a moment when availability closes, in **Admin → Settings → Bidding**. Until then everyone sees a banner counting down to it, pilots can change their availability freely, and **the roster cannot be published**. At the deadline availability is sealed and the roster is built from it. Ops staff can still change somebody's availability afterwards, because a late phone call still has to be dealt with. Leave it switched off and availability stays open with no deadline at all. It needs [`supabase/bidding.sql`](supabase/bidding.sql), and the database enforces both the seal and the publishing block.
 1. **Draft.** The roster starts as a draft. Pilots cannot see it; their Roster tab only offers **Set my availability**.
 2. **Availability.** Everyone counts as available for every sector unless they say otherwise, so a pilot only marks the sectors they would like (Prefer) or cannot fly (Can't). Turn that off in **Admin → Settings** if you would rather nobody is rostered until they answer. Times are shown in Zulu and sim local (Sydney) time, and back-of-clock sectors are flagged. Admins and dispatchers can fill it in for someone from **Admin → Roster**.
 3. **Roster by hand.** **Admin → Roster** lists every upcoming sector with its crew and what it still needs. Open one to get its own page: the times, the departure window, the seats, and **Who can fly this** — every pilot on the team with what they said about the sector, what they are already flying ("4 sectors · 2 CA, 1 FO"), their hours and back-of-clock count, and **every duty rule that rostering them would break**, written out in full. Press a seat button (CA, FO, RP) to roster them, or press it again to take them off. Nothing is blocked: if you need someone on a flight, put them there and the rule check will keep reminding you. Do the whole roster this way if you like, or only pin the people who must fly a particular sector and let Auto roster do the rest.

@@ -1059,6 +1059,11 @@ button:focus-visible {
   background: var(--brand);
   color: #fff;
 }
+/* Bidding has closed, so the choices are there to read, not to press. */
+.seg button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
 
 /* ---- Roster ---- */
 

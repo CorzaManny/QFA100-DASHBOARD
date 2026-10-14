@@ -95,7 +95,8 @@ export const me = () => state.people.find((p) => p.id === getSession()?.userId) 
 export const ROLES = {
   pending: ['Awaiting approval', 'A new account; sees nothing until an admin approves it'],
   admin: ['Admin', 'Everything, including changing roles'],
-  dispatcher: ['Dispatcher', 'Edits the schedule and the roster'],
+  dispatcher: ['Dispatcher', 'Edits the schedule and the roster, and flies'],
+  operations: ['Operations', 'Everything a dispatcher does, but does not fly'],
   pilot: ['Pilot', 'Can be rostered to fly'],
   observer: ['Observer', 'Read only; can only be rostered as an observer'],
   efb: ['EFB tablet', 'A shared cockpit tablet: keeps the tech log, cannot be rostered'],
@@ -107,12 +108,16 @@ export const isPending = () => me()?.role === 'pending';
 // created with. Nothing else in the app opens until the person replaces it.
 export const needsSetup = () => !!me()?.must_setup;
 export const pendingPeople = () => state.people.filter((p) => p.role === 'pending');
-export const canEdit = () => ['admin', 'dispatcher'].includes(me()?.role);
+export const canEdit = () => ['admin', 'dispatcher', 'operations'].includes(me()?.role);
+// Ops staff run the roster but are never on it, so they are never asked for
+// availability and never offered a seat.
+export const isOps = () => me()?.role === 'operations';
+export const flies = (role) => ['admin', 'dispatcher', 'pilot'].includes(role);
 // A tablet left in the cockpit, signed in to a shared account. It shows the
 // whole team's flying rather than one person's, and keeps the tech log.
 export const isEfb = () => me()?.role === 'efb';
 // Who may write in the tech log: the cockpit tablets, and ops staff correcting it.
-export const canLog = () => !configured || ['admin', 'dispatcher', 'efb'].includes(me()?.role);
+export const canLog = () => !configured || ['admin', 'dispatcher', 'operations', 'efb'].includes(me()?.role);
 export const person = (id) => state.people.find((p) => p.id === id) || null;
 
 // What each person is told, and how early. Anything they have not chosen falls
@@ -172,7 +177,7 @@ export function workload(userId) {
 }
 
 // Everyone who can be put on a sector at all: a tablet is not a person.
-export const rosterable = () => state.people.filter((p) => !['pending', 'efb'].includes(p.role));
+export const rosterable = () => state.people.filter((p) => !['pending', 'operations', 'efb'].includes(p.role));
 
 // Which duty rules taking on one more sector would break for somebody. Empty
 // when it breaks none, or when they are already on it.
@@ -186,6 +191,18 @@ export function wouldBreak(userId, sector) {
   return problems([...mine, sector], rules()).filter((text) => !before.includes(text));
 }
 
+// ---- Bidding ----
+
+// An admin can set a moment when availability closes and the roster is built.
+// With it switched off, nothing below applies and availability stays open.
+export const biddingOn = () => !!state.settings?.bidding_enabled && !!state.settings?.bids_close_at;
+export const bidsCloseAt = () => (biddingOn() ? new Date(state.settings.bids_close_at) : null);
+export const biddingOpen = (now = Date.now()) => biddingOn() && now < bidsCloseAt().getTime();
+export const biddingClosed = (now = Date.now()) => biddingOn() && now >= bidsCloseAt().getTime();
+// Who may still change availability: everybody until bidding closes, and ops
+// staff afterwards, because a late phone call still has to be dealt with.
+export const canBid = () => !biddingClosed() || canEdit();
+
 // ---- Picking up an empty seat ----
 
 // null until supabase/pickups.sql has been run.
@@ -194,7 +211,7 @@ export const pendingPickups = () => (state.pickups || []).filter((p) => p.state 
 // Pilot seats on a sector that nobody is rostered in.
 export const openSeats = (sector) => seats(sector).filter((duty) => !crewOf(sector).some((r) => r.duty === duty));
 // Who may ask for a seat: anybody who flies, once the roster is published.
-export const canPickUp = () => configured && !isDraft() && ['admin', 'dispatcher', 'pilot'].includes(me()?.role) && pickupsOn();
+export const canPickUp = () => configured && !isDraft() && flies(me()?.role) && pickupsOn();
 
 // ---- Giving a sector away ----
 
@@ -211,7 +228,7 @@ export function swapSector(swap) {
 }
 
 // Everyone who can be rostered in a pilot's seat.
-export const flyers = () => state.people.filter((p) => ['admin', 'dispatcher', 'pilot'].includes(p.role));
+export const flyers = () => state.people.filter((p) => flies(p.role));
 
 // Report time offered when rostering: a set time before the departure window
 // opens, longer for the first sector of the event. Both are team rules.
@@ -706,7 +723,7 @@ export async function fetchOfp(id) {
 
 // Everyone except observers writes briefings; the cockpit tablet does too,
 // since the handover is written on the flight deck.
-export const canReport = () => !configured || ['admin', 'dispatcher', 'pilot', 'efb'].includes(me()?.role);
+export const canReport = () => !configured || ['admin', 'dispatcher', 'operations', 'pilot', 'efb'].includes(me()?.role);
 
 export const briefingOf = (sectorId) => state.briefings.find((b) => b.sector_id === sectorId) || {};
 

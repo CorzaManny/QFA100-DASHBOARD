@@ -6,7 +6,7 @@ import { configured, offerSector, claimSwap, withdrawSwap, requestPickup, withdr
 import { esc, zulu, zdate, depWindow, simLocal, icon, rerender } from '../ui.js';
 import {
   sortedSectors, crewOf, person, me, canEdit, pilotsShort, pilotsNeeded, needsRelief, isDraft,
-  MIN_PILOTS, rules, isEfb, openSwaps, swapFor, swapSector, swapEntry, wouldBreak, syncTeam,
+  MIN_PILOTS, rules, isEfb, isOps, openSwaps, swapFor, swapSector, swapEntry, wouldBreak, syncTeam,
   canPickUp, openSeats, pendingPickups,
 } from '../ops.js';
 
@@ -38,7 +38,7 @@ function draft() {
     <section class="card">
       <h2>The roster is being put together</h2>
       ${
-        isEfb()
+        isEfb() || isOps()
           ? '<p class="note">It appears here once ops publish it.</p>'
           : `<p class="note">Tell the team which sectors you would like and which you cannot fly. The roster appears here once it is published.</p>
             <a class="btn primary" href="#/availability">Set my availability</a>`
@@ -185,7 +185,7 @@ function list() {
     <div class="page-head"><h1>Team Roster</h1>
       ${isDraft() ? '<span class="badge warn">DRAFT · NOT VISIBLE TO PILOTS</span>' : ''}</div>
     <div class="btn-row">
-      ${isEfb() ? '' : '<a class="btn ghost" href="#/availability">My availability</a>'}
+      ${isEfb() || isOps() ? '' : '<a class="btn ghost" href="#/availability">My availability</a>'}
       ${canEdit() ? '<a class="btn primary" href="#/admin">Edit roster</a>' : ''}
     </div>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}

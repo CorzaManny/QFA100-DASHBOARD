@@ -4,7 +4,7 @@
 import { state, save } from '../store.js';
 import { savePrefs, deletePref } from '../api.js';
 import { esc, zulu, zdate, span, simLocal, icon, rerender } from '../ui.js';
-import { sortedSectors, me, person, canEdit, prefOf, rules, isDraft, syncTeam } from '../ops.js';
+import { sortedSectors, me, person, canEdit, prefOf, rules, isDraft, syncTeam, biddingOn, biddingOpen, bidsCloseAt, canBid } from '../ops.js';
 import { isBoc } from '../autoroster.js';
 
 const CHOICES = [
@@ -28,6 +28,9 @@ export function render(args) {
   if (!who) return '<p class="note">Sign in to set your availability.</p>';
   const own = who.id === me()?.id;
   const r = rules();
+  // Bidding seals everyone's availability at the deadline. Ops staff can still
+  // change somebody's afterwards, which is why they get the page at all.
+  const open = canBid();
   const sectors = upcoming();
   const counts = { prefer: 0, available: 0, unavailable: 0, none: 0 };
 
@@ -40,7 +43,9 @@ export function render(args) {
       const assumed = !choice && r.unmarkedAvailable;
       const buttons = CHOICES.map(
         ([key, label]) =>
-          `<button type="button" class="${choice === key ? `on ${key}` : assumed && key === 'available' ? 'assumed' : ''}" data-act="choose" data-sector="${esc(s.id)}" data-choice="${key}" aria-pressed="${choice === key}">${label}</button>`,
+          `<button type="button" class="${choice === key ? `on ${key}` : assumed && key === 'available' ? 'assumed' : ''}" data-act="choose" data-sector="${esc(s.id)}" data-choice="${key}" aria-pressed="${choice === key}" ${
+            open ? '' : 'disabled'
+          }>${label}</button>`,
       ).join('');
       return `
         <div class="avail">
@@ -70,10 +75,23 @@ export function render(args) {
         <span class="badge bad">${counts.unavailable} CAN'T</span>
         <span class="badge ${r.unmarkedAvailable ? 'info' : 'mute'}">${counts.none} ${r.unmarkedAvailable ? 'NOT SAID' : 'BLANK'}</span>
       </div>
+      ${
+        biddingOn()
+          ? biddingOpen()
+            ? `<p class="note warn">${icon('alert')} Bidding closes <strong>${zdate(bidsCloseAt())} ${zulu(
+                bidsCloseAt(),
+              )}</strong>. After that this is sealed and the roster is built from it.</p>`
+            : `<p class="note">Bidding closed ${zdate(bidsCloseAt())} ${zulu(bidsCloseAt())}.${
+                open ? ' You can still change it for somebody, because ops staff are not held to the deadline.' : ' This is now read only.'
+              }</p>`
+          : ''
+      }
       ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
       ${
         counts.none && !r.unmarkedAvailable
-          ? `<button class="btn ghost" data-act="fill" data-user="${esc(who.id)}">Mark the ${counts.none} blank sectors as Available</button>`
+          ? `<button class="btn ghost" data-act="fill" data-user="${esc(who.id)}" ${
+              open ? '' : 'disabled'
+            }>Mark the ${counts.none} blank sectors as Available</button>`
           : ''
       }
       ${!isDraft() ? '<p class="tiny">The roster has been published. Changes here only matter if an admin runs Auto roster again.</p>' : ''}
@@ -100,6 +118,7 @@ async function send(work) {
 export const actions = {
   // Shows the change at once, then saves it.
   choose(el) {
+    if (!canBid()) return;
     const who = target(currentArgs());
     const sectorId = el.dataset.sector;
     const choice = el.dataset.choice;
@@ -113,6 +132,7 @@ export const actions = {
     );
   },
   fill(el) {
+    if (!canBid()) return;
     const userId = el.dataset.user;
     const rows = upcoming()
       .filter((s) => !prefOf(userId, s.id))
