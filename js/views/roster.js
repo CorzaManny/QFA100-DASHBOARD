@@ -86,22 +86,19 @@ function coverCard() {
     </section>`;
 }
 
-// Asking for an empty seat on one sector: a button per seat, or the request
-// already made and a way to take it back.
+// Empty seats on one sector, drawn as dashed slots where the crew would be.
+// Tap one to ask for it; one already asked for can be cancelled.
 function seatButtons(s) {
   const myId = me()?.id;
   if (state.roster.some((r) => r.sector_id === s.id && r.user_id === myId)) return '';
   const asked = pendingPickups().find((p) => p.sector_id === s.id && p.user_id === myId);
-  if (asked) {
-    return `<div class="btn-row"><span class="badge info">ASKED FOR ${esc(asked.duty.toUpperCase())}</span>
-      <button class="btn ghost small" data-act="unpick" data-id="${esc(asked.id)}" ${busy === asked.id ? 'disabled' : ''}>Cancel</button></div>`;
-  }
-  return `<div class="btn-row">${openSeats(s)
-    .map(
-      (duty) =>
-        `<button class="btn primary small" data-act="pick" data-sector="${esc(s.id)}" data-duty="${esc(duty)}" ${busy === s.id ? 'disabled' : ''}>Fly as ${esc(duty)}</button>`,
-    )
-    .join('')}</div>`;
+  const slot = (duty) =>
+    asked?.duty === duty
+      ? `<button class="seat-slot asked" data-act="unpick" data-id="${esc(asked.id)}" ${busy === asked.id ? 'disabled' : ''}>
+          <span><span class="seat-duty">${esc(duty)}</span> Asked for, waiting for ops</span><span class="seat-go">Cancel</span></button>`
+      : `<button class="seat-slot" data-act="pick" data-sector="${esc(s.id)}" data-duty="${esc(duty)}" ${busy === s.id || asked ? 'disabled' : ''}>
+          <span><span class="seat-duty">${esc(duty)}</span> Open seat</span><span class="seat-go">${asked ? '' : `Ask to fly ${icon('chevron')}`}</span></button>`;
+  return `<div class="seat-slots">${openSeats(s).map(slot).join('')}</div>`;
 }
 
 // Published sectors with seats nobody is rostered in, for pilots to ask for.
@@ -117,9 +114,12 @@ function openSeatsCard() {
       const breaks = onIt ? [] : wouldBreak(myId, s);
       return `
       <div class="row">
-        <div class="row-main">
+        <div class="row-main grow">
           <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${needBadge(s)}</div>
           <div class="sub">${esc(s.flight)} · ${when(s.std)} · ${simLocal(s.std)}</div>
+          ${crewOf(s)
+            .map((r) => `<div class="sub crew-line">${esc(r.duty)} · ${name(r.user_id)}</div>`)
+            .join('')}
           ${breaks.map((t) => `<div class="sub warn-text">${icon('alert')} ${esc(t)}</div>`).join('')}
           ${onIt ? '<div class="sub">You are on this sector</div>' : seatButtons(s)}
         </div>
@@ -237,16 +237,15 @@ function detail(id) {
         <div class="sub">${esc(s.flight)} · Departs ${when(s.std)}${s.window ? ` · window ${depWindow(s)}` : ''}</div>
       </div>${needBadge(s)}</div>
       ${rows || '<p class="note">No crew rostered on this sector yet.</p>'}
+      ${
+        canPickUp() && !gone && !myEntry && openSeats(s).length
+          ? `${wouldBreak(me()?.id, s).map((t) => `<div class="sub warn-text">${icon('alert')} ${esc(t)}</div>`).join('')}
+            ${seatButtons(s)}
+            <p class="tiny">Ask for an open seat and an admin or dispatcher agrees it before you are rostered.</p>`
+          : ''
+      }
     </section>
     ${myEntry && !gone ? giveAway(s, myEntry, offer) : ''}
-    ${
-      canPickUp() && !gone && !myEntry && openSeats(s).length
-        ? `<section class="card"><h2>Open seat${openSeats(s).length === 1 ? '' : 's'}</h2>
-            <p class="note">Ask to fly it. An admin or dispatcher agrees it before you are rostered.</p>
-            ${wouldBreak(me()?.id, s).map((t) => `<p class="note warn">${icon('alert')} ${esc(t)}</p>`).join('')}
-            ${seatButtons(s)}</section>`
-        : ''
-    }
     <div class="btn-col">
       ${canEdit() ? `<a class="btn primary" href="#/admin/sector/${esc(s.id)}">Edit this sector's crew</a>` : ''}
       <a class="btn ghost" href="#/schedule/${esc(s.id)}">Sector details</a>
