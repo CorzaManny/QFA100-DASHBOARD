@@ -163,13 +163,13 @@ function tick() {
 
 setInterval(tick, 1000);
 setInterval(() => {
-  if (route.name === 'dashboard' && !locked() && document.visibilityState === 'visible') dash.poll();
+  if (['dashboard', 'ops'].includes(route.name) && !locked() && document.visibilityState === 'visible') dash.poll();
 }, 15000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   wakeLock();
   sync();
-  if (route.name === 'dashboard') dash.poll();
+  if (['dashboard', 'ops'].includes(route.name)) dash.poll();
 });
 
 // True when a form on the page holds something that has not been saved.

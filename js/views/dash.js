@@ -48,6 +48,9 @@ let busy = false;
 let lastPoll = 0;
 
 const onDashboard = () => !location.hash || location.hash.startsWith('#/dashboard');
+// The ops board shows the same live position, so a poll there is worth the
+// same redraw.
+const watching = () => onDashboard() || location.hash.startsWith('#/ops');
 
 export async function poll(force = false) {
   if (busy || (!force && Date.now() - lastPoll < pollMs() - 5000)) return;
@@ -56,7 +59,7 @@ export async function poll(force = false) {
   if (force) rerender();
   await refreshTrack();
   busy = false;
-  if (onDashboard()) rerender();
+  if (watching()) rerender();
 }
 
 const knots = (gs) => (gs == null ? '—' : `${Math.round(gs)} KT`);

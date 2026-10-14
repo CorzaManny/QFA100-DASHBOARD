@@ -6,8 +6,10 @@
 // ops staff do not have to walk four pages to find out what is behind.
 
 import { state } from '../store.js';
+import { decideSwap, decidePickup } from '../api.js';
 import { esc, zulu, zdate, span, ago, simLocal, icon, rerender } from '../ui.js';
-import { countdown } from './dash.js';
+import { round5 } from '../running.js';
+import { countdown, poll } from './dash.js';
 import {
   sortedSectors,
   crewOf,
@@ -28,6 +30,13 @@ import {
   biddingOn,
   biddingOpen,
   bidsCloseAt,
+  teamCallsign,
+  scheduleDrift,
+  swapSector,
+  swapEntry,
+  wouldBreak,
+  defaultReport,
+  syncTeam,
 } from '../ops.js';
 
 // How far ahead the board looks. Beyond this it is planning, not operating.
@@ -35,6 +44,10 @@ const AHEAD_HOURS = 24;
 const onOps = () => location.hash.startsWith('#/ops');
 
 const name = (id) => esc(person(id)?.display_name || 'Unknown');
+// Something is being agreed or turned down; the button waits rather than
+// letting it be pressed twice.
+let busy = '';
+let error = '';
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
 
 const upcoming = (now) => sortedSectors().filter((s) => new Date(s.std) > now);
@@ -221,6 +234,168 @@ function airports(now) {
     </section>`;
 }
 
+// Where the aeroplane is, and whether the day is running to time. The ops
+// board should answer that without anybody opening the Dashboard.
+function aircraft(now) {
+  const t = state.track;
+  const run = running(now);
+  const cs = esc(teamCallsign());
+  const late = run.late;
+  const lateLine = late
+    ? `<p class="note ${late.delay > 0 ? 'warn' : ''}">${late.delay > 0 ? icon('alert') : ''} Running <strong>${span(
+        Math.abs(late.delay),
+      )} ${late.delay > 0 ? 'behind' : 'ahead of'}</strong> the published schedule · ${esc(late.sector.flight)} ${
+        late.state === 'airborne' ? `lands about ${zulu(round5(late.estOn))}` : `now about ${zulu(round5(late.estOff))}`
+      }</p>`
+    : run.trusted
+      ? '<p class="note">Running to the published schedule.</p>'
+      : '<p class="note">Nothing stamped and nothing tracked yet, so the published schedule is the best there is.</p>';
+
+  if (!t?.online) {
+    const why = t?.at
+      ? `Last seen ${ago(t.at)}${t.dep ? `, ${esc(t.dep)} → ${esc(t.arr)}` : ''}.`
+      : t?.prefiled
+        ? 'A flight plan is filed but nobody is connected yet.'
+        : 'Not connected right now.';
+    return `
+      <section class="card">
+        <div class="card-head"><h2>${cs}</h2><span class="badge ${t?.at ? 'warn' : 'mute'}">${
+          t?.at ? 'POSITION STALE' : 'OFFLINE'
+        }</span></div>
+        <p class="note">${why}</p>
+        ${lateLine}
+      </section>`;
+  }
+  const pct = t.total ? Math.max(0, Math.min(100, Math.round((1 - t.remaining / t.total) * 100))) : null;
+  return `
+    <section class="card">
+      <div class="card-head"><h2>${cs} · ${esc(t.dep || '----')} → ${esc(t.arr || '----')}</h2>
+        <span class="badge ok">${t.source === 'SIM' ? 'SIMULATOR LIVE' : 'VATSIM ONLINE'}</span></div>
+      ${pct == null ? '' : `<div class="bar"><div style="width:${pct}%"></div></div>`}
+      <div class="kvs">
+        <div class="kv"><span>Phase</span><strong>${esc(t.phase || '—')}</strong></div>
+        <div class="kv"><span>Altitude</span><strong>${
+          t.alt == null ? '—' : t.alt >= 10000 ? `FL${Math.round(t.alt / 100)}` : `${Math.round(t.alt / 10) * 10} FT`
+        }</strong></div>
+        <div class="kv"><span>Ground speed</span><strong>${t.gs == null ? '—' : `${Math.round(t.gs)} KT`}</strong></div>
+        <div class="kv"><span>To go</span><strong>${t.remaining == null ? '—' : `${Math.round(t.remaining)} NM`}</strong></div>
+        <div class="kv"><span>Est. arrival</span><strong>${t.eta ? zulu(t.eta) : '—'}</strong></div>
+      </div>
+      ${lateLine}
+      <div class="tiny">Updated ${ago(t.at)}${t.pilotName ? ` · flown by ${esc(t.pilotName)}` : ''}</div>
+    </section>`;
+}
+
+// Swaps somebody has taken and seats somebody has asked for, with the buttons
+// to settle them, so the board is worked from rather than only read.
+function requests() {
+  const swaps = claimedSwaps().filter((w) => swapSector(w));
+  const pickups = pendingPickups().filter((p) => state.sectors.some((x) => x.id === p.sector_id));
+  if (!swaps.length && !pickups.length) return '';
+  const warn = (breaks) => breaks.map((t) => `<div class="sub warn-text">${icon('alert')} ${esc(t)}</div>`).join('');
+
+  const swapRows = swaps
+    .map((w) => {
+      const s = swapSector(w);
+      const entry = swapEntry(w);
+      return `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-t">${esc(s.flight)} · ${esc(s.dep)} → ${esc(s.arr)} <span class="badge warn">${esc(
+            (entry?.duty || '').toUpperCase(),
+          )}</span></div>
+          <div class="sub">${name(w.from_user)} → <strong>${name(w.claimed_by)}</strong> · ${when(s.std)}</div>
+          ${w.reason ? `<div class="sub">${esc(w.reason)}</div>` : ''}
+          ${warn(wouldBreak(w.claimed_by, s))}
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost small" data-act="no" data-kind="swap" data-id="${esc(w.id)}" ${
+            busy === w.id ? 'disabled' : ''
+          }>Turn down</button>
+          <button class="btn primary small" data-act="yes" data-kind="swap" data-id="${esc(w.id)}" ${
+            busy === w.id ? 'disabled' : ''
+          }>Agree</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  const pickupRows = pickups
+    .map((p) => {
+      const s = state.sectors.find((x) => x.id === p.sector_id);
+      return `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-t">${esc(s.flight)} · ${esc(s.dep)} → ${esc(s.arr)} <span class="badge warn">${esc(
+            p.duty.toUpperCase(),
+          )}</span></div>
+          <div class="sub"><strong>${name(p.user_id)}</strong> wants the empty seat · ${when(s.std)}</div>
+          ${warn(wouldBreak(p.user_id, s))}
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost small" data-act="no" data-kind="pickup" data-id="${esc(p.id)}" ${
+            busy === p.id ? 'disabled' : ''
+          }>Turn down</button>
+          <button class="btn primary small" data-act="yes" data-kind="pickup" data-id="${esc(p.id)}" ${
+            busy === p.id ? 'disabled' : ''
+          }>Agree</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  return `
+    <section class="card list slot-card short">
+      <div class="card-head"><div class="tiny">WAITING FOR YOU</div>
+        <span class="badge warn">${swaps.length + pickups.length}</span></div>
+      ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
+      ${swapRows}${pickupRows}
+      <p class="tiny">Agreeing a swap moves the sector across; agreeing a pickup rosters them in the empty seat. A duty rule it would break is shown, and you can agree anyway.</p>
+    </section>`;
+}
+
+// The state of the aeroplane itself. An aircraft that cannot fly is the
+// loudest thing on this page, not a number in a tile.
+function defects() {
+  const open = state.defects.filter((d) => d.status !== 'RECTIFIED');
+  if (!open.length) return '';
+  const aog = open.some((d) => d.aog);
+  const rows = open
+    .map(
+      (d) => `
+      <a class="row" href="#/techlog/${esc(d.id)}">
+        <div class="row-main">
+          <div class="row-t">${esc(d.ref)} · ${esc(d.desc)}</div>
+          ${d.restriction ? `<div class="sub">Restriction: <strong>${esc(d.restriction)}</strong></div>` : ''}
+          ${d.melItem ? `<div class="sub">MEL ${esc(d.melItem)}${d.due ? ` · fix by ${zdate(d.due)}` : ''}</div>` : ''}
+        </div>
+        <div class="right stack"><span class="badge ${d.status === 'OPEN' ? 'bad' : 'warn'}">${esc(d.status)}</span>
+          ${d.aog ? '<span class="badge bad">AOG</span>' : ''}</div>
+      </a>`,
+    )
+    .join('');
+  return `
+    <section class="card list ${aog ? 'slot-card short' : ''}">
+      <div class="card-head"><div class="tiny">AIRCRAFT STATUS</div>
+        <span class="badge ${aog ? 'bad' : 'warn'}">${aog ? 'UNSERVICEABLE' : `${open.length} OPEN`}</span></div>
+      ${aog ? `<p class="note warn">${icon('alert')} <strong>The aircraft is unserviceable.</strong> It cannot fly until the defect below is cleared or deferred.</p>` : ''}
+      ${rows}
+    </section>`;
+}
+
+// WorldFlight moving the programme is ops work, so it belongs here too.
+function official() {
+  if (!state.sectors.length) return '';
+  const { total, changed, added } = scheduleDrift();
+  if (!total) return '';
+  return `<a class="banner warn" href="#/schedule/edit">${icon('calendar')}
+    <span><strong>WorldFlight has changed the schedule</strong> · ${
+      changed.length ? `${changed.length} sector${changed.length === 1 ? '' : 's'} moved` : ''
+    }${changed.length && added.length ? ', ' : ''}${
+      added.length ? `${added.length} new` : ''
+    } · open to review and apply</span>${icon('chevron')}</a>`;
+}
+
 export function render() {
   if (!canEdit()) {
     return `<div class="page-head"><h1>Ops board</h1></div>
@@ -237,7 +412,11 @@ export function render() {
           )}</strong>. The roster cannot be published until it closes.</p>`
         : ''
     }
+    ${official()}
     ${summary(now)}
+    ${aircraft(now)}
+    ${requests()}
+    ${defects()}
     ${reports(now)}
     ${crewing(now)}
     ${planning(now)}
@@ -245,9 +424,40 @@ export function render() {
     <p class="tiny center">Everything here looks ${AHEAD_HOURS} hours ahead, except crewing, which looks at the whole schedule.</p>`;
 }
 
+async function settle(id, work) {
+  busy = id;
+  error = '';
+  rerender();
+  try {
+    await work();
+    await syncTeam();
+  } catch (err) {
+    error = err.message;
+  }
+  busy = '';
+  rerender();
+}
+
+export const actions = {
+  yes(el) {
+    const { id, kind } = el.dataset;
+    if (kind === 'swap') return settle(id, () => decideSwap(id, true));
+    const p = pendingPickups().find((x) => x.id === id);
+    const s = p && state.sectors.find((x) => x.id === p.sector_id);
+    return settle(id, () => decidePickup(id, true, '', s ? defaultReport(s).toISOString() : null));
+  },
+  no(el) {
+    const { id, kind } = el.dataset;
+    const why = prompt('Turn this down? You can say why (optional).', '');
+    if (why === null) return;
+    return settle(id, () => (kind === 'swap' ? decideSwap(id, false, why) : decidePickup(id, false, why)));
+  },
+};
+
 // The weather is the only thing this page has to go and get.
 export function mounted() {
   if (!canEdit()) return;
+  poll();
   const now = Date.now();
   const codes = [];
   for (const s of soon(now)) {
