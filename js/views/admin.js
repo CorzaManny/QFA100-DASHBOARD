@@ -14,6 +14,7 @@ import {
   clearAutoRoster,
   decideSwap,
   clearActuals,
+  decidePickup,
 } from '../api.js';
 import { DEFAULT_RULES, planRoster, problems, isBoc } from '../autoroster.js';
 import { esc, zulu, zdate, depWindow, simLocal, span, isoDate, isoTime, icon, rerender } from '../ui.js';
@@ -40,6 +41,7 @@ import {
   swapEntry,
   wouldBreak,
   defaultReport,
+  pendingPickups,
   rules,
   teamCallsign,
   teamAircraft,
@@ -381,10 +383,35 @@ const blankWord = () => (rules().unmarkedAvailable ? 'available until they say o
 
 // Somebody has offered a sector and somebody else has taken it: all that is
 // left is for ops to agree.
+// Pilots asking for an empty seat, waiting for an admin or dispatcher.
+function pickupRows() {
+  return pendingPickups()
+    .map((p) => {
+      const s = state.sectors.find((x) => x.id === p.sector_id);
+      if (!s) return '';
+      const breaks = wouldBreak(p.user_id, s);
+      return `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-t">${esc(s.flight)} · ${esc(s.dep)} → ${esc(s.arr)} <span class="badge warn">${esc(p.duty.toUpperCase())}</span></div>
+          <div class="sub"><strong>${name(p.user_id)}</strong> wants the empty seat · ${when(s.std)}</div>
+          ${breaks.map((t) => `<div class="sub warn-text">${icon('alert')} ${esc(t)}</div>`).join('')}
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost small" data-act="pickupNo" data-id="${esc(p.id)}">Turn down</button>
+          <button class="btn primary small" data-act="pickupYes" data-id="${esc(p.id)}">Agree</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+}
+
 function swapsCard() {
   const waiting = claimedSwaps().filter((w) => swapSector(w));
   const open = openSwaps().filter((w) => swapSector(w));
-  if (!waiting.length && !open.length) return '';
+  const pickups = pickupRows();
+  const toAgree = waiting.length + pendingPickups().length;
+  if (!toAgree && !open.length) return '';
   const rows = waiting
     .map((w) => {
       const s = swapSector(w);
@@ -415,11 +442,11 @@ function swapsCard() {
     })
     .join('');
   return `
-    <section class="card list ${waiting.length ? 'slot-card short' : ''}">
-      <div class="card-head"><div class="tiny">SWAPS</div>
-        <span class="badge ${waiting.length ? 'warn' : 'mute'}">${waiting.length ? `${waiting.length} TO AGREE` : `${open.length} WAITING FOR COVER`}</span></div>
-      ${rows}${waitingList}
-      <p class="tiny">Agreeing moves the sector to the person taking it and tells them both. A rule it would break is shown, and you can agree anyway.</p>
+    <section class="card list ${toAgree ? 'slot-card short' : ''}">
+      <div class="card-head"><div class="tiny">SWAPS AND PICKUPS</div>
+        <span class="badge ${toAgree ? 'warn' : 'mute'}">${toAgree ? `${toAgree} TO AGREE` : `${open.length} WAITING FOR COVER`}</span></div>
+      ${rows}${pickups}${waitingList}
+      <p class="tiny">Agreeing a swap moves the sector to the person taking it and tells them both. Agreeing a pickup rosters the pilot in the empty seat. A rule it would break is shown, and you can agree anyway.</p>
     </section>`;
 }
 
@@ -834,6 +861,24 @@ export const forms = {
 };
 
 export const actions = {
+  pickupYes(el) {
+    const p = pendingPickups().find((x) => x.id === el.dataset.id);
+    const s = p && state.sectors.find((x) => x.id === p.sector_id);
+    el.disabled = true;
+    return change(async () => {
+      await decidePickup(el.dataset.id, true, '', s ? defaultReport(s).toISOString() : null);
+      result = 'Agreed. They are on the roster and have been told.';
+    });
+  },
+  pickupNo(el) {
+    const why = prompt('Turn this request down? You can say why (optional).', '');
+    if (why === null) return;
+    el.disabled = true;
+    return change(async () => {
+      await decidePickup(el.dataset.id, false, why);
+      result = 'Turned down. They have been told.';
+    });
+  },
   swapYes(el) {
     el.disabled = true;
     return change(async () => {

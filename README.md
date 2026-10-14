@@ -33,11 +33,12 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 1. Go to [supabase.com](https://supabase.com), create a free account, then **New project**. Pick a region near the team (for example Sydney) and wait for it to finish setting up.
 2. Open **SQL Editor**, paste in the whole of [`supabase/schema.sql`](supabase/schema.sql) and press **Run**. This creates the accounts, sectors and roster tables and their permissions.
 3. In a new query, paste in [`supabase/schedule.sql`](supabase/schedule.sql) and press **Run**. This loads the 43 WorldFlight sectors.
-4. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
-5. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-6. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
-7. Push the change to GitHub.
-8. Open the app and **create your own account first**. The first account becomes the admin.
+4. In another query, paste in [`supabase/pickups.sql`](supabase/pickups.sql) and press **Run**. This lets pilots ask for an empty seat once the roster is published, for an admin or dispatcher to agree.
+5. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
+6. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+7. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
+8. Push the change to GitHub.
+9. Open the app and **create your own account first**. The first account becomes the admin.
 
 Then send the link to the team. Each person presses **Create account** and is signed straight in, with no email to confirm. A new account then waits on an "Awaiting approval" page and can see nothing until an admin approves it in **Admin → People and roles**. Admins get a banner on the Dashboard when someone is waiting.
 

@@ -183,6 +183,16 @@ export function wouldBreak(userId, sector) {
   return problems([...mine, sector], rules()).filter((text) => !before.includes(text));
 }
 
+// ---- Picking up an empty seat ----
+
+// null until supabase/pickups.sql has been run.
+export const pickupsOn = () => Array.isArray(state.pickups);
+export const pendingPickups = () => (state.pickups || []).filter((p) => p.state === 'pending');
+// Pilot seats on a sector that nobody is rostered in.
+export const openSeats = (sector) => seats(sector).filter((duty) => !crewOf(sector).some((r) => r.duty === duty));
+// Who may ask for a seat: anybody who flies, once the roster is published.
+export const canPickUp = () => configured && !isDraft() && ['admin', 'dispatcher', 'pilot'].includes(me()?.role) && pickupsOn();
+
 // ---- Giving a sector away ----
 
 export const swaps = () => state.swaps || [];
@@ -232,7 +242,7 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], official: [], officialCheck: null, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
+  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 

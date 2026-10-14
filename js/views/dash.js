@@ -28,6 +28,8 @@ import {
   me,
   teamCallsign,
   pendingPeople,
+  pendingPickups,
+  claimedSwaps,
 } from '../ops.js';
 import { nextIncomplete } from './checklists.js';
 
@@ -364,6 +366,15 @@ function approvalBanner() {
     <span><strong>${waiting} account${waiting === 1 ? '' : 's'}</strong> waiting for your approval</span>${icon('chevron')}</a>`;
 }
 
+// Swaps somebody has taken and empty seats somebody has asked for, waiting
+// for an admin or dispatcher to agree.
+function requestsBanner() {
+  const waiting = canEdit() ? claimedSwaps().length + pendingPickups().length : 0;
+  if (!waiting) return '';
+  return `<a class="banner info" href="#/admin">${icon('alert')}
+    <span><strong>${waiting} roster request${waiting === 1 ? '' : 's'}</strong> waiting for you to agree</span>${icon('chevron')}</a>`;
+}
+
 // The official WorldFlight schedule is checked for changes without anyone
 // asking; this is where ops staff find out.
 function scheduleBanner() {
@@ -399,6 +410,7 @@ export function render() {
   const o = next ? briefingOf(next.id).ofp : null;
   return `
     ${approvalBanner()}
+    ${requestsBanner()}
     ${runningBanner(run)}
     ${scheduleBanner()}
     ${statusBanner()}

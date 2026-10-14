@@ -2,11 +2,12 @@
 // Read-only here; admins and dispatchers build it in the Admin section.
 
 import { state } from '../store.js';
-import { configured, offerSector, claimSwap, withdrawSwap } from '../api.js';
+import { configured, offerSector, claimSwap, withdrawSwap, requestPickup, withdrawPickup } from '../api.js';
 import { esc, zulu, zdate, depWindow, simLocal, icon, rerender } from '../ui.js';
 import {
   sortedSectors, crewOf, person, me, canEdit, pilotsShort, pilotsNeeded, needsRelief, isDraft,
   MIN_PILOTS, rules, isEfb, openSwaps, swapFor, swapSector, swapEntry, wouldBreak, syncTeam,
+  canPickUp, openSeats, pendingPickups,
 } from '../ops.js';
 
 let busy = '';
@@ -85,6 +86,54 @@ function coverCard() {
     </section>`;
 }
 
+// Asking for an empty seat on one sector: a button per seat, or the request
+// already made and a way to take it back.
+function seatButtons(s) {
+  const myId = me()?.id;
+  if (state.roster.some((r) => r.sector_id === s.id && r.user_id === myId)) return '';
+  const asked = pendingPickups().find((p) => p.sector_id === s.id && p.user_id === myId);
+  if (asked) {
+    return `<div class="btn-row"><span class="badge info">ASKED FOR ${esc(asked.duty.toUpperCase())}</span>
+      <button class="btn ghost small" data-act="unpick" data-id="${esc(asked.id)}" ${busy === asked.id ? 'disabled' : ''}>Cancel</button></div>`;
+  }
+  return `<div class="btn-row">${openSeats(s)
+    .map(
+      (duty) =>
+        `<button class="btn primary small" data-act="pick" data-sector="${esc(s.id)}" data-duty="${esc(duty)}" ${busy === s.id ? 'disabled' : ''}>Fly as ${esc(duty)}</button>`,
+    )
+    .join('')}</div>`;
+}
+
+// Published sectors with seats nobody is rostered in, for pilots to ask for.
+function openSeatsCard() {
+  if (!canPickUp()) return '';
+  const now = Date.now();
+  const myId = me()?.id;
+  const open = sortedSectors().filter((s) => new Date(s.std) > now && openSeats(s).length);
+  if (!open.length) return '';
+  const rows = open
+    .map((s) => {
+      const onIt = state.roster.some((r) => r.sector_id === s.id && r.user_id === myId);
+      const breaks = onIt ? [] : wouldBreak(myId, s);
+      return `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${needBadge(s)}</div>
+          <div class="sub">${esc(s.flight)} · ${when(s.std)} · ${simLocal(s.std)}</div>
+          ${breaks.map((t) => `<div class="sub warn-text">${icon('alert')} ${esc(t)}</div>`).join('')}
+          ${onIt ? '<div class="sub">You are on this sector</div>' : seatButtons(s)}
+        </div>
+      </div>`;
+    })
+    .join('');
+  return `
+    <section class="card list">
+      <div class="card-head"><div class="tiny">OPEN SEATS</div><span class="badge warn">${open.length} SECTOR${open.length === 1 ? '' : 'S'}</span></div>
+      ${rows}
+      <p class="tiny">Ask for a seat and an admin or dispatcher agrees it before you are rostered. Anything that would break a duty rule is marked, and you can still ask.</p>
+    </section>`;
+}
+
 function list() {
   const now = Date.now();
   const sectors = sortedSectors();
@@ -141,6 +190,7 @@ function list() {
     </div>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
     ${isEfb() ? '' : coverCard()}
+    ${openSeatsCard()}
     ${
       isEfb()
         ? ''
@@ -189,6 +239,14 @@ function detail(id) {
       ${rows || '<p class="note">No crew rostered on this sector yet.</p>'}
     </section>
     ${myEntry && !gone ? giveAway(s, myEntry, offer) : ''}
+    ${
+      canPickUp() && !gone && !myEntry && openSeats(s).length
+        ? `<section class="card"><h2>Open seat${openSeats(s).length === 1 ? '' : 's'}</h2>
+            <p class="note">Ask to fly it. An admin or dispatcher agrees it before you are rostered.</p>
+            ${wouldBreak(me()?.id, s).map((t) => `<p class="note warn">${icon('alert')} ${esc(t)}</p>`).join('')}
+            ${seatButtons(s)}</section>`
+        : ''
+    }
     <div class="btn-col">
       ${canEdit() ? `<a class="btn primary" href="#/admin/sector/${esc(s.id)}">Edit this sector's crew</a>` : ''}
       <a class="btn ghost" href="#/schedule/${esc(s.id)}">Sector details</a>
@@ -246,6 +304,15 @@ async function act(id, work) {
 }
 
 export const actions = {
+  pick(el) {
+    const { sector, duty } = el.dataset;
+    if (!confirm(`Ask to fly this sector as ${duty}? An admin or dispatcher agrees it first.`)) return;
+    return act(sector, () => requestPickup(sector, duty));
+  },
+  unpick(el) {
+    const id = el.dataset.id;
+    return act(id, () => withdrawPickup(id));
+  },
   offer(el) {
     offering = el.dataset.id;
     rerender();
