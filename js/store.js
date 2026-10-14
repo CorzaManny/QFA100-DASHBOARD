@@ -17,6 +17,9 @@ export function officialSectors() {
 
 function defaults() {
   return {
+    // statusUrl is the simulator's own status API, which the Dashboard reads
+    // in preference to VATSIM. It has no page of its own, because only the
+    // computer at the sim wants it; see setStatusUrl below.
     profile: { callsign: 'QFA100', simbrief: '', statusUrl: '', turnaround: 45, aircraft: 'B738' },
     preview: false, // using the app without accounts because no database is connected
     sectors: officialSectors(), // copy of the team database's sectors
@@ -74,6 +77,23 @@ export function save() {
     // storage full or unavailable; the app still works for this session
   }
 }
+
+// Pointing this device at the simulator's status API. There is no setting for
+// it in the app: on the machine running the sim, open the browser console and
+// type
+//   qfa100.setStatusUrl('http://localhost:8080/status')
+// and to go back to VATSIM
+//   qfa100.setStatusUrl('')
+export function setStatusUrl(url) {
+  state.profile.statusUrl = String(url ?? '').trim();
+  // The next poll starts clean rather than carrying over the old source.
+  state.track = null;
+  save();
+  return state.profile.statusUrl || 'Cleared. The Dashboard will track the callsign on VATSIM.';
+}
+
+// The one thing the app deliberately hides behind the console.
+if (typeof window !== 'undefined') window.qfa100 = { setStatusUrl };
 
 export function resetAll() {
   Object.assign(state, defaults());

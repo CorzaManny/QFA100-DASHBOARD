@@ -186,7 +186,7 @@ function liveCard(now) {
       ${fallback}
       <div class="tiny">${
         usingApi ? 'Reading the simulator status API, with VATSIM as backup.' : `Tracking callsign ${cs} on VATSIM.`
-      } Change this in <a href="#/settings">Settings</a>.</div>
+      }</div>
     </section>`;
 }
 

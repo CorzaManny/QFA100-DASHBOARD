@@ -92,7 +92,6 @@ function adminLink() {
 }
 
 export function render() {
-  const p = state.profile;
   const out = `
     <div class="page-head"><h1>Settings</h1></div>
     ${message ? `<p class="note ok">${esc(message)}</p>` : ''}
@@ -100,15 +99,6 @@ export function render() {
     ${account()}
     ${notificationsCard()}
     ${adminLink()}
-    <form class="card form" data-form="profile">
-      <h2>This device</h2>
-      <p class="note">The callsign, the aircraft and the team's SimBrief account are the same for everyone and are set in ${
-        isAdmin() ? '<a href="#/admin/rules">Admin → Settings</a>' : 'Admin → Settings by an admin'
-      }. This is the only setting that belongs to this device.</p>
-      <label class="field">Simulator status API address (optional)<input name="statusUrl" type="url" inputmode="url" autocapitalize="none" autocorrect="off" value="${esc(p.statusUrl)}" placeholder="https://…/status"></label>
-      <p class="tiny">When set, the Dashboard reads the aircraft's position straight from the simulator and only falls back to VATSIM if that fails. Leave blank to use VATSIM. The computer at the sim is usually the only one that needs it.</p>
-      <div class="btn-row"><button class="btn primary" type="submit">Save device settings</button></div>
-    </form>
     <section class="card">
       <h2>Airport notes and tech log backup</h2>
       <p class="note">Airport notes are still stored on each device. Export them to a file and have teammates import it to get the same notes. The file also holds a backup copy of the tech log; the schedule, roster and tech log themselves sync automatically.</p>
@@ -195,15 +185,6 @@ export const forms = {
       'Account saved.',
     );
   },
-  profile(data) {
-    const p = state.profile;
-    const statusUrl = String(data.get('statusUrl')).trim();
-    if (statusUrl !== p.statusUrl) state.track = null;
-    p.statusUrl = statusUrl;
-    save();
-    message = 'Device settings saved.';
-    rerender();
-  },
 };
 
 export const actions = {
@@ -242,6 +223,7 @@ export const actions = {
     el.disabled = false;
   },
   async signout() {
+    if (!confirm('Sign out of QFA100 Ops on this device?')) return;
     await signOut();
     clearTeam();
     rerender();

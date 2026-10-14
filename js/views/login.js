@@ -138,7 +138,7 @@ export function render() {
   return `
     <div class="login">
       <div class="login-brand">
-        <img src="icons/icon.svg" alt="" width="72" height="72">
+        <img class="login-logo" src="icons/qfa100-logo.png" alt="QFA100" width="768" height="768">
         <h1>QFA100 Ops</h1>
         <div class="tiny">WORLDFLIGHT · 737 OPERATIONS</div>
       </div>
@@ -251,6 +251,7 @@ export const actions = {
     rerender();
   },
   async signout() {
+    if (!confirm('Sign out of QFA100 Ops on this device?')) return;
     await signOut();
     clearTeam();
     rerender();

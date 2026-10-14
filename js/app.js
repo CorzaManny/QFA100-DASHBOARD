@@ -54,6 +54,7 @@ document.addEventListener('keydown', (e) => {
 });
 document.getElementById('who-out').addEventListener('click', async () => {
   closeMenu();
+  if (!confirm('Sign out of QFA100 Ops on this device?')) return;
   await signOut();
   clearTeam();
   location.hash = '#/dashboard';

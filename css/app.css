@@ -232,6 +232,24 @@ main {
 .tabs a.on {
   color: var(--text);
 }
+/* Seven tabs will not take seven labels on a phone. Below this width the bar
+   is icons only; the words stay in the page for a screen reader to read out,
+   and come back as soon as there is room (and in the sidebar from 900px). */
+@media (max-width: 519px) {
+  .tabs a span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .tabs a .icon {
+    width: 25px;
+    height: 25px;
+  }
+}
 /* The tab you are on carries the stripe, so the brand marks your place. */
 .tabs a.on::before {
   content: '';
@@ -1009,8 +1027,14 @@ button:focus-visible {
   gap: 6px;
   text-align: center;
 }
+/* The team's logo carries its own black field, so it sits on the page as a
+   tile rather than floating. */
 .login-brand img {
   border-radius: 18px;
+}
+.login-logo {
+  width: min(230px, 62vw);
+  height: auto;
 }
 .seg {
   display: grid;
