@@ -14,6 +14,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **MEL** – the 737 Minimum Equipment List as drop-downs (system → item → option) inside the Tech Log: it shows whether the aircraft can go with something inoperative, the conditions, and how long the fix can wait.
 - **Airport Briefings** – runways, elevation, live METAR and TAF, who is controlling the airport on VATSIM with their ATIS, your team's own notes, and links to Navigraph Charts and ChartFox for every airport on the schedule (or any ICAO code).
 - **SimBrief** – opens SimBrief with the next sector filled in, then imports your latest OFP (route, fuel, weights, times).
+- **Ops board** – for admins, dispatchers and operations: who reports next with live countdowns, which sectors are short of pilots, which still have no flight plan, and the weather at the airports coming up.
 - **Logbook** – the whole route around the world on one map, how far the team has got, and who has flown what, in hours, sectors and miles.
 
 For flight simulation use only.

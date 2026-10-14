@@ -1592,6 +1592,50 @@ body.efb .tabs a {
   margin-top: 6px;
 }
 
+/* Ops board: four counts across the top, each a way in */
+.ops-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 10px;
+}
+.ops-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--text);
+  text-align: center;
+}
+.ops-n {
+  font-size: 1.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.ops-tile.ok .ops-n {
+  color: var(--dim);
+}
+.ops-tile.warn {
+  border-color: rgba(240, 166, 60, 0.45);
+}
+.ops-tile.warn .ops-n {
+  color: var(--warn);
+}
+.ops-tile.bad {
+  border-color: rgba(239, 68, 68, 0.5);
+}
+.ops-tile.bad .ops-n {
+  color: var(--bad);
+}
+.ops-tiles + .card {
+  margin-top: 4px;
+}
+
 /* Asking to be put on the home screen */
 .card.install {
   display: flex;

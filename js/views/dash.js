@@ -35,6 +35,7 @@ import {
   sortedSectors,
   actualOf,
   isOps,
+  pilotsShort,
   biddingOn,
   biddingOpen,
   bidsCloseAt,
@@ -489,6 +490,16 @@ function statusBanner() {
     <span><strong>${aog ? 'AIRCRAFT UNSERVICEABLE' : 'Tech log'}</strong> · ${parts.join(', ')} defect${open.length > 1 ? 's' : ''}</span>${icon('chevron')}</a>`;
 }
 
+// What the ops board would say, in one line, for its tile.
+function opsSub() {
+  const now = Date.now();
+  const short = sortedSectors().filter((s) => new Date(s.std) > now && pilotsShort(s)).length;
+  const waiting = claimedSwaps().length + pendingPickups().length;
+  if (short) return `${short} sector${short === 1 ? '' : 's'} short of pilots`;
+  if (waiting) return `${waiting} request${waiting === 1 ? '' : 's'} to agree`;
+  return 'Crewing, plans and weather';
+}
+
 // How far round the world, for the tile on the Dashboard.
 function progressSub() {
   const sectors = sortedSectors();
@@ -529,6 +540,7 @@ export function render() {
       ${tile('#/techlog', 'wrench', 'Tech Log', open ? `${open} active defect${open > 1 ? 's' : ''}` : 'No active defects')}
       ${tile('#/brief', 'file', 'Sector Briefing', next ? `${next.dep} → ${next.arr} · ${o ? 'OFP imported' : 'no OFP yet'}` : 'OFP, notes, handover')}
       ${tile('#/progress', 'file', 'Logbook', progressSub())}
+      ${canEdit() ? tile('#/ops', 'settings', 'Ops Board', opsSub()) : ''}
     </div>`;
 }
 
