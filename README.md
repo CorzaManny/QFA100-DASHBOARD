@@ -35,11 +35,11 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 3. In a new query, paste in [`supabase/schedule.sql`](supabase/schedule.sql) and press **Run**. This loads the 43 WorldFlight sectors.
 4. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
 5. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-6. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so confirmation emails link back to the app.
+6. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
 7. Push the change to GitHub.
 8. Open the app and **create your own account first**. The first account becomes the admin.
 
-Then send the link to the team. Each person presses **Create account**; by default Supabase emails them a confirmation link before they can sign in. A new account then waits on an "Awaiting approval" page and can see nothing until an admin approves it in **Admin → People and roles**. Admins get a banner on the Dashboard when someone is waiting.
+Then send the link to the team. Each person presses **Create account** and is signed straight in, with no email to confirm. A new account then waits on an "Awaiting approval" page and can see nothing until an admin approves it in **Admin → People and roles**. Admins get a banner on the Dashboard when someone is waiting.
 
 Optional once everyone has joined: **Authentication → Sign In / Providers**, turn off **Allow new users to sign up**, so strangers with the link cannot create accounts at all.
 

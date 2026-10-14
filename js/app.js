@@ -190,7 +190,10 @@ const quietRender = () => {
 
 // Everything that comes from the team database, to tell whether a sync changed anything.
 const teamData = () =>
-  JSON.stringify([state.sectors, state.roster, state.people, state.settings, state.prefs, state.defects, state.history, state.briefings]);
+  JSON.stringify([
+    state.sectors, state.roster, state.people, state.settings, state.prefs, state.defects, state.history, state.briefings,
+    state.actuals, state.swaps, state.official, state.officialCheck,
+  ]);
 
 // Keep this device in step with the team database: other people's changes
 // appear by themselves within a few seconds, without reloading.
