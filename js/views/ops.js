@@ -383,6 +383,18 @@ function defects() {
     </section>`;
 }
 
+// The tech log sits at the foot of the page, which is the right place for a
+// deferred defect and the wrong one for an aeroplane that cannot fly. So that
+// one case keeps a line at the top.
+function aogBanner() {
+  const aog = state.defects.filter((d) => d.status !== 'RECTIFIED' && d.aog);
+  if (!aog.length) return '';
+  return `<a class="banner bad" href="#/techlog">${icon('alert')}
+    <span><strong>Aircraft unserviceable</strong> · ${esc(aog[0].ref)} ${esc(aog[0].desc)}${
+      aog.length > 1 ? ` and ${aog.length - 1} more` : ''
+    }</span>${icon('chevron')}</a>`;
+}
+
 // WorldFlight moving the programme is ops work, so it belongs here too.
 function official() {
   if (!state.sectors.length) return '';
@@ -412,15 +424,16 @@ export function render() {
           )}</strong>. The roster cannot be published until it closes.</p>`
         : ''
     }
+    ${aogBanner()}
     ${official()}
     ${summary(now)}
     ${aircraft(now)}
     ${requests()}
-    ${defects()}
     ${reports(now)}
     ${crewing(now)}
     ${planning(now)}
     ${airports(now)}
+    ${defects()}
     <p class="tiny center">Everything here looks ${AHEAD_HOURS} hours ahead, except crewing, which looks at the whole schedule.</p>`;
 }
 
