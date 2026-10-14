@@ -26,7 +26,7 @@ def lines(page):
             text = ''.join(s['text'] for s in line['spans']).strip()
             if x < 25 or y < 50 or y > 735 or not text or re.fullmatch(r'[:\s]+', text):
                 continue
-            if 'continued' in text.lower() or text.startswith('▼') or text in ['Intentionally', 'Blank']:
+            if text.startswith('▼') or text.strip() == 'continued▼' or text in ['Intentionally', 'Blank']:
                 continue
             result.append((y, x, right, bottom, text))
     groups = []
@@ -49,11 +49,60 @@ def lines(page):
     return merged
 
 
+NOTE_MARKER = re.compile(r'\b(?:Note\s*:|Caution\s*[!:]|Warning\s*[!:])', re.I)
+EXPLANATION = re.compile(
+    r'^(?:This (?:allows|ensures|prevents|provides|reduces|increases|disables|means)|'
+    r'To manually unlock|Use momentary actuation|Flight crew must use oxygen|'
+    r'Maximum flap extension altitude|'
+    r'(?:The|Individual|Emergency|Automatic|Nose wheel) .+? '
+    r'(?:is|are|will|can|may|must|has|have|supply)\b)', re.I)
+
+
+def classify_notes(procedure):
+    """Keep stable block IDs and progress keys when separating explanatory text."""
+    result = []
+    for block in procedure['blocks']:
+        text = block['text']
+        markers = list(NOTE_MARKER.finditer(text))
+        if markers:
+            first = markers[0].start()
+            if first:
+                block['text'] = text[:first].strip()
+                result.append(block)
+            for i, marker in enumerate(markers):
+                end = markers[i+1].start() if i+1 < len(markers) else len(text)
+                note = {**block, 'id': block['id'] if not first and i == 0 else f"{block['id']}-note-{i}",
+                        'text': text[marker.start():end].strip(), 'type': 'note', 'links': []}
+                if first or i:
+                    note['number'] = None
+                    note.pop('check_index', None)
+                result.append(note)
+            continue
+        if block['type'] == 'action' and block['number'] is None and EXPLANATION.match(text):
+            # Keep an instruction that follows explanatory prose checkable.
+            if text.endswith('Continue normal operation.'):
+                info = text.removesuffix('Continue normal operation.').strip()
+                result.append({**block, 'id': f"{block['id']}-info", 'text': info, 'type': 'note', 'links': []})
+                block['text'] = 'Continue normal operation.'
+            else:
+                block['type'] = 'note'
+        result.append(block)
+    procedure['blocks'] = result
+
+
 def build(source):
     pdf = fitz.open(source)
     toc = pdf.get_toc(False)
     previous = json.loads(OUT.read_text().split('export const NON_NORMAL_QRH = ', 1)[1].rstrip(';\n')) if OUT.exists() else {'source': {'title': 'B737 Quick Reference Handbook', 'document_id': 'D6-27370-800-RE1(P2)'}, 'procedures': []}
     old_ids = {(p['source_pages'][0], slug(p['title'])): p['id'] for p in previous['procedures']}
+    old_indices = {}
+    for procedure in previous['procedures']:
+        index = 0
+        for block in procedure.get('blocks', []):
+            if block['type'] == 'action' or 'check_index' in block:
+                old_indices[(procedure['id'], block['id'])] = block.get('check_index', index)
+                index += block['type'] == 'action'
+
     entries = []
     section = ''
     for level, title, first, dest in toc:
@@ -162,7 +211,16 @@ def build(source):
             if 'Go to' in b['text'] and not b['links']:
                 unresolved.append({'procedure':p['id'], 'text':b['text'], 'reason':'unresolved reference'})
             b['indent'] = max(0, min(4, round(b.pop('x', 0) / 18)))
-    data = dict(schema_version='4.0-native-checklists', source=previous['source'], procedures=procedures,
+    for procedure in procedures:
+        next_index = max((index for (pid, bid), index in old_indices.items() if pid == procedure['id']), default=-1) + 1
+        for block in procedure['blocks']:
+            if block['type'] == 'action':
+                key = (procedure['id'], block['id'])
+                block['check_index'] = old_indices.get(key, next_index)
+                if key not in old_indices:
+                    next_index += 1
+        classify_notes(procedure)
+    data = dict(schema_version='4.0-native-checklists' , source=previous['source'], procedures=procedures,
                 verification=dict(procedure_count=len(procedures), block_count=sum(len(p['blocks']) for p in procedures),
                                   unresolved_references=unresolved, method='Position-aware PDF extraction; explicit navigation, no inferred automatic branching'))
     data['source']['sha256'] = hashlib.sha256(Path(source).read_bytes()).hexdigest()

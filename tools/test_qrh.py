@@ -21,6 +21,8 @@ for p in procedures.values():
     assert set(numbers) == set(range(1, max(numbers, default=0) + 1)), p['id']
     for block in p['blocks']:
         assert block['source_pdf_page'] in p['source_pages']
+        if block['type'] == 'action':
+            assert not re.search(r'\b(?:Note\s*:|Caution\s*[!:]|Warning\s*[!:])', block['text'], re.I), (p['id'], block['id'])
         for link in block['links']:
             target = procedures[link['checklist']]
             if link.get('block'):
@@ -39,7 +41,7 @@ parts = ['''const state={checks:{}}; let saved=''; let renders=0;
 const save=()=>{saved=JSON.stringify(state.checks)};const rerender=()=>{renders++};
 const icon=()=>''; const esc=s=>String(s??'').replaceAll('<','&lt;');
 const location={hash:''}; let focused='';
-const document={getElementById:id=>({scrollIntoView(){focused=id},focus(){}})};
+const document={getElementById:id=>id==='view'?null:({scrollIntoView(){focused=id},focus(){}})};
 ''']
 for filename in ['js/data/non-normal.js', 'js/data/checklists.js', 'js/views/checklists.js']:
     code = (ROOT / filename).read_text()
@@ -50,14 +52,35 @@ parts.append('''
 function assert(ok,msg){if(!ok)throw Error(msg)}
 for(const cl of NON_NORMAL_CHECKLISTS){
  const html=render([cl.id]); assert(!html.includes('<img'),'no PDF images');
+ for(const note of cl.blocks.filter(b=>b.type==='note')){
+   const start=html.indexOf(`id="qrh-${note.id}"`);
+   const end=html.indexOf('id="qrh-',start+1);
+   const row=html.slice(start,end<0?undefined:end);
+   assert(!row.includes('data-act="toggle"'),'notes have no check-off control');
+ }
  assert((html.match(/data-act="toggle"/g)||[]).length===cl.items.length,'checkable actions');
  for(const block of cl.blocks) assert(html.includes(`id="qrh-${block.id}"`),'block anchors');
 }
 const fire=NON_NORMAL_CHECKLISTS.find(c=>c.name==='Engine Fire on the Ground');
 location.hash=`#/checklists/${fire.id}`;
+assert(fire.blocks.find(b=>b.id==='b6').type==='note','fire switch explanation is a note');
+assert(fire.blocks.find(b=>b.id==='b7').check_index===6,'existing action progress key preserved');
 actions.toggle({dataset:{i:'0',block:'b1'}});
 assert(state.checks[fire.id][0] && JSON.parse(saved)[fire.id][0],'saved check mark');
 assert(render([fire.id]).includes('aria-pressed="true"'),'checked rendering');
+assert(renders===0,'native check-off does not rerender');
+const decision=branchGroups(fire)[0];
+assert(decision.options.length===2,'evacuation options grouped');
+actions.chooseBranch({dataset:{group:decision.id,option:decision.options[0].id}});
+assert(JSON.parse(saved)[fire.id].choices[decision.id]===decision.options[0].id,'branch choice persisted');
+assert(branchState(fire).get(decision.options[1].id).inactive,'alternative dimmed');
+assert(render([fire.id]).includes('qrh-muted'),'alternative rendered muted');
+actions.chooseBranch({dataset:{group:decision.id,option:decision.options[1].id}});
+assert(branchState(fire).get(decision.options[0].id).inactive,'switching options');
+assert(!branchState(fire).get(decision.options[1].id).inactive,'selected option active');
+actions.chooseBranch({dataset:{group:decision.id,option:decision.options[1].id}});
+assert(!branchState(fire).get(decision.options[0].id).inactive,'clear choice');
+assert(renders===0,'branch choices do not rerender');
 const local=fire.blocks.flatMap(b=>b.links).find(l=>l.block);
 actions.follow({dataset:{checklist:fire.id,block:local.block,from:'b0'}});
 assert(focused===`qrh-${local.block}`,'local step jump');

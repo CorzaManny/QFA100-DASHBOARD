@@ -1487,17 +1487,33 @@ body.efb .tabs a {
   .qrh-layout > .chip-row { max-height: 75vh; overflow-y: auto; }
   .qrh-layout .chip-t { white-space: normal; }
 }
-/* Native QRH actions, decisions and linked navigation. */
-.qrh-block { margin-left: calc(var(--qrh-indent, 0) * 8px); padding: 12px 0; border-top: 1px solid var(--hair); scroll-margin-top: 110px; }
-.qrh-block:focus { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-sm); }
-.qrh-text, .qrh-check { display: flex; gap: 12px; align-items: flex-start; text-align: left; line-height: 1.6; overflow-wrap: anywhere; }
-.qrh-check { width: 100%; background: none; border: 0; color: var(--text); font: inherit; line-height: 1.6; padding: 8px 0; cursor: pointer; }
-.qrh-check .cl-box { flex-shrink: 0; }
-.qrh-check.on { color: var(--muted); }
-.qrh-check.on .cl-box { color: var(--accent); border-color: var(--accent); }
-.qrh-number { flex: 0 0 2em; font-weight: 800; color: var(--accent); }
-.qrh-branch { background: var(--card2); padding: 14px 12px; font-weight: 700; }
-.qrh-note { border-left: 3px solid var(--accent); padding-left: 12px; }
+/* Match normal checklist rows; give prose and decisions room to breathe. */
+.qrh-card > .tiny, .qrh-card > .note { margin: 0; padding: 12px 16px; }
+.qrh-card > .btn, .qrh-card > .btn-row { margin: 12px 16px; }
+.qrh-card .card-head { align-items: flex-start; gap: 16px; }
+.qrh-card .card-head h2 { min-width: 0; overflow-wrap: anywhere; }
+.qrh-card .card-head .badge { flex-shrink: 0; }
+.qrh-block { scroll-margin-top: 110px; border-top: 1px solid var(--card2); }
+.qrh-block:focus { outline: 2px solid var(--link); outline-offset: -2px; }
+.qrh-check { border-top: 0; line-height: 1.55; grid-template-columns: 28px minmax(0, 1fr) auto; padding: 16px; min-height: 72px; }
+.qrh-check:not(:has(.cl-re)) { grid-template-columns: 28px minmax(0, 1fr); }
+.qrh-check .cl-ch { overflow-wrap: anywhere; }
+.qrh-check .cl-re { max-width: min(240px, 35vw); overflow-wrap: anywhere; }
+.qrh-number { color: var(--muted); font-weight: 600; }
+.qrh-text { padding: 16px; line-height: 1.65; overflow-wrap: anywhere; }
+.qrh-branch > .qrh-text { background: var(--card2); font-weight: 700; color: var(--text); }
+.qrh-option { background: var(--card2); }
+.qrh-option .cl-box { border-radius: 50%; }
+.qrh-note .qrh-text { margin: 12px 16px; padding: 12px 16px; border-left: 3px solid var(--link); background: var(--card2); border-radius: 4px; }
 .qrh-context { color: var(--muted); }
-.qrh-divider, .qrh-end { color: var(--accent); font-weight: 700; }
-.qrh-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.qrh-divider, .qrh-end { color: var(--muted); font-weight: 600; }
+.qrh-links { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 16px 16px; }
+.qrh-finish { margin: 0 16px 16px; }
+.qrh-muted { opacity: 0.4; }
+.qrh-block button:disabled { cursor: default; }
+@media (max-width: 600px) {
+  .qrh-card .card-head { flex-wrap: wrap; gap: 8px; }
+  .qrh-check { grid-template-columns: 28px minmax(0, 1fr); }
+  .qrh-check .cl-re { grid-column: 2; text-align: left; max-width: none; }
+  .qrh-links .btn { white-space: normal; text-align: left; }
+}

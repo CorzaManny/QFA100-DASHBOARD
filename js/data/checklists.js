@@ -146,6 +146,7 @@ export const NON_NORMAL_CHECKLISTS = NON_NORMAL_QRH.procedures.map((procedure) =
   name: procedure.title,
   kind: 'non-normal',
   native: true,
+  progressKeys: procedure.blocks.filter((block) => block.type === 'action').map((block) => block.check_index),
   items: procedure.blocks.filter((block) => block.type === 'action').map((block) => [block.text, '']),
 }));
 CHECKLISTS.push(...NON_NORMAL_CHECKLISTS);
