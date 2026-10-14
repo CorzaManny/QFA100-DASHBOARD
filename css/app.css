@@ -1479,3 +1479,19 @@ body.efb .tabs a {
   text-decoration: line-through;
   font-weight: 500;
 }
+
+/* Non-normal QRH review drafts retain the source layout and never imply completion. */
+.qrh-search { display: grid; gap: 8px; margin-bottom: 14px; }
+.qrh-layout .chip[hidden] { display: none; }
+.qrh-notice { border-left: 3px solid var(--accent); padding-left: 12px; }
+.qrh-condition, .qrh-step p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.qrh-steps { list-style: none; padding: 0; margin: 0; }
+.qrh-step { padding: 16px 0; border-top: 1px solid var(--hair); }
+.qrh-step-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.qrh-step p { margin: 10px 0; line-height: 1.6; }
+.qrh-source summary { cursor: pointer; padding: 12px 0; }
+.qrh-source .metar { max-height: 60vh; overflow: auto; }
+@media (min-width: 900px) {
+  .qrh-layout > .chip-row { max-height: 75vh; overflow-y: auto; }
+  .qrh-layout .chip-t { white-space: normal; }
+}

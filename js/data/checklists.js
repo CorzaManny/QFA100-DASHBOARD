@@ -1,3 +1,5 @@
+import { NON_NORMAL_QRH } from './non-normal.js';
+
 // Boeing 737NG normal checklists, challenge → response.
 // FOR FLIGHT SIMULATION USE ONLY. Edit this file to match your team's
 // add-on and SOPs: each item is ['Challenge', 'Response'].
@@ -136,3 +138,15 @@ export const CHECKLISTS = [
     ],
   },
 ];
+
+// Draft procedures are reference-only and retain their original extracted steps.
+export const NON_NORMAL_CHECKLISTS = NON_NORMAL_QRH.procedures.map((procedure) => ({
+  ...procedure,
+  id: `qrh-${procedure.id}`,
+  name: procedure.title,
+  kind: 'non-normal',
+  referenceOnly: true,
+  items: [],
+}));
+CHECKLISTS.push(...NON_NORMAL_CHECKLISTS);
+export { NON_NORMAL_QRH };

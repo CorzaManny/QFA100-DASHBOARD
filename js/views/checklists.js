@@ -2,10 +2,10 @@
 
 import { state, save } from '../store.js';
 import { esc, icon, rerender } from '../ui.js';
-import { CHECKLISTS, CHECKLIST_KINDS } from '../data/checklists.js';
+import { CHECKLISTS, CHECKLIST_KINDS, NON_NORMAL_QRH } from '../data/checklists.js';
 
 const done = (cl) => cl.items.filter((_, i) => state.checks[cl.id]?.[i]).length;
-const complete = (cl) => done(cl) === cl.items.length;
+const complete = (cl) => !cl.referenceOnly && done(cl) === cl.items.length;
 const ofKind = (kind) => CHECKLISTS.filter((cl) => (cl.kind || 'normal') === kind);
 
 // What the Dashboard offers to resume: only the ones flown every sector.
@@ -38,13 +38,17 @@ export function render(args) {
     .map(
       (c) => `<a class="chip ${c === cl ? 'on' : ''} ${complete(c) ? 'done' : ''}" href="#/checklists/${c.id}">
       <span class="chip-t">${complete(c) ? icon('check') : ''}${esc(c.name)}</span>
-      <span class="chip-n">${done(c)} / ${c.items.length}</span></a>`,
+      <span class="chip-n">${c.referenceOnly ? 'Draft' : `${done(c)} / ${c.items.length}`}</span></a>`,
     )
     .join('');
 
   const shell = (body) => `
     <nav class="seg tabs4 on-card" aria-label="Kind of checklist">${kinds}</nav>
-    <div class="cl-layout ${chips ? '' : 'solo'}">
+    ${kind === 'non-normal' ? `<label class="qrh-search">Find a non-normal checklist
+      <input type="search" data-qrh-search placeholder="Search title or condition…" autocomplete="off">
+      <span class="tiny" data-qrh-count>${group.length} procedures · review draft</span>
+    </label>` : ''}
+    <div class="cl-layout ${chips ? '' : 'solo'} ${kind === 'non-normal' ? 'qrh-layout' : ''}">
       ${chips ? `<nav class="chip-row" aria-label="Checklists">${chips}</nav>` : ''}
       <div class="cl-main">${body}</div>
     </div>`;
@@ -56,6 +60,29 @@ export function render(args) {
           <code>kind: '${esc(kind)}'</code> and it appears here.</p>
       </section>`)}
     <p class="tiny center">Boeing 737NG checklists. For flight simulation use only.</p>`;
+  }
+
+  if (cl.referenceOnly) {
+    const pages = cl.source_page_text.map((page) => `<details class="qrh-source">
+      <summary>Source text · PDF page ${esc(page.pdf_page)}${page.printed_page ? ` · ${esc(page.printed_page)}` : ''}</summary>
+      <pre class="metar">${esc(page.text)}</pre>
+    </details>`).join('');
+    const steps = cl.steps.map((step) => `<li class="qrh-step">
+      <div class="qrh-step-head"><strong>Step ${esc(step.number)}</strong><span class="tiny">PDF p. ${esc(step.source_pdf_page)} · Unverified</span></div>
+      <p>${esc(step.raw_text)}</p>
+      ${step.flags.length ? `<span class="tiny">Review flags: ${step.flags.map((flag) => esc(flag.replaceAll('_', ' '))).join(' · ')}</span>` : ''}
+    </li>`).join('');
+    return shell(`<section class="card cl">
+      <div class="card-head"><h2>${esc(cl.name)}</h2><span class="badge mute">Review draft</span></div>
+      <p class="note qrh-notice">Unverified extraction · simulation/reference only. Step order, completeness, notes and decision paths require manual review. No automatic branching or completion tracking.</p>
+      ${cl.condition ? `<p class="qrh-condition">${esc(cl.condition)}</p>` : ''}
+      <p class="tiny">${esc(NON_NORMAL_QRH.source.title)} · ${esc(NON_NORMAL_QRH.source.document_id)} · PDF pages ${cl.source_pages.map(esc).join(', ')}</p>
+      <ol class="qrh-steps">${steps || '<li>No steps extracted. Consult the source text below.</li>'}</ol>
+      <h3>Source page text</h3>
+      <p class="tiny">Retained extraction includes notes and decision text that may be missing from the steps. Compare with the original PDF images when reviewing.</p>
+      ${pages}
+      <p class="tiny">${esc(NON_NORMAL_QRH.source.source_notice)}</p>
+    </section>`);
   }
 
   const idx = group.indexOf(cl);
@@ -99,11 +126,23 @@ export function render(args) {
 
 export function mounted(root) {
   root.querySelector('.chip.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  root.querySelector('[data-qrh-search]')?.addEventListener('input', (event) => {
+    const query = event.target.value.trim().toLowerCase();
+    let count = 0;
+    root.querySelectorAll('.chip').forEach((chip, i) => {
+      const cl = ofKind('non-normal')[i];
+      const match = `${cl.name} ${cl.condition || ''}`.toLowerCase().includes(query);
+      chip.hidden = !match;
+      if (match) count++;
+    });
+    root.querySelector('[data-qrh-count]').textContent = count ? `${count} procedures · review draft` : 'No matching procedures';
+  });
 }
 
 export const actions = {
   toggle(el) {
     const { cl } = active(location.hash.split('/').slice(2));
+    if (!cl || cl.referenceOnly) return;
     const marks = (state.checks[cl.id] ??= []);
     marks[Number(el.dataset.i)] = !marks[Number(el.dataset.i)];
     save();
