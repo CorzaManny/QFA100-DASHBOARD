@@ -107,6 +107,10 @@ export function problems(sectors, rules) {
 // Fill the empty Captain and First Officer seats on sectors that have not
 // departed. Anyone already rostered is left exactly where they are.
 //
+// Seats are filled a rank at a time: every Captain seat first, then every
+// First Officer seat, then relief pilots. When there are not enough pilots to
+// go round, that leaves as few sectors as possible with nobody at all.
+//
 //   sectors, roster, people, prefs: the team's data
 //   reportFor(sector): the Date a newly rostered person should report
 //
@@ -130,9 +134,10 @@ export function planRoster({ sectors, roster, people, prefs, rules, now, reportF
   const gaps = [];
   const upcoming = sectors.filter((s) => std(s) > now).sort(byStd);
 
-  for (const s of upcoming) {
-    const crew = [...roster, ...added].filter((r) => r.sector_id === s.id);
-    for (const seat of seatsFor(s, rules)) {
+  for (const seat of PILOT_DUTIES) {
+    for (const s of upcoming) {
+      if (!seatsFor(s, rules).includes(seat)) continue;
+      const crew = [...roster, ...added].filter((r) => r.sector_id === s.id);
       if (crew.some((r) => r.duty === seat)) continue;
 
       let best = null;
@@ -182,5 +187,6 @@ export function planRoster({ sectors, roster, people, prefs, rules, now, reportF
       seated.get(best.id)[seat] = count(best.id, seat) + 1;
     }
   }
+  gaps.sort((a, b) => byStd(a.sector, b.sector) || PILOT_DUTIES.indexOf(a.seat) - PILOT_DUTIES.indexOf(b.seat));
   return { added, gaps };
 }
