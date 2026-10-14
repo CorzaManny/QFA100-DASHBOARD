@@ -1,16 +1,31 @@
 :root {
-  --bg: #0c1723;
-  --card: #1a2b3d;
-  --card2: #263c50;
-  --line: #34536c;
+  /* QFA100 house colours. Unofficial, Qantas-inspired: brand red on a
+     near-black flight deck grey, with steel for everything that is only
+     information. Red is kept for the brand and for what is live or active,
+     never for ordinary text, so it still means something when it appears. */
+  --bg: #0b0f14;
+  --bg-deep: #080d13;
+  --card: #151d26;
+  --card2: #1f2937;
+  --line: #2f3d4d;
+  --hair: #1e2832;
   --text: #ffffff;
-  --muted: #9fb7cb;
-  --accent: #62b9f4;
-  --ok: #5bd49a;
-  --warn: #f4b76e;
-  --bad: #f58a8a;
-  --top-h: 56px;
-  --tabs-h: 60px;
+  --muted: #9aabbd;
+  --dim: #6c7f93;
+  --accent: #e4002b;
+  --accent-deep: #ba0c2f;
+  --accent-soft: rgba(228, 0, 43, 0.13);
+  --brand: linear-gradient(110deg, #ba0c2f, #e4002b);
+  --link: #a7c3dc;
+  --ok: #2ec27e;
+  --warn: #f0a63c;
+  --bad: #ef4444;
+  --info: #4f9bf0;
+  --top-h: 58px;
+  --tabs-h: 62px;
+  --nav-w: 228px;
+  --r: 10px;
+  --r-sm: 6px;
   color-scheme: dark;
 }
 
@@ -24,15 +39,16 @@ html {
 
 body {
   margin: 0;
-  background: var(--bg);
+  /* A little height behind the top of the page so it is not a flat black. */
+  background: var(--bg) radial-gradient(1100px 520px at 50% -240px, #131c26 0%, rgba(19, 28, 38, 0) 70%) no-repeat;
   color: var(--text);
-  font: 16px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font: 16px/1.45 Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
 
 a {
-  color: var(--accent);
+  color: var(--link);
   text-decoration: none;
 }
 
@@ -43,16 +59,32 @@ h3 {
   font-weight: 600;
 }
 h1 {
-  font-size: 1.4rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 h2 {
-  font-size: 1.05rem;
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
 }
+/* Sub-headings read like the headings on an ops form: small, spaced out,
+   and ruled off across the rest of the line. */
 h3 {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--dim);
+}
+h3::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hair);
 }
 
 .icon {
@@ -92,20 +124,50 @@ h3 {
   justify-content: space-between;
   height: calc(var(--top-h) + env(safe-area-inset-top));
   padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
-  background: rgba(12, 23, 35, 0.92);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--card);
+  background: rgba(8, 13, 19, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+/* The stripe along the bottom of the header, like one down the side of an
+   aeroplane. It is the only piece of pure brand on the page. */
+.top::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: var(--brand);
 }
 .brand {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 11px;
   color: var(--text);
   line-height: 1.2;
 }
+.brand .mark {
+  flex: none;
+  width: 19px;
+  height: 26px;
+  background: var(--brand);
+  clip-path: polygon(40% 0, 100% 0, 60% 100%, 0 100%);
+}
+.brand-lines {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.brand .tiny {
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .brand-name {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.08rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 .top-right {
   display: flex;
@@ -118,9 +180,11 @@ h3 {
   align-items: center;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 5px 11px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hair);
   background: var(--card);
 }
 
@@ -141,56 +205,113 @@ main {
   display: flex;
   height: calc(var(--tabs-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  background: rgba(16, 27, 40, 0.96);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-top: 1px solid var(--card);
+  background: rgba(8, 13, 19, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--hair);
 }
 .tabs a {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  color: var(--muted);
-  font-size: 0.66rem;
+  gap: 4px;
+  color: var(--dim);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   white-space: nowrap;
 }
 .tabs a .icon {
-  width: 22px;
-  height: 22px;
+  width: 21px;
+  height: 21px;
 }
 .tabs a.on {
-  color: var(--accent);
+  color: var(--text);
+}
+/* The tab you are on carries the stripe, so the brand marks your place. */
+.tabs a.on::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 34px;
+  height: 2px;
+  background: var(--brand);
+}
+
+/* Signed off at the foot of the side nav; no room for it on a phone. */
+.nav-foot {
+  display: none;
 }
 
 @media (min-width: 900px) {
+  .nav-foot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: auto;
+    padding: 16px 12px 6px;
+    border-top: 1px solid var(--hair);
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1.5;
+    letter-spacing: 0.14em;
+    color: var(--dim);
+  }
+  .nav-foot .mark {
+    flex: none;
+    width: 12px;
+    height: 18px;
+    background: var(--brand);
+    clip-path: polygon(40% 0, 100% 0, 60% 100%, 0 100%);
+    opacity: 0.8;
+  }
   .tabs {
     inset: calc(var(--top-h) + env(safe-area-inset-top)) auto 0 0;
-    width: 104px;
+    width: var(--nav-w);
     height: auto;
     flex-direction: column;
     justify-content: flex-start;
-    gap: 6px;
-    padding: 16px 8px;
+    gap: 2px;
+    padding: 14px 12px;
+    background: var(--bg-deep);
     border-top: 0;
-    border-right: 1px solid var(--card);
+    border-right: 1px solid var(--hair);
   }
   .tabs a {
     flex: none;
-    padding: 12px 4px;
-    border-radius: 12px;
-    font-size: 0.72rem;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 11px 12px;
+    border-radius: var(--r-sm);
+    font-size: 0.86rem;
+    font-weight: 600;
+    letter-spacing: 0;
   }
+  .tabs a:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.03);
+  }
+  /* On the side the stripe runs down the edge of the item instead. */
   .tabs a.on {
-    background: var(--card);
+    background: var(--accent-soft);
+  }
+  .tabs a.on::before {
+    top: 8px;
+    bottom: 8px;
+    left: 0;
+    width: 2px;
+    height: auto;
   }
   main {
-    padding-bottom: 32px;
-    padding-left: 120px;
-    max-width: 880px;
+    padding-bottom: 40px;
+    padding-left: calc(var(--nav-w) + 28px);
+    padding-right: 28px;
+    max-width: calc(var(--nav-w) + 920px);
   }
 }
 
@@ -198,11 +319,28 @@ main {
 
 .card {
   background: var(--card);
-  border-radius: 16px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+/* The label at the top of a list is ruled off, like a heading on a form. */
+.card-head > .tiny:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+}
+.card-head > .tiny:first-child::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hair);
 }
 .card-head,
 .page-head {
@@ -226,30 +364,36 @@ main {
 
 .badge {
   display: inline-block;
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 0.66rem;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 0.63rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.07em;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   vertical-align: middle;
-  background: var(--card2);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--muted);
 }
 .badge.ok {
-  background: rgba(91, 212, 154, 0.16);
+  border-color: rgba(46, 194, 126, 0.45);
+  background: rgba(46, 194, 126, 0.12);
   color: var(--ok);
 }
 .badge.info {
-  background: rgba(98, 185, 244, 0.16);
-  color: var(--accent);
+  border-color: rgba(79, 155, 240, 0.45);
+  background: rgba(79, 155, 240, 0.12);
+  color: var(--info);
 }
 .badge.warn {
-  background: rgba(244, 183, 110, 0.16);
+  border-color: rgba(240, 166, 60, 0.45);
+  background: rgba(240, 166, 60, 0.12);
   color: var(--warn);
 }
 .badge.bad {
-  background: rgba(245, 138, 138, 0.18);
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.14);
   color: var(--bad);
 }
 .chips {
@@ -266,9 +410,10 @@ main {
 }
 .apt {
   font-size: 1.9rem;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.1;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
 }
 .route-mid {
   flex: 1;
@@ -286,15 +431,15 @@ main {
 }
 .bar {
   width: 90%;
-  height: 4px;
+  height: 3px;
   border-radius: 99px;
-  background: var(--line);
+  background: var(--card2);
   overflow: hidden;
 }
 .bar div {
   height: 100%;
   border-radius: 99px;
-  background: var(--accent);
+  background: var(--brand);
 }
 
 .metrics {
@@ -308,9 +453,10 @@ main {
   }
 }
 .metric {
-  background: var(--card2);
-  border-radius: 10px;
-  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  padding: 10px 11px;
 }
 .metric-v {
   font-weight: 600;
@@ -341,7 +487,8 @@ main {
 }
 .big {
   font-size: 1.3rem;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -350,7 +497,10 @@ main {
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  border-radius: 12px;
+  border: 1px solid var(--hair);
+  border-left-width: 3px;
+  border-radius: var(--r-sm);
+  background: var(--card);
   font-size: 0.88rem;
   color: var(--text);
 }
@@ -358,15 +508,18 @@ main {
   flex: 1;
 }
 .banner.warn {
-  background: rgba(244, 183, 110, 0.16);
+  border-left-color: var(--warn);
+  background: rgba(240, 166, 60, 0.08);
   color: var(--warn);
 }
 .banner.bad {
-  background: rgba(245, 138, 138, 0.2);
+  border-left-color: var(--bad);
+  background: rgba(239, 68, 68, 0.1);
   color: var(--bad);
 }
 .banner.info {
-  background: rgba(98, 185, 244, 0.14);
+  border-left-color: var(--info);
+  background: rgba(79, 155, 240, 0.08);
 }
 
 .tiles {
@@ -374,19 +527,28 @@ main {
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
+@media (min-width: 900px) {
+  .tiles {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
 .tile {
   background: var(--card);
-  border-radius: 16px;
-  padding: 16px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  padding: 15px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   color: var(--text);
   min-width: 0;
 }
+.tile:hover {
+  border-color: var(--line);
+}
 .tile .icon {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   color: var(--accent);
 }
 .tile-t {
@@ -403,19 +565,22 @@ main {
   gap: 6px;
   min-height: 44px;
   padding: 0 16px;
-  border: 1px solid transparent;
-  border-radius: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   font: inherit;
-  font-weight: 600;
-  font-size: 0.92rem;
+  font-weight: 650;
+  font-size: 0.9rem;
+  letter-spacing: 0.01em;
   cursor: pointer;
   color: var(--text);
   background: var(--card2);
   white-space: nowrap;
 }
 .btn.primary {
-  background: var(--accent);
-  color: #06202f;
+  background: var(--brand);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 .btn.ghost {
   background: transparent;
@@ -543,10 +708,11 @@ button:focus-visible {
   padding: 12px 0;
 }
 .list-day {
-  padding: 12px 0 4px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  padding: 13px 0 5px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--accent);
 }
 .row {
@@ -555,7 +721,7 @@ button:focus-visible {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 0;
-  border-top: 1px solid var(--card2);
+  border-top: 1px solid var(--hair);
   color: var(--text);
 }
 .row:first-child,
@@ -662,8 +828,8 @@ button:focus-visible {
   color: var(--ok);
 }
 .chip.on {
-  background: var(--accent);
-  color: #06202f;
+  background: var(--brand);
+  color: #fff;
 }
 .chip .icon {
   width: 16px;
@@ -705,7 +871,7 @@ button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #06202f;
+  color: #0b0f14;
 }
 .cl-ch {
   font-weight: 500;
@@ -714,10 +880,10 @@ button:focus-visible {
   max-width: 46vw;
   font-weight: 700;
   text-align: right;
-  color: var(--accent);
+  color: var(--link);
 }
 .cl-item.on {
-  background: rgba(91, 212, 154, 0.07);
+  background: rgba(46, 194, 126, 0.07);
 }
 .cl-item.on .cl-box {
   background: var(--ok);
@@ -741,7 +907,7 @@ button:focus-visible {
   color: var(--muted);
 }
 .cl-foot.done {
-  background: rgba(91, 212, 154, 0.16);
+  background: rgba(46, 194, 126, 0.14);
 }
 .cl-foot.done .cl-status {
   color: var(--ok);
@@ -790,19 +956,20 @@ button:focus-visible {
 .seg {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 12px;
-  background: var(--bg);
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--bg-deep);
 }
 .seg button {
-  min-height: 40px;
+  min-height: 38px;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-weight: 600;
+  font-weight: 650;
   cursor: pointer;
 }
 .seg button.on {
@@ -863,14 +1030,17 @@ fieldset:disabled textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
-  border-radius: 9px;
+  min-height: 38px;
+  border-radius: var(--r-sm);
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 650;
+}
+.seg a:hover {
+  color: var(--text);
 }
 .seg a.on {
-  background: var(--card2);
-  color: var(--text);
+  background: var(--brand);
+  color: #fff;
 }
 .seg.on-card {
   background: var(--card);
@@ -879,10 +1049,10 @@ fieldset:disabled textarea {
   gap: 10px;
 }
 .slot-card.short {
-  box-shadow: inset 3px 0 0 var(--warn);
+  border-left: 3px solid var(--warn);
 }
 .slot-card.ok {
-  box-shadow: inset 3px 0 0 var(--ok);
+  border-left: 3px solid var(--ok);
 }
 .slots {
   display: grid;
@@ -955,15 +1125,15 @@ fieldset:disabled textarea {
   box-shadow: inset 0 0 0 1px var(--line);
 }
 .seg button.on.prefer {
-  background: rgba(91, 212, 154, 0.22);
+  background: rgba(46, 194, 126, 0.2);
   color: var(--ok);
 }
 .seg button.on.available {
-  background: rgba(98, 185, 244, 0.22);
-  color: var(--accent);
+  background: rgba(79, 155, 240, 0.2);
+  color: var(--info);
 }
 .seg button.on.unavailable {
-  background: rgba(245, 138, 138, 0.22);
+  background: rgba(239, 68, 68, 0.2);
   color: var(--bad);
 }
 .avail {
@@ -981,9 +1151,10 @@ fieldset:disabled textarea {
 }
 
 .clock-sim {
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 600;
-  color: var(--muted);
+  letter-spacing: 0.06em;
+  color: var(--dim);
   white-space: nowrap;
 }
 
@@ -1029,7 +1200,7 @@ button.row {
 .mel-proc summary {
   cursor: pointer;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--link);
 }
 .mel-proc p {
   margin: 8px 0 0;
@@ -1062,6 +1233,18 @@ button.row {
 /* Five admin tabs: three on top, two below */
 .seg.tabs5 {
   grid-template-columns: repeat(3, 1fr);
+}
+@media (min-width: 900px) {
+  .seg.tabs4,
+  .seg.tabs5 {
+    grid-template-columns: repeat(auto-fit, minmax(0, max-content));
+    justify-content: start;
+  }
+  .seg.tabs4 a,
+  .seg.tabs5 a {
+    padding: 0 20px;
+    font-size: 0.88rem;
+  }
 }
 .seg.tabs5 a {
   font-size: 0.8rem;
@@ -1129,7 +1312,7 @@ body.efb textarea {
   min-height: 48px;
 }
 body.efb .tabs a {
-  font-size: 0.75rem;
+  font-size: 0.64rem;
 }
 
 /* Stamping off and on blocks on the flight deck */

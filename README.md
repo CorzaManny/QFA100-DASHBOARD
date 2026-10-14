@@ -150,6 +150,14 @@ Nothing is shown until somebody stamps a time or the aircraft is being tracked, 
 
 The estimate takes the best source it has, in this order: a stamped time, the simulator API, the live VATSIM position, then the published block time. With nothing connected at all it is simply the published schedule, which is where you started.
 
+## How it looks
+
+The palette lives in one place, the `:root` block at the top of [`css/app.css`](css/app.css), and everything else refers to it. It is an unofficial Qantas-inspired set: brand red (`#E4002B`, deepening to `#BA0C2F`) on a near-black flight deck grey, with steel blues for anything that is only information.
+
+Red is rationed on purpose. It marks the brand, the page you are on, and the one action a card is really for. Everything that is merely a state keeps its own colour — green for done, amber for needs attention, red-orange for a problem — so an alert still stands out when the brand is red too. Times are set in tabular figures so columns of them line up, sub-headings are ruled off across the line like the headings on an ops form, and the stripe under the header and beside the open nav item is the same shape as the one on the mark.
+
+On a phone the navigation sits along the bottom under your thumb; from 900px it becomes a labelled sidebar. There is no light theme: the app is read in a dim sim room at three in the morning.
+
 ## Notifications
 
 The app can notify a phone even when it is closed. Four things are sent, and nothing else:
