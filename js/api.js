@@ -328,6 +328,12 @@ export const saveRosterMany = (entries) =>
 
 export const clearAutoRoster = () => rest('DELETE', 'roster?auto=is.true');
 
+// Empties the roster for the sectors given, whoever put each person there and
+// however they were rostered. Any offer of a sector goes with the entry it was
+// made against.
+export const clearRosterFor = (sectorIds) =>
+  sectorIds.length ? rest('DELETE', `roster?sector_id=in.(${sectorIds.map(id).join(',')})`) : Promise.resolve();
+
 // ---- Briefings ----
 
 // fields: any of { notes, wf_url, wf_notes, handover, ofp, ofp_by, ofp_at }.

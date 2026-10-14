@@ -12,6 +12,7 @@ import {
   saveSettings,
   saveRosterMany,
   clearAutoRoster,
+  clearRosterFor,
   decideSwap,
   clearActuals,
   decidePickup,
@@ -493,6 +494,19 @@ function rosterEditor() {
     .join('');
 
   const [state_, auto_, received_, check_] = autoPanels();
+  // Starting again. Sectors already flown are left alone: emptying those would
+  // throw away the record of who flew them, which the logbook is built from.
+  const liveIds = upcoming.map((s) => s.id);
+  const liveSeats = state.roster.filter((x) => liveIds.includes(x.sector_id)).length;
+  const reset = `
+    <section class="card">
+      <h2>Start the roster again</h2>
+      <p class="note">Takes everyone off every sector that has not been flown yet, whoever put them there and whether Auto roster or a person did it. Sectors already flown keep their crew, so the logbook stays true.</p>
+      <div class="btn-row">
+        <button class="btn danger" data-act="clearRoster" ${liveSeats ? '' : 'disabled'}>Clear the whole roster (${liveSeats})</button>
+      </div>
+      <p class="tiny">This cannot be undone, and nobody is told. If the roster is published, consider moving it back to draft first so the team does not watch it empty out.</p>
+    </section>`;
   const empty =
     filter === 'flown' ? 'No sectors have been flown yet.' : 'Every upcoming sector has its pilots.';
   return `
@@ -519,7 +533,8 @@ function rosterEditor() {
     </section>
     <section class="card list">${rows || `<p class="note">${empty}</p>`}</section>
     ${received_}
-    ${check_}`;
+    ${check_}
+    ${reset}`;
 }
 
 function people() {
@@ -944,6 +959,28 @@ export const actions = {
         const list = gaps.slice(0, 8).map((g) => `${g.sector.flight} ${g.seat}`).join(', ');
         gapNote = `${plural(gaps.length, 'seat')} could not be filled within the rules and availability: ${list}${gaps.length > 8 ? ', and more' : ''}.`;
       }
+    });
+  },
+  // Emptying the roster is hard to undo and easy to press by accident, so it
+  // asks twice: once for the numbers, once for the word.
+  clearRoster(el) {
+    const ids = sortedSectors()
+      .filter((s) => new Date(s.sta) > Date.now())
+      .map((s) => s.id);
+    const seats = state.roster.filter((r) => ids.includes(r.sector_id));
+    if (!seats.length) return;
+    if (
+      !confirm(
+        `Take all ${seats.length} people off the ${ids.length} sectors that have not been flown? Sectors already flown keep their crew. This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    if ((prompt('Type CLEAR to empty the roster.', '') || '').trim().toUpperCase() !== 'CLEAR') return;
+    el.disabled = true;
+    return change(async () => {
+      await clearRosterFor(ids);
+      result = `Roster cleared: ${plural(seats.length, 'seat')} emptied.`;
     });
   },
   clearAuto(el) {
