@@ -246,7 +246,7 @@ function list() {
     <nav class="seg tabs4" aria-label="Tech log">
       ${TABS.map(
         ([status, label]) =>
-          `<button type="button" class="${tab === status ? 'on' : ''}" data-act="tab" data-tab="${status}">${label}${
+          `<button type="button" class="${tab === status ? 'on' : ''}" data-act="tab" data-status="${status}">${label}${
             count(status) ? ` (${count(status)})` : ''
           }</button>`,
       ).join('')}
@@ -492,7 +492,7 @@ forms.rectify = async (data) => {
 
 export const actions = {
   tab(el) {
-    tab = el.dataset.tab;
+    tab = el.dataset.status;
     rerender();
   },
   // A search result: set the drop-downs to it.

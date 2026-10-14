@@ -76,11 +76,10 @@ function tabs(active) {
   return `
     <div class="page-head"><h1>Admin</h1>
       <span class="badge ${isDraft() ? 'warn' : 'ok'}">ROSTER ${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span></div>
-    <nav class="seg on-card tabs4 ${isAdmin() ? 'tabs5' : ''}">
+    <nav class="seg on-card tabs4">
       ${tab('roster', '#/admin', 'Roster')}
-      ${tab('auto', '#/admin/auto', 'Auto roster')}
       ${tab('balance', '#/admin/balance', 'Balance')}
-      ${tab('rules', '#/admin/rules', 'Rules')}
+      ${tab('rules', '#/admin/rules', 'Settings')}
       ${isAdmin() ? tab('people', '#/admin/people', `People${waiting ? ` (${waiting})` : ''}`) : ''}
     </nav>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
@@ -95,7 +94,7 @@ const flownBy = (userId) => {
     .map((r) => byId.get(r.sector_id));
 };
 
-function autoPage() {
+function autoPanels() {
   const now = Date.now();
   const upcoming = sortedSectors().filter((x) => new Date(x.std) > now);
   const r = rules();
@@ -129,9 +128,8 @@ function autoPage() {
     .map(([p, list]) => `<div class="row"><div class="row-main"><div class="row-t">${esc(p.display_name)}</div>${list.map((t) => `<div class="sub">${esc(t)}</div>`).join('')}</div></div>`)
     .join('');
 
-  return `
-    ${tabs('auto')}
-    <section class="card">
+  return [
+    `<section class="card">
       <div class="card-head"><h2>Roster state</h2><span class="badge ${isDraft() ? 'warn' : 'ok'}">${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span></div>
       <p class="note">${
         isDraft()
@@ -139,8 +137,8 @@ function autoPage() {
           : 'The roster is published and everyone can see it. Move it back to draft to hide it while you rework it.'
       }</p>
       <button class="btn ${isDraft() ? 'primary' : 'ghost'}" data-act="state" data-state="${isDraft() ? 'published' : 'draft'}">${isDraft() ? 'Publish roster' : 'Move back to draft'}</button>
-    </section>
-    <section class="card">
+    </section>`,
+    `<section class="card">
       <h2>Auto roster</h2>
       <p class="note"><strong>${empty}</strong> empty pilot seats on ${upcoming.length} upcoming sectors${
         r.reliefOverHours > 0 ? `, counting a relief pilot on sectors over ${r.reliefOverHours} hours` : ''
@@ -150,17 +148,18 @@ function autoPage() {
         <button class="btn danger" data-act="clearAuto" ${autoCount ? '' : 'disabled'}>Clear ${autoCount} auto-rostered</button>
       </div>
       ${gapNote ? `<p class="note warn">${icon('alert')} ${esc(gapNote)}</p>` : ''}
-      <p class="tiny">To pin someone to a sector, roster them on the Roster tab first. Clearing removes only what Auto roster placed.</p>
-    </section>
-    <section class="card list">
+      <p class="tiny">To keep somebody on a particular sector, roster them below first: Auto roster never moves anyone. Clearing removes only what it placed.</p>
+    </section>`,
+    `<section class="card list">
       <div class="card-head"><div class="tiny">AVAILABILITY RECEIVED</div><span class="badge ${answered.length === pilots.length ? 'ok' : r.unmarkedAvailable ? 'mute' : 'warn'}">${answered.length} OF ${pilots.length}</span></div>
       ${responses || '<p class="note">No pilots yet.</p>'}
       <p class="tiny">Open someone to see or set their availability for them.</p>
-    </section>
-    <section class="card list">
+    </section>`,
+    `<section class="card list">
       <div class="card-head"><div class="tiny">RULE CHECK</div><span class="badge ${breaks ? 'bad' : 'ok'}">${breaks ? 'BREAKS FOUND' : 'ALL WITHIN RULES'}</span></div>
       ${breaks || '<p class="note">Nobody on the roster breaks a duty rule.</p>'}
-    </section>`;
+    </section>`,
+  ];
 }
 
 // How evenly the flying is shared out, and who is carrying what.
@@ -447,8 +446,12 @@ function rosterEditor() {
     })
     .join('');
 
+  const [state_, auto_, received_, check_] = autoPanels();
   return `
     ${tabs('roster')}
+    ${state_}
+    ${auto_}
+    ${swapsCard()}
     <section class="card">
       <div class="card-head">
         <div class="note"><strong>${short.length}</strong> of ${upcoming.length} upcoming sectors are missing a pilot. Every sector needs ${MIN_PILOTS}${
@@ -461,8 +464,9 @@ function rosterEditor() {
       </div>
       <p class="tiny">Open a sector to crew it. Each sector page lists every pilot, what they said about it, what they are already flying and any duty rule that would be broken by rostering them.</p>
     </section>
-    ${swapsCard()}
-    <section class="card list">${rows || '<p class="note">Every upcoming sector has its pilots.</p>'}</section>`;
+    <section class="card list">${rows || '<p class="note">Every upcoming sector has its pilots.</p>'}</section>
+    ${received_}
+    ${check_}`;
 }
 
 function people() {
@@ -608,7 +612,7 @@ function whoCanFly(s, fit) {
         broken
           ? `${plural(broken, 'pilot')} would break a duty rule, so Auto roster skips them. The reason is listed against each name, and you can still roster them by pressing a seat.`
           : 'Press a seat to roster someone, or press it again to take them out. Auto roster skips anyone with a reason listed against their name.'
-      } Rules are set in <a href="#/admin/rules">Admin → Rules</a>. Back of clock is ${String(r.bocStart).padStart(2, '0')}00 to ${String(r.bocEnd).padStart(2, '0')}00 sim local.</p>
+      } Rules are set in <a href="#/admin/rules">Admin → Settings</a>. Back of clock is ${String(r.bocStart).padStart(2, '0')}00 to ${String(r.bocEnd).padStart(2, '0')}00 sim local.</p>
     </section>`;
 }
 
@@ -702,7 +706,7 @@ export function render(args) {
     out = `<div class="page-head"><h1>Admin</h1></div>
       <section class="card"><p class="note">This section is for team admins and dispatchers. Ask an admin if you need access.</p></section>`;
   } else if (args[0] === 'people') out = people();
-  else if (args[0] === 'auto') out = autoPage();
+  else if (args[0] === 'auto') out = rosterEditor();
   else if (args[0] === 'balance') out = balancePage();
   else if (args[0] === 'rules') out = rulesPage();
   else if (args[0] === 'sector') out = sectorCrew(args[1]);

@@ -96,8 +96,8 @@ function ofpCard(s, b) {
         id
           ? ''
           : canEdit()
-            ? '<p class="tiny">No team SimBrief account yet. Set it in <a href="#/admin/rules">Admin → Rules</a> and everyone imports the same flight plan.</p>'
-            : '<p class="tiny">No team SimBrief account yet. An admin sets it in Admin → Rules.</p>'
+            ? '<p class="tiny">No team SimBrief account yet. Set it in <a href="#/admin/rules">Admin → Settings</a> and everyone imports the same flight plan.</p>'
+            : '<p class="tiny">No team SimBrief account yet. An admin sets it in Admin → Settings.</p>'
       }
     </section>`;
 }

@@ -2,8 +2,8 @@
 
 import { zulu, simClock } from './ui.js';
 import { state } from './store.js';
-import { configured, getSession, useEmailLink } from './api.js';
-import { loadAirports, syncTeam, canEdit, isPending, isEfb, me } from './ops.js';
+import { configured, getSession, useEmailLink, signOut } from './api.js';
+import { loadAirports, syncTeam, canEdit, isPending, isEfb, me, clearTeam, roleName } from './ops.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
 import * as admin from './views/admin.js';
@@ -21,6 +21,43 @@ const root = document.getElementById('view');
 const clock = document.getElementById('clock');
 const clockSim = document.getElementById('clock-sim');
 const brand = document.querySelector('.brand .tiny');
+const whoBtn = document.getElementById('who-btn');
+const whoMenu = document.getElementById('who-menu');
+
+// Initials for the avatar: first name and surname, or the first two letters
+// of a single name.
+function initials(name) {
+  const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '··';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words.at(-1)[0]).toUpperCase();
+}
+
+const closeMenu = () => {
+  whoMenu.hidden = true;
+  whoBtn.setAttribute('aria-expanded', 'false');
+};
+
+whoBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = whoMenu.hidden;
+  whoMenu.hidden = !open;
+  whoBtn.setAttribute('aria-expanded', String(open));
+});
+// Anywhere else, and the menu is done with.
+document.addEventListener('click', (e) => {
+  if (!whoMenu.hidden && !e.target.closest('.who')) closeMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeMenu();
+});
+document.getElementById('who-out').addEventListener('click', async () => {
+  closeMenu();
+  await signOut();
+  clearTeam();
+  location.hash = '#/dashboard';
+  render();
+});
 let route = { name: 'dashboard', args: [], view: dash };
 
 function safeDecode(part) {
@@ -55,9 +92,17 @@ function render() {
     !gate && isEfb()
       ? `FLIGHT DECK · ${(me()?.display_name || 'TABLET').toUpperCase()}`
       : 'WORLDFLIGHT · 737 OPERATIONS';
+  // The avatar says who is signed in; the menu holds the two places that are
+  // theirs rather than the team's.
+  closeMenu();
+  const who = gate ? null : me();
+  document.getElementById('who-initials').textContent = initials(who?.display_name);
+  document.getElementById('who-name').textContent = who?.display_name || '';
+  document.getElementById('who-role').textContent = who ? roleName(who.role).toUpperCase() : '';
+  document.getElementById('who-admin').hidden = gate || !canEdit();
   route = gate ? { name: 'login', args: [], view: login } : parse();
   root.innerHTML = route.view.render(route.args);
-  for (const tab of document.querySelectorAll('[data-tab]')) {
+  for (const tab of document.querySelectorAll('.tabs a[data-tab]')) {
     tab.classList.toggle('on', tab.dataset.tab === (route.name === 'airports' ? 'brief' : route.name));
   }
   route.view.mounted?.(root, route.args);

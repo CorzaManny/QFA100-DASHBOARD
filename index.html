@@ -29,12 +29,20 @@
         <span id="clock" aria-label="Zulu time">----Z</span>
         <span id="clock-sim" class="clock-sim" aria-label="Sim local time">----</span>
       </span>
-      <a class="icon-btn admin-link" href="#/admin" aria-label="Admin">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
-      </a>
-      <a class="icon-btn" href="#/settings" aria-label="Settings">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
-      </a>
+      <div class="who">
+        <button class="avatar" id="who-btn" aria-haspopup="true" aria-expanded="false" aria-label="Your account">
+          <span id="who-initials">··</span>
+        </button>
+        <div class="menu" id="who-menu" role="menu" hidden>
+          <div class="menu-head">
+            <div class="menu-name" id="who-name"></div>
+            <div class="tiny" id="who-role"></div>
+          </div>
+          <a role="menuitem" href="#/settings">Settings</a>
+          <a role="menuitem" href="#/admin" id="who-admin">Admin</a>
+          <button type="button" role="menuitem" id="who-out">Sign out</button>
+        </div>
+      </div>
     </div>
   </header>
 

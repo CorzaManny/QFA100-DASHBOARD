@@ -82,13 +82,13 @@ Pilots still read the whole tech log and the MEL on their own phones; they just 
 ### Building the roster with Auto roster
 
 1. **Draft.** The roster starts as a draft. Pilots cannot see it; their Roster tab only offers **Set my availability**.
-2. **Availability.** Everyone counts as available for every sector unless they say otherwise, so a pilot only marks the sectors they would like (Prefer) or cannot fly (Can't). Turn that off in **Admin → Rules** if you would rather nobody is rostered until they answer. Times are shown in Zulu and sim local (Sydney) time, and back-of-clock sectors are flagged. Admins and dispatchers can fill it in for someone from **Admin → Auto roster**.
+2. **Availability.** Everyone counts as available for every sector unless they say otherwise, so a pilot only marks the sectors they would like (Prefer) or cannot fly (Can't). Turn that off in **Admin → Settings** if you would rather nobody is rostered until they answer. Times are shown in Zulu and sim local (Sydney) time, and back-of-clock sectors are flagged. Admins and dispatchers can fill it in for someone from **Admin → Roster**.
 3. **Roster by hand.** **Admin → Roster** lists every upcoming sector with its crew and what it still needs. Open one to get its own page: the times, the departure window, the seats, and **Who can fly this** — every pilot on the team with what they said about the sector, what they are already flying ("4 sectors · 2 CA, 1 FO"), their hours and back-of-clock count, and **every duty rule that rostering them would break**, written out in full. Press a seat button (CA, FO, RP) to roster them, or press it again to take them off. Nothing is blocked: if you need someone on a flight, put them there and the rule check will keep reminding you. Do the whole roster this way if you like, or only pin the people who must fly a particular sector and let Auto roster do the rest.
-4. **Auto roster.** **Admin → Auto roster → Auto roster the gaps** fills the empty seats. It never moves anyone already rostered, never uses someone who marked Can't, and stays inside the duty rules. Seats it cannot fill are listed. **Clear auto-rostered** removes only what it placed, so you can adjust and run it again.
+4. **Auto roster.** **Admin → Roster → Auto roster the gaps** fills the empty seats. It never moves anyone already rostered, never uses someone who marked Can't, and stays inside the duty rules. Seats it cannot fill are listed. **Clear auto-rostered** removes only what it placed, so you can adjust and run it again.
 5. **Check the share.** **Admin → Balance** shows every pilot's sectors broken down by seat (CA, FO, relief pilot), their block hours and their back-of-clock sectors, with a chip saying whether the totals are even or how far apart they are.
 6. **Check and publish.** The rule check lists anyone whose roster breaks a rule (including people you pinned). **Publish roster** makes it visible to everyone.
 
-The duty rules are edited in **Admin → Rules** and apply to the whole team: minimum rest, sectors per duty (one, so everyone rests between sectors), longest duty, sectors per person, the length over which a sector also carries a relief pilot (six hours, so those sectors are rostered with three pilots instead of two; set it to 0 to turn it off), the back-of-clock window how many back-of-clock sectors each person may fly in the event (two) and how far apart they must be (one every two days, so never on consecutive nights), report times, and whether everyone counts as available unless they say otherwise (on by default, so a pilot only marks the sectors they want or cannot fly). Sectors with less than the minimum rest between them count as one duty.
+The duty rules are edited in **Admin → Settings** and apply to the whole team: minimum rest, sectors per duty (one, so everyone rests between sectors), longest duty, sectors per person, the length over which a sector also carries a relief pilot (six hours, so those sectors are rostered with three pilots instead of two; set it to 0 to turn it off), the back-of-clock window how many back-of-clock sectors each person may fly in the event (two) and how far apart they must be (one every two days, so never on consecutive nights), report times, and whether everyone counts as available unless they say otherwise (on by default, so a pilot only marks the sectors they want or cannot fly). Sectors with less than the minimum rest between them count as one duty.
 
 Auto roster is a sensible-rules fill, not a perfect optimiser: it works through the sectors in order, evening out the number of sectors each person flies and the time they spend in each seat, favouring sectors people asked for and keeping a crew together on back-to-back sectors. Expect to adjust a few by hand.
 
@@ -146,7 +146,7 @@ What you see:
 - on the Schedule, the published time struck through with the real expected time under it;
 - on your own sector card, your report time moved by the delay, with the published one still shown underneath, keeping whatever lead you were given when you were rostered.
 
-Nothing is shown until somebody stamps a time or the aircraft is being tracked, and estimates are rounded to five minutes, because a guess printed to the minute reads as more certain than it is. Stamped times are shown exactly. **Minimum turnaround** and **Taxi in** are in **Admin → Rules**, so the whole team works from the same numbers.
+Nothing is shown until somebody stamps a time or the aircraft is being tracked, and estimates are rounded to five minutes, because a guess printed to the minute reads as more certain than it is. Stamped times are shown exactly. **Minimum turnaround** and **Taxi in** are in **Admin → Settings**, so the whole team works from the same numbers.
 
 The estimate takes the best source it has, in this order: a stamped time, the simulator API, the live VATSIM position, then the published block time. With nothing connected at all it is simply the published schedule, which is where you started.
 
@@ -164,10 +164,10 @@ The app can notify a phone even when it is closed. Four things are sent, and not
 
 - **the roster is published** — with how many sectors you have and when the first one is;
 - **your own sectors change** — added, taken off, duty or report time moved;
-- **a delay moves your report time** by more than the threshold in **Admin → Rules**;
+- **a delay moves your report time** by more than the threshold in **Admin → Settings**;
 - **a reminder** a set time before you report, using the real time including the delay.
 
-Each person turns it on in **Settings → Notifications**, on each device they want told, and chooses which of the four they want and how early under **What to tell me** — those choices follow the person, so they are the same on their phone and their iPad. The numbers in **Admin → Rules** are only the starting point for somebody who has not chosen. Nobody is sent anything until they turn it on. On iPhone and iPad it only works once the app has been added to the Home Screen and opened from there; the app says so rather than failing silently.
+Each person turns it on in **Settings → Notifications**, on each device they want told, and chooses which of the four they want and how early under **Notification settings** — those choices follow the person, so they are the same on their phone and their iPad. The numbers in **Admin → Settings** are only the starting point for somebody who has not chosen. Nobody is sent anything until they turn it on. On iPhone and iPad it only works once the app has been added to the Home Screen and opened from there; the app says so rather than failing silently.
 
 ### Setting it up
 
@@ -188,9 +188,9 @@ If notifications stop working, run `select public.push_tick();` in the SQL edito
 
 ## The aeroplane, and device settings
 
-There is one aeroplane, so there is one set of answers about it. The **VATSIM callsign**, the **aircraft type** and the **team SimBrief account** are set once by an admin in **Admin → Rules**, and everyone's app follows them. Nobody sets their own: a pilot pointing the app at their own callsign would quietly stop seeing the team's aircraft on the Dashboard, and a second SimBrief account would mean two crews briefing different flight plans.
+There is one aeroplane, so there is one set of answers about it. The **VATSIM callsign**, the **aircraft type** and the **team SimBrief account** are set once by an admin in **Admin → Settings**, and everyone's app follows them. Nobody sets their own: a pilot pointing the app at their own callsign would quietly stop seeing the team's aircraft on the Dashboard, and a second SimBrief account would mean two crews briefing different flight plans.
 
-**Settings** (top-right icon) is left with the one thing that really does belong to a device: the **Simulator status API address**, which only the computer at the sim normally needs (see below). Leave it blank to use VATSIM.
+**Settings**, under your initials in the top right, is left with the one thing that really does belong to a device: the **Simulator status API address**, which only the computer at the sim normally needs (see below). Leave it blank to use VATSIM.
 
 ## Simulator status API
 
@@ -238,8 +238,8 @@ These are still saved on each person's own device, not in the database. To share
 |---|---|
 | Checklist items and wording | `js/data/checklists.js` (`kind: 'normal'`, `'non-normal'` or `'memory'` puts one in a group) |
 | Colours and layout | `css/app.css` |
-| Callsign, aircraft type and team SimBrief | in the app: **Admin → Rules** |
-| Duty rules and report times | in the app: **Admin → Rules** (starting values are in `js/autoroster.js`) |
+| Callsign, aircraft type and team SimBrief | in the app: **Admin → Settings** |
+| Duty rules and report times | in the app: **Admin → Settings** (starting values are in `js/autoroster.js`) |
 | Minimum pilots per sector (`MIN_PILOTS`) | `js/ops.js` |
 | MEL items | rebuild `js/data/mel.json` with `tools/build_mel.py` |
 | Database connection | `js/config.js` |
