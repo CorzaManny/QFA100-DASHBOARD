@@ -17,8 +17,9 @@ import * as brief from './views/brief.js';
 import * as settings from './views/settings.js';
 import * as progress from './views/progress.js';
 import * as opsboard from './views/ops.js';
+import * as stream from './views/stream.js';
 
-const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, brief, dispatch: brief, settings, admin, availability, progress, ops: opsboard };
+const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, brief, dispatch: brief, settings, admin, availability, progress, ops: opsboard, stream };
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
 const clockSim = document.getElementById('clock-sim');

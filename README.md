@@ -14,6 +14,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **MEL** – the 737 Minimum Equipment List as drop-downs (system → item → option) inside the Tech Log: it shows whether the aircraft can go with something inoperative, the conditions, and how long the fix can wait.
 - **Airport Briefings** – runways, elevation, live METAR and TAF, who is controlling the airport on VATSIM with their ATIS, your team's own notes, and links to Navigraph Charts and ChartFox for every airport on the schedule (or any ICAO code).
 - **SimBrief** – opens SimBrief with the next sector filled in, then imports your latest OFP (route, fuel, weights, times).
+- **Stream** – on the flight deck tablets and for ops staff: the team's Twitch chat beside the cockpit, and a list of things worth talking about, half typed in by ops and half worked out from the flight itself.
 - **Ops board** – for admins, dispatchers and operations: where the aeroplane is and how far behind the day is running, swaps and seat requests with the buttons to settle them, any defect grounding the aircraft, who reports next with live countdowns, which sectors are short of pilots, which still have no flight plan, and the weather at the airports coming up.
 - **Logbook** – the whole route around the world on one map, how far the team has got, and who has flown what, in hours, sectors and miles.
 
@@ -62,13 +63,14 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 5. In another query, paste in [`supabase/accounts.sql`](supabase/accounts.sql) and press **Run**. This is how an admin makes accounts for the team, and it removes test accounts.
 6. In another query, paste in [`supabase/operations-role.sql`](supabase/operations-role.sql) and press **Run**. This adds the Operations role: ops staff who run the roster but do not fly.
 7. In another query, paste in [`supabase/simbrief.sql`](supabase/simbrief.sql) and press **Run**. This limits the aeroplane and SimBrief settings to admins and operations.
-8. In another query, paste in [`supabase/bidding.sql`](supabase/bidding.sql) and press **Run**. This lets an admin set a deadline for everyone's availability. It is optional; without it availability stays open and the roster can be published whenever you like.
-9. In another query, paste in [`supabase/weather.sql`](supabase/weather.sql) and press **Run**. This lets the airport pages show TAFs. It is optional; without it they show the METAR and the VATSIM ATIS only.
-10. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
-11. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-12. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
-13. Push the change to GitHub.
-14. Open the app and **create your own account first**. The first account becomes the admin.
+8. In another query, paste in [`supabase/stream.sql`](supabase/stream.sql) and press **Run**. This holds the team's Twitch channel and the talking points shown on the flight deck. It is optional.
+9. In another query, paste in [`supabase/bidding.sql`](supabase/bidding.sql) and press **Run**. This lets an admin set a deadline for everyone's availability. It is optional; without it availability stays open and the roster can be published whenever you like.
+10. In another query, paste in [`supabase/weather.sql`](supabase/weather.sql) and press **Run**. This lets the airport pages show TAFs. It is optional; without it they show the METAR and the VATSIM ATIS only.
+11. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
+12. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+13. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
+14. Push the change to GitHub.
+15. Open the app and **create your own account first**. The first account becomes the admin.
 
 Nobody signs themselves up. An admin makes each account in **Admin → People
 and roles → Add a team member**: a name, a role, and a password to pass on. The

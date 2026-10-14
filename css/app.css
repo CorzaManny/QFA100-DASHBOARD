@@ -1592,6 +1592,41 @@ body.efb .tabs a {
   margin-top: 6px;
 }
 
+/* The stream page is for the cockpit tablets and ops staff, so its tab is
+   hidden from everybody else. */
+.tabs a[data-tab='stream'] {
+  display: none;
+}
+body.efb .tabs a[data-tab='stream'],
+body.editor .tabs a[data-tab='stream'] {
+  display: flex;
+}
+.chat-card {
+  gap: 10px;
+}
+.chat {
+  width: 100%;
+  height: min(60vh, 520px);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--bg-deep);
+}
+/* On a tablet in the cockpit the chat is worth more room. */
+body.efb .chat {
+  height: min(70vh, 720px);
+}
+.topics {
+  margin: 4px 0 12px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  line-height: 1.5;
+}
+.topics li::marker {
+  color: var(--accent);
+}
+
 /* Ops board: four counts across the top, each a way in */
 .ops-tiles {
   display: grid;
