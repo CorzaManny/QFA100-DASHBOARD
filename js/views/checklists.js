@@ -2,10 +2,18 @@
 
 import { state, save } from '../store.js';
 import { esc, icon, rerender } from '../ui.js';
-import { CHECKLISTS, CHECKLIST_KINDS, NON_NORMAL_QRH } from '../data/checklists.js';
+import { CHECKLISTS, CHECKLIST_KINDS } from '../data/checklists.js';
 
 const done = (cl) => cl.items.filter((_, i) => state.checks[cl.id]?.[i]).length;
-const complete = (cl) => !cl.referenceOnly && done(cl) === cl.items.length;
+const complete = (cl) => cl.native ? !!state.checks[cl.id]?.branchComplete : done(cl) === cl.items.length;
+let pendingBlock = null;
+const trail = [];
+
+function focusBlock(id) {
+  const target = document.getElementById(`qrh-${id}`);
+  target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  target?.focus({ preventScroll: true });
+}
 const ofKind = (kind) => CHECKLISTS.filter((cl) => (cl.kind || 'normal') === kind);
 
 // What the Dashboard offers to resume: only the ones flown every sector.
@@ -38,15 +46,15 @@ export function render(args) {
     .map(
       (c) => `<a class="chip ${c === cl ? 'on' : ''} ${complete(c) ? 'done' : ''}" href="#/checklists/${c.id}">
       <span class="chip-t">${complete(c) ? icon('check') : ''}${esc(c.name)}</span>
-      <span class="chip-n">${c.referenceOnly ? 'Draft' : `${done(c)} / ${c.items.length}`}</span></a>`,
+      <span class="chip-n">${done(c)} / ${c.items.length}</span></a>`,
     )
     .join('');
 
   const shell = (body) => `
     <nav class="seg tabs4 on-card" aria-label="Kind of checklist">${kinds}</nav>
     ${kind === 'non-normal' ? `<label class="qrh-search">Find a non-normal checklist
-      <input type="search" data-qrh-search placeholder="Search title or condition…" autocomplete="off">
-      <span class="tiny" data-qrh-count>${group.length} procedures · review draft</span>
+      <input type="search" data-qrh-search placeholder="Search title, system or condition…" autocomplete="off">
+      <span class="tiny" data-qrh-count>${group.length} checklists</span>
     </label>` : ''}
     <div class="cl-layout ${chips ? '' : 'solo'} ${kind === 'non-normal' ? 'qrh-layout' : ''}">
       ${chips ? `<nav class="chip-row" aria-label="Checklists">${chips}</nav>` : ''}
@@ -62,26 +70,32 @@ export function render(args) {
     <p class="tiny center">Boeing 737NG checklists. For flight simulation use only.</p>`;
   }
 
-  if (cl.referenceOnly) {
-    const pages = cl.source_page_text.map((page) => `<details class="qrh-source">
-      <summary>Source text · PDF page ${esc(page.pdf_page)}${page.printed_page ? ` · ${esc(page.printed_page)}` : ''}</summary>
-      <pre class="metar">${esc(page.text)}</pre>
-    </details>`).join('');
-    const steps = cl.steps.map((step) => `<li class="qrh-step">
-      <div class="qrh-step-head"><strong>Step ${esc(step.number)}</strong><span class="tiny">PDF p. ${esc(step.source_pdf_page)} · Unverified</span></div>
-      <p>${esc(step.raw_text)}</p>
-      ${step.flags.length ? `<span class="tiny">Review flags: ${step.flags.map((flag) => esc(flag.replaceAll('_', ' '))).join(' · ')}</span>` : ''}
-    </li>`).join('');
+  if (cl.native) {
+    let actionIndex = 0;
+    const blocks = cl.blocks.map((block) => {
+      const index = block.type === 'action' ? actionIndex++ : null;
+      const on = index !== null && !!state.checks[cl.id]?.[index];
+      const label = block.number !== null ? `<span class="qrh-number">${esc(block.number)}</span>` : '';
+      const content = block.type === 'action'
+        ? `<button class="qrh-check ${on ? 'on' : ''}" data-act="toggle" data-i="${index}" data-block="${block.id}" aria-pressed="${on}">
+          <span class="cl-box">${on ? icon('check') : ''}</span>${label}<span>${esc(block.text)}</span>
+        </button>`
+        : `<div class="qrh-text">${label}<span>${esc(block.text)}</span></div>`;
+      const links = block.links.map((link) => `<button class="btn ghost" data-act="follow" data-checklist="qrh-${esc(link.checklist)}" data-block="${esc(link.block || '')}" data-from="${block.id}">${esc(link.label)} ${icon('chevron')}</button>`).join('');
+      return `<div id="qrh-${block.id}" tabindex="-1" class="qrh-block qrh-${block.type}" style="--qrh-indent:${block.indent || 0}">
+        ${content}${links ? `<div class="qrh-links">${links}</div>` : ''}
+        ${block.type === 'end' ? `<button class="btn ghost" data-act="finishBranch">Mark this branch complete</button>` : ''}
+      </div>`;
+    }).join('');
+    const back = trail.at(-1);
     return shell(`<section class="card cl">
-      <div class="card-head"><h2>${esc(cl.name)}</h2><span class="badge mute">Review draft</span></div>
-      <p class="note qrh-notice">Unverified extraction · simulation/reference only. Step order, completeness, notes and decision paths require manual review. No automatic branching or completion tracking.</p>
-      ${cl.condition ? `<p class="qrh-condition">${esc(cl.condition)}</p>` : ''}
-      <p class="tiny">${esc(NON_NORMAL_QRH.source.title)} · ${esc(NON_NORMAL_QRH.source.document_id)} · PDF pages ${cl.source_pages.map(esc).join(', ')}</p>
-      <ol class="qrh-steps">${steps || '<li>No steps extracted. Consult the source text below.</li>'}</ol>
-      <h3>Source page text</h3>
-      <p class="tiny">Retained extraction includes notes and decision text that may be missing from the steps. Compare with the original PDF images when reviewing.</p>
-      ${pages}
-      <p class="tiny">${esc(NON_NORMAL_QRH.source.source_notice)}</p>
+      <div class="card-head"><h2>${esc(cl.name)}</h2><span class="badge ${complete(cl) ? 'ok' : 'mute'}">${complete(cl) ? 'Branch complete' : `${done(cl)} items checked`}</span></div>
+      <p class="tiny">${esc(cl.section)} · For flight simulation only. Extracted text requires review.</p>
+      ${back ? `<button class="btn ghost" data-act="returnChecklist">Return to ${esc(back.name)}</button>` : ''}
+      <p class="note">Choose the applicable branch. Tap actions to check them off; use the links to move to a step or another checklist. Progress is saved on this device.</p>
+      <div class="qrh-blocks">${blocks}</div>
+      <div class="btn-row"><button class="btn ghost" data-act="reset">Reset this checklist</button>
+        <button class="btn ghost" data-act="resetAll">New flight: reset all</button></div>
     </section>`);
   }
 
@@ -124,27 +138,55 @@ export function render(args) {
     <p class="tiny center">Boeing 737NG checklists. For flight simulation use only.</p>`;
 }
 
-export function mounted(root) {
+export function mounted(root, args = []) {
+  const block = pendingBlock || args[1];
+  pendingBlock = null;
+  if (block) requestAnimationFrame(() => requestAnimationFrame(() => focusBlock(block)));
   root.querySelector('.chip.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
   root.querySelector('[data-qrh-search]')?.addEventListener('input', (event) => {
     const query = event.target.value.trim().toLowerCase();
     let count = 0;
     root.querySelectorAll('.chip').forEach((chip, i) => {
       const cl = ofKind('non-normal')[i];
-      const match = `${cl.name} ${cl.condition || ''}`.toLowerCase().includes(query);
+      const match = `${cl.name} ${cl.section || ''} ${cl.condition || ''}`.toLowerCase().includes(query);
       chip.hidden = !match;
       if (match) count++;
     });
-    root.querySelector('[data-qrh-count]').textContent = count ? `${count} procedures · review draft` : 'No matching procedures';
+    root.querySelector('[data-qrh-count]').textContent = count ? `${count} checklists` : 'No matching procedures';
   });
 }
 
 export const actions = {
   toggle(el) {
     const { cl } = active(location.hash.split('/').slice(2));
-    if (!cl || cl.referenceOnly) return;
-    const marks = (state.checks[cl.id] ??= []);
+    if (!cl) return;
+    const marks = (state.checks[cl.id] ??= cl.native ? {} : []);
     marks[Number(el.dataset.i)] = !marks[Number(el.dataset.i)];
+    if (cl.native) {
+      delete marks.branchComplete;
+      pendingBlock = el.dataset.block;
+    }
+    save();
+    rerender();
+  },
+  follow(el) {
+    const { cl } = active(location.hash.split('/').slice(2));
+    if (el.dataset.checklist === cl.id) {
+      focusBlock(el.dataset.block);
+      return;
+    }
+    trail.push({ id: cl.id, name: cl.name, block: el.dataset.from });
+    location.hash = `#/checklists/${el.dataset.checklist}${el.dataset.block ? `/${el.dataset.block}` : ''}`;
+  },
+  returnChecklist() {
+    const previous = trail.pop();
+    if (previous) location.hash = `#/checklists/${previous.id}/${previous.block}`;
+  },
+  finishBranch() {
+    const { cl } = active(location.hash.split('/').slice(2));
+    if (!cl.native) return;
+    const marks = (state.checks[cl.id] ??= {});
+    marks.branchComplete = true;
     save();
     rerender();
   },
@@ -156,6 +198,7 @@ export const actions = {
   resetAll() {
     if (!confirm('Reset every checklist for a new flight?')) return;
     state.checks = {};
+    trail.length = 0;
     save();
     location.hash = `#/checklists/${CHECKLISTS[0].id}`;
     rerender();

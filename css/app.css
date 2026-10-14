@@ -1480,18 +1480,24 @@ body.efb .tabs a {
   font-weight: 500;
 }
 
-/* Non-normal QRH review drafts retain the source layout and never imply completion. */
+/* Search and navigation for non-normal checklists. */
 .qrh-search { display: grid; gap: 8px; margin-bottom: 14px; }
 .qrh-layout .chip[hidden] { display: none; }
-.qrh-notice { border-left: 3px solid var(--accent); padding-left: 12px; }
-.qrh-condition, .qrh-step p { white-space: pre-wrap; overflow-wrap: anywhere; }
-.qrh-steps { list-style: none; padding: 0; margin: 0; }
-.qrh-step { padding: 16px 0; border-top: 1px solid var(--hair); }
-.qrh-step-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
-.qrh-step p { margin: 10px 0; line-height: 1.6; }
-.qrh-source summary { cursor: pointer; padding: 12px 0; }
-.qrh-source .metar { max-height: 60vh; overflow: auto; }
 @media (min-width: 900px) {
   .qrh-layout > .chip-row { max-height: 75vh; overflow-y: auto; }
   .qrh-layout .chip-t { white-space: normal; }
 }
+/* Native QRH actions, decisions and linked navigation. */
+.qrh-block { margin-left: calc(var(--qrh-indent, 0) * 8px); padding: 12px 0; border-top: 1px solid var(--hair); scroll-margin-top: 110px; }
+.qrh-block:focus { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-sm); }
+.qrh-text, .qrh-check { display: flex; gap: 12px; align-items: flex-start; text-align: left; line-height: 1.6; overflow-wrap: anywhere; }
+.qrh-check { width: 100%; background: none; border: 0; color: var(--text); font: inherit; line-height: 1.6; padding: 8px 0; cursor: pointer; }
+.qrh-check .cl-box { flex-shrink: 0; }
+.qrh-check.on { color: var(--muted); }
+.qrh-check.on .cl-box { color: var(--accent); border-color: var(--accent); }
+.qrh-number { flex: 0 0 2em; font-weight: 800; color: var(--accent); }
+.qrh-branch { background: var(--card2); padding: 14px 12px; font-weight: 700; }
+.qrh-note { border-left: 3px solid var(--accent); padding-left: 12px; }
+.qrh-context { color: var(--muted); }
+.qrh-divider, .qrh-end { color: var(--accent); font-weight: 700; }
+.qrh-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

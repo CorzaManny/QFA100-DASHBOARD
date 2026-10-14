@@ -139,14 +139,14 @@ export const CHECKLISTS = [
   },
 ];
 
-// Draft procedures are reference-only and retain their original extracted steps.
+// Native non-normal actions retain source numbering and explicit navigation.
 export const NON_NORMAL_CHECKLISTS = NON_NORMAL_QRH.procedures.map((procedure) => ({
   ...procedure,
   id: `qrh-${procedure.id}`,
   name: procedure.title,
   kind: 'non-normal',
-  referenceOnly: true,
-  items: [],
+  native: true,
+  items: procedure.blocks.filter((block) => block.type === 'action').map((block) => [block.text, '']),
 }));
 CHECKLISTS.push(...NON_NORMAL_CHECKLISTS);
 export { NON_NORMAL_QRH };
