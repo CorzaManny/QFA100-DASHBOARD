@@ -5,7 +5,7 @@
 import { state, save, uid } from '../store.js';
 import { saveDefect, deleteDefect } from '../api.js';
 import { esc, zulu, zdate, icon, rerender } from '../ui.js';
-import { currentSector, sortedSectors, me, sharedLog, syncTeam, canEdit, canLog, isEfb, crewOf, rosterable, person } from '../ops.js';
+import { currentSector, sortedSectors, me, sharedLog, syncTeam, canEdit, canLog, isEfb, crewOf, rosterable, person, teamCallsign, teamAircraft } from '../ops.js';
 import {
   loadMel,
   melReady,
@@ -30,12 +30,23 @@ import {
 // Things that can break but are not in the MEL's chapters.
 const OTHER_SYSTEMS = ['Simulator / Add-on', 'Other'];
 const STATUS = { OPEN: 'bad', DEFERRED: 'warn', RECTIFIED: 'ok' };
+const TABS = [
+  ['OPEN', 'Open'],
+  ['DEFERRED', 'Deferred'],
+  ['RECTIFIED', 'Rectified'],
+];
+const TAB_EMPTY = {
+  OPEN: 'Nothing open.',
+  DEFERRED: 'Nothing deferred.',
+  RECTIFIED: 'Nothing has been rectified yet.',
+};
 const ORDER = { OPEN: 0, DEFERRED: 1, RECTIFIED: 2 };
 
 let draft = null; // the form as typed so far, kept while the MEL drop-downs redraw it: { key, values }
 let look = { system: '', melTop: '', melItem: '' }; // the MEL lookup page's selection
 let error = '';
 let busy = false;
+let tab = 'OPEN'; // which status the list is showing
 
 const opt = (v, sel, label = v) => `<option value="${esc(v)}" ${v === sel ? 'selected' : ''}>${esc(label)}</option>`;
 const currentId = () => decodeURIComponent(location.hash.split('/')[2] || '');
@@ -199,7 +210,12 @@ function waiting() {
 function list() {
   const defects = [...state.defects].sort((a, b) => ORDER[a.status] - ORDER[b.status] || b.at - a.at);
   const active = defects.filter((d) => d.status !== 'RECTIFIED').length;
+  const count = (status) => defects.filter((d) => d.status === status).length;
+  // Land on whichever tab has something in it, so the page is never empty
+  // for no reason.
+  if (!count(tab)) tab = ['OPEN', 'DEFERRED', 'RECTIFIED'].find(count) || 'OPEN';
   const rows = defects
+    .filter((d) => d.status === tab)
     .map((d) => {
       const deferred = d.status === 'DEFERRED';
       const overdue = deferred && d.due && d.due < Date.now();
@@ -227,10 +243,18 @@ function list() {
       ${canLog() ? `<a class="btn primary" href="#/techlog/new">${icon('plus')} Report defect</a>` : ''}</div></div>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
     ${waiting()}
+    <nav class="seg tabs4" aria-label="Tech log">
+      ${TABS.map(
+        ([status, label]) =>
+          `<button type="button" class="${tab === status ? 'on' : ''}" data-act="tab" data-tab="${status}">${label}${
+            count(status) ? ` (${count(status)})` : ''
+          }</button>`,
+      ).join('')}
+    </nav>
     <section class="card list">
-      <div class="card-head"><div class="tiny">${esc(state.profile.callsign)} · ${esc(state.profile.aircraft)}</div>
+      <div class="card-head"><div class="tiny">${esc(teamCallsign())} · ${esc(teamAircraft())}</div>
         <span class="badge ${active ? 'warn' : 'ok'}">${active ? `${active} ACTIVE` : 'SERVICEABLE'}</span></div>
-      ${rows || `<p class="note">No defects recorded.${canLog() ? ' Report anything that breaks or is not modelled.' : ''}</p>`}
+      ${rows || `<p class="note">${TAB_EMPTY[tab]}${canLog() && tab === 'OPEN' ? ' Report anything that breaks or is not modelled.' : ''}</p>`}
     </section>
     <p class="tiny center">${
       sharedLog() ? 'Shared with the whole team.' : 'Saved on this device only.'
@@ -467,6 +491,10 @@ forms.rectify = async (data) => {
 };
 
 export const actions = {
+  tab(el) {
+    tab = el.dataset.tab;
+    rerender();
+  },
   // A search result: set the drop-downs to it.
   pick(el) {
     const id = el.dataset.id;

@@ -2,10 +2,21 @@
 // FOR FLIGHT SIMULATION USE ONLY. Edit this file to match your team's
 // add-on and SOPs: each item is ['Challenge', 'Response'].
 
+// Checklists are grouped: the normal ones you run every sector, the
+// non-normal ones for a failure, and the memory items that are actioned
+// before anybody opens a book. Add to the last two by giving a checklist
+// kind: 'non-normal' or kind: 'memory'.
+export const CHECKLIST_KINDS = [
+  ['normal', 'Normal'],
+  ['non-normal', 'Non-normal'],
+  ['memory', 'Memory items'],
+];
+
 export const CHECKLISTS = [
   {
     id: 'preflight',
     name: 'Preflight',
+    kind: 'normal',
     items: [
       ['Oxygen', 'Tested, 100%'],
       ['NAVIGATION transfer and DISPLAY switches', 'NORMAL, AUTO'],
@@ -19,6 +30,7 @@ export const CHECKLISTS = [
   {
     id: 'before-start',
     name: 'Before Start',
+    kind: 'normal',
     items: [
       ['Flight deck door', 'Closed and locked'],
       ['Fuel', '___ KGS, Pumps ON'],
@@ -35,6 +47,7 @@ export const CHECKLISTS = [
   {
     id: 'before-taxi',
     name: 'Before Taxi',
+    kind: 'normal',
     items: [
       ['Generators', 'On'],
       ['Probe heat', 'On'],
@@ -51,6 +64,7 @@ export const CHECKLISTS = [
   {
     id: 'before-takeoff',
     name: 'Before Takeoff',
+    kind: 'normal',
     items: [
       ['Flaps', '___, Green light'],
       ['Stabilizer trim', '___ Units'],
@@ -59,6 +73,7 @@ export const CHECKLISTS = [
   {
     id: 'after-takeoff',
     name: 'After Takeoff',
+    kind: 'normal',
     items: [
       ['Engine bleeds', 'On'],
       ['Packs', 'AUTO'],
@@ -69,6 +84,7 @@ export const CHECKLISTS = [
   {
     id: 'descent',
     name: 'Descent',
+    kind: 'normal',
     items: [
       ['Pressurization', 'LAND ALT ___'],
       ['Recall', 'Checked'],
@@ -80,11 +96,13 @@ export const CHECKLISTS = [
   {
     id: 'approach',
     name: 'Approach',
+    kind: 'normal',
     items: [['Altimeters', '___']],
   },
   {
     id: 'landing',
     name: 'Landing',
+    kind: 'normal',
     items: [
       ['ENGINE START switches', 'CONT'],
       ['Speedbrake', 'ARMED'],
@@ -95,6 +113,7 @@ export const CHECKLISTS = [
   {
     id: 'shutdown',
     name: 'Shutdown',
+    kind: 'normal',
     items: [
       ['Fuel pumps', 'Off'],
       ['Probe heat', 'Auto'],
@@ -108,6 +127,7 @@ export const CHECKLISTS = [
   {
     id: 'secure',
     name: 'Secure',
+    kind: 'normal',
     items: [
       ['IRSs', 'OFF'],
       ['Emergency exit lights', 'OFF'],

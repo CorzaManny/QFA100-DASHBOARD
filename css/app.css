@@ -800,6 +800,59 @@ button:focus-visible {
 
 /* ---- Checklists ---- */
 
+.cl-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cl-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.chip-n {
+  display: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}
+
+@media (min-width: 900px) {
+  .cl-layout.solo {
+    display: block;
+  }
+  .cl-layout {
+    display: grid;
+    grid-template-columns: 236px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  /* On a wide screen the row of checklists stands up into a list. */
+  .chip-row {
+    flex-direction: column;
+    gap: 2px;
+    overflow: visible;
+    padding: 8px;
+    border: 1px solid var(--hair);
+    border-radius: var(--r);
+    background: var(--card);
+  }
+  .chip-row .chip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    border-radius: var(--r-sm);
+  }
+  .chip-n {
+    display: inline;
+  }
+  .chip.on .chip-n {
+    color: rgba(255, 255, 255, 0.75);
+  }
+}
+
 .chip-row {
   display: flex;
   gap: 8px;
@@ -810,6 +863,12 @@ button:focus-visible {
 }
 .chip-row::-webkit-scrollbar {
   display: none;
+}
+.chip-t {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 .chip {
   flex: none;
@@ -973,8 +1032,8 @@ button:focus-visible {
   cursor: pointer;
 }
 .seg button.on {
-  background: var(--card2);
-  color: var(--text);
+  background: var(--brand);
+  color: #fff;
 }
 
 /* ---- Roster ---- */
@@ -1108,12 +1167,15 @@ fieldset:disabled textarea {
 
 /* ---- Availability and auto roster ---- */
 
-.seg.tabs4 {
-  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+.seg.tabs4,
+.seg.tabs5 {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
 }
-.seg.tabs4 a {
-  font-size: 0.82rem;
-  padding: 0 4px;
+.seg.tabs4 a,
+.seg.tabs5 a {
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 0.86rem;
   text-align: center;
 }
 .seg.three {
@@ -1230,26 +1292,6 @@ button.row {
   min-width: 0;
 }
 
-/* Five admin tabs: three on top, two below */
-.seg.tabs5 {
-  grid-template-columns: repeat(3, 1fr);
-}
-@media (min-width: 900px) {
-  .seg.tabs4,
-  .seg.tabs5 {
-    grid-template-columns: repeat(auto-fit, minmax(0, max-content));
-    justify-content: start;
-  }
-  .seg.tabs4 a,
-  .seg.tabs5 a {
-    padding: 0 20px;
-    font-size: 0.88rem;
-  }
-}
-.seg.tabs5 a {
-  font-size: 0.8rem;
-  padding: 0 2px;
-}
 
 /* Who is flying what (Admin → Balance) */
 .tally {

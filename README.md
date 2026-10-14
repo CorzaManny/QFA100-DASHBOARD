@@ -6,7 +6,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 
 - **Login** – everyone signs in with their own account. The first page is the login page.
 - **Dashboard** – shows where the aircraft is, its altitude, ground speed, distance to go and estimated arrival, read from the simulator's status API or from VATSIM. Shows your next rostered sector with your duty, report time and a countdown, and warns when a late arrival will push back the following departure.
-- **737 Checklists** – tap-through normal checklists from Preflight to Secure, with a "CHECKLIST COMPLETE" footer and a Next button. Works with no connection and keeps the screen awake.
+- **737 Checklists** – tap-through checklists in three groups: **Normal** from Preflight to Secure, plus **Non-normal** and **Memory items** to fill in. Each group lists its checklists down the side with how far through each one is, and there is a "CHECKLIST COMPLETE" footer and a Next button. Works with no connection and keeps the screen awake.
 - **Schedule** – the official WorldFlight 2026 schedule. Each sector shows when its departure window opens (UTC), the window, block time and validated route. Admins and dispatchers can add, edit or delete sectors.
 - **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with short-crewed sectors flagged. The cockpit tablets sign in to their own accounts and show the whole team's roster instead.
 - **Admin** (shield icon, top right) – where the roster is built: pick a Captain and First Officer for each sector from a dropdown and it saves straight away. Admins also set each person's role here.
@@ -186,13 +186,11 @@ If notifications stop working, run `select public.push_tick();` in the SQL edito
 - **iPhone / iPad:** open the link in Safari, tap **Share**, then **Add to Home Screen**.
 - **Android:** open the link in Chrome, tap **⋮**, then **Install app** (or **Add to Home screen**).
 
-## Device settings
+## The aeroplane, and device settings
 
-Open **Settings** (top-right icon) to set, on each device:
+There is one aeroplane, so there is one set of answers about it. The **VATSIM callsign**, the **aircraft type** and the **team SimBrief account** are set once by an admin in **Admin → Rules**, and everyone's app follows them. Nobody sets their own: a pilot pointing the app at their own callsign would quietly stop seeing the team's aircraft on the Dashboard, and a second SimBrief account would mean two crews briefing different flight plans.
 
-- **VATSIM callsign to track** (starts as `QFA100`).
-- **SimBrief username or Pilot ID**, if you want to import flight plans.
-- **Simulator status API address**, once something on the simulator PC is publishing it (see below). Leave blank to use VATSIM.
+**Settings** (top-right icon) is left with the one thing that really does belong to a device: the **Simulator status API address**, which only the computer at the sim normally needs (see below). Leave it blank to use VATSIM.
 
 ## Simulator status API
 
@@ -238,9 +236,9 @@ These are still saved on each person's own device, not in the database. To share
 
 | To change | Edit |
 |---|---|
-| Checklist items and wording | `js/data/checklists.js` |
+| Checklist items and wording | `js/data/checklists.js` (`kind: 'normal'`, `'non-normal'` or `'memory'` puts one in a group) |
 | Colours and layout | `css/app.css` |
-| Default callsign and aircraft type | `js/store.js` |
+| Callsign, aircraft type and team SimBrief | in the app: **Admin → Rules** |
 | Duty rules and report times | in the app: **Admin → Rules** (starting values are in `js/autoroster.js`) |
 | Minimum pilots per sector (`MIN_PILOTS`) | `js/ops.js` |
 | MEL items | rebuild `js/data/mel.json` with `tools/build_mel.py` |

@@ -368,7 +368,7 @@ async function simTrack(url) {
   const onGround = typeof p.onGround === 'boolean' ? p.onGround : gs < 40;
   state.track = {
     source: 'SIM',
-    callsign: typeof d.callsign === 'string' ? d.callsign.toUpperCase() : state.profile.callsign,
+    callsign: typeof d.callsign === 'string' ? d.callsign.toUpperCase() : teamCallsign(),
     // Also catches a timestamp from the future (a wrong clock or leftover test data).
     online: Math.abs(now - at) < SIM_STALE_MS,
     prefiled: false,
@@ -430,7 +430,7 @@ export async function refreshTrack() {
 }
 
 async function vatsimTrack() {
-  const callsign = state.profile.callsign.trim().toUpperCase();
+  const callsign = teamCallsign();
   const prev = state.track;
   const now = Date.now();
   let feed;
@@ -522,7 +522,7 @@ export async function fetchMetar(code) {
 
 export function simbriefPlanUrl(sector) {
   const m = /^([A-Z]{3})(\d.*)$/.exec(sector.flight.toUpperCase());
-  const q = new URLSearchParams({ orig: sector.dep, dest: sector.arr, type: state.profile.aircraft || 'B738' });
+  const q = new URLSearchParams({ orig: sector.dep, dest: sector.arr, type: teamAircraft() });
   if (m) {
     q.set('airline', m[1]);
     q.set('fltnum', m[2]);
@@ -595,7 +595,11 @@ export async function saveBrief(sectorId, fields) {
   save();
 }
 
-// The SimBrief account flight plans come from: the team's shared one once an
-// admin has set it, otherwise this person's own from Settings.
+// One aeroplane, one callsign, one SimBrief account for the whole team. They
+// are kept with the team's settings so everyone's app agrees; an admin changes
+// them in Admin -> Rules. The fallbacks are only for preview mode, before a
+// database is connected.
+export const teamCallsign = () => (state.settings?.rules?.callsign || 'QFA100').trim().toUpperCase();
+export const teamAircraft = () => (state.settings?.rules?.aircraft || 'B738').trim().toUpperCase();
 export const teamSimbrief = () => (state.settings?.simbrief || '').trim();
-export const simbriefId = () => teamSimbrief() || state.profile.simbrief.trim();
+export const simbriefId = () => teamSimbrief();

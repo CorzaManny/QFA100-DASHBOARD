@@ -26,6 +26,7 @@ import {
   isDraft,
   isEfb,
   me,
+  teamCallsign,
   pendingPeople,
 } from '../ops.js';
 import { nextIncomplete } from './checklists.js';
@@ -76,12 +77,12 @@ function metric(label, value) {
 
 function liveCard(now) {
   const t = state.track;
-  const cs = esc(state.profile.callsign);
+  const cs = esc(teamCallsign());
   const sim = t?.source === 'SIM';
   const usingApi = !!state.profile.statusUrl.trim();
   const head = (badge) => `
     <div class="card-head">
-      <div class="tiny">CURRENT FLIGHT STATUS · ${esc(t?.callsign || state.profile.callsign)}</div>
+      <div class="tiny">CURRENT FLIGHT STATUS · ${esc(t?.callsign || teamCallsign())}</div>
       <div class="head-right">${badge}
         <button class="icon-btn ${busy ? 'spin' : ''}" data-act="refresh" aria-label="Refresh flight status">${icon('refresh')}</button>
       </div>

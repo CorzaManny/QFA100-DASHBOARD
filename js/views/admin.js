@@ -40,6 +40,9 @@ import {
   wouldBreak,
   defaultReport,
   rules,
+  teamCallsign,
+  teamAircraft,
+  teamSimbrief,
   isDraft,
   prefOf,
   PILOT_DUTIES,
@@ -217,6 +220,19 @@ function rulesPage() {
     `<label class="field">${label}<input type="number" name="${name}" min="0" step="${step}" required value="${esc(r[name])}"><span class="tiny">${hint}</span></label>`;
   return `
     ${tabs('rules')}
+    <form class="card form" data-form="aircraft">
+      <h2>The aeroplane</h2>
+      <p class="note">One callsign, one aircraft and one SimBrief account for the whole team. Everybody's app follows these; nobody sets their own.</p>
+      <div class="grid2">
+        <label class="field">VATSIM callsign<input name="callsign" required autocapitalize="characters" maxlength="10" value="${esc(teamCallsign())}">
+          <span class="tiny">Tracked on the Dashboard</span></label>
+        <label class="field">Aircraft type (ICAO)<input name="aircraft" required autocapitalize="characters" maxlength="4" value="${esc(teamAircraft())}">
+          <span class="tiny">Used for SimBrief and the tech log</span></label>
+      </div>
+      <label class="field">Team SimBrief username or Pilot ID<input name="simbrief" autocapitalize="none" autocorrect="off" value="${esc(teamSimbrief())}" placeholder="Not set yet">
+        <span class="tiny">The one account every flight plan is imported from</span></label>
+      <div class="btn-row"><button class="btn primary" type="submit">Save the aeroplane</button></div>
+    </form>
     <form class="card form" data-form="rules">
       <h2>Duty rules</h2>
       <p class="note">Auto roster follows these, and the rule check flags anyone rostered by hand who breaks them. They apply to the whole team.</p>
@@ -745,8 +761,10 @@ export const changes = {
 };
 
 export const forms = {
+  // Anything the team has set that is not a duty rule, such as the aeroplane,
+  // is kept as it is rather than wiped by saving this form.
   rules(data) {
-    const next = { unmarkedAvailable: data.get('unmarkedAvailable') === 'on' };
+    const next = { ...(state.settings?.rules || {}), unmarkedAvailable: data.get('unmarkedAvailable') === 'on' };
     for (const key of Object.keys(DEFAULT_RULES)) {
       if (key === 'unmarkedAvailable') continue;
       const value = Number(data.get(key));
@@ -757,6 +775,19 @@ export const forms = {
     return change(async () => {
       await saveSettings({ rules: next });
       result = 'Rules saved.';
+    });
+  },
+  aircraft(data) {
+    const callsign = String(data.get('callsign')).trim().toUpperCase();
+    const aircraft = String(data.get('aircraft')).trim().toUpperCase();
+    return change(async () => {
+      await saveSettings({
+        rules: { ...(state.settings?.rules || {}), callsign, aircraft },
+        simbrief: String(data.get('simbrief')).trim(),
+      });
+      // The next look at the feed should use the new callsign.
+      state.track = null;
+      result = 'Saved. Everyone sees this.';
     });
   },
   test(data, formEl) {

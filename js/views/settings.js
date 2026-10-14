@@ -104,13 +104,11 @@ export function render() {
     ${adminLink()}
     <form class="card form" data-form="profile">
       <h2>This device</h2>
-      <div class="grid2">
-        <label class="field">VATSIM callsign to track<input name="callsign" required autocapitalize="characters" value="${esc(p.callsign)}"></label>
-        <label class="field">Aircraft type (ICAO)<input name="aircraft" required autocapitalize="characters" maxlength="4" value="${esc(p.aircraft)}"></label>
-      </div>
-      <label class="field">SimBrief username or Pilot ID<input name="simbrief" autocapitalize="none" autocorrect="off" value="${esc(p.simbrief)}"></label>
+      <p class="note">The callsign, the aircraft and the team's SimBrief account are the same for everyone and are set in ${
+        canEdit() ? '<a href="#/admin/rules">Admin → Rules</a>' : 'Admin → Rules by an admin'
+      }. This is the only setting that belongs to this device.</p>
       <label class="field">Simulator status API address (optional)<input name="statusUrl" type="url" inputmode="url" autocapitalize="none" autocorrect="off" value="${esc(p.statusUrl)}" placeholder="https://…/status"></label>
-      <p class="tiny">When set, the Dashboard reads the aircraft's position straight from the simulator and only falls back to VATSIM if that fails. Leave blank to use VATSIM.</p>
+      <p class="tiny">When set, the Dashboard reads the aircraft's position straight from the simulator and only falls back to VATSIM if that fails. Leave blank to use VATSIM. The computer at the sim is usually the only one that needs it.</p>
       <div class="btn-row"><button class="btn primary" type="submit">Save device settings</button></div>
     </form>
     <section class="card">
@@ -202,15 +200,9 @@ export const forms = {
   },
   profile(data) {
     const p = state.profile;
-    const callsign = String(data.get('callsign')).trim().toUpperCase();
     const statusUrl = String(data.get('statusUrl')).trim();
-    if (callsign !== p.callsign || statusUrl !== p.statusUrl) state.track = null;
-    Object.assign(p, {
-      callsign,
-      aircraft: String(data.get('aircraft')).trim().toUpperCase(),
-      simbrief: String(data.get('simbrief')).trim(),
-      statusUrl,
-    });
+    if (statusUrl !== p.statusUrl) state.track = null;
+    p.statusUrl = statusUrl;
     save();
     message = 'Device settings saved.';
     rerender();
