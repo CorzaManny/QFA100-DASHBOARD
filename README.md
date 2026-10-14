@@ -27,6 +27,29 @@ The app is plain files with nothing to install or build, so GitHub can host it d
 3. Under **Build and deployment**, choose **Deploy from a branch**, pick the branch and **/ (root)**, and press **Save**.
 4. After a minute the page shows your address, something like `https://<your-username>.github.io/QFA100-DASHBOARD/`.
 
+### The team's own address
+
+QFA100 runs at **<https://efb.qfa100.org>**. The app uses relative paths
+throughout, so it works from a subfolder or from the root of a domain with no
+change to the code.
+
+To point a subdomain at GitHub Pages, add one DNS record where the domain's DNS
+is managed, leaving every other record alone:
+
+| Type | Name | Value |
+|---|---|---|
+| CNAME | `efb` | `corzamanny.github.io` |
+
+Then in **Settings -> Pages**, put `efb.qfa100.org` in **Custom domain**, wait
+for the DNS check to pass, and tick **Enforce HTTPS**. Saving the domain adds a
+`CNAME` file to the published branch; leave it there.
+
+Two more things follow a change of address. In Supabase, **Authentication ->
+URL Configuration**, set the **Site URL** and add the new address to **Redirect
+URLs**, or password-reset links come back to the old one. And because a new
+address is a different site to a browser, everybody signs in again, adds the
+app to their home screen again and turns notifications back on.
+
 ## Set up accounts (free, about ten minutes)
 
 Accounts, the schedule and the roster live in a Supabase database. Until this is done the login page says "Accounts are not connected yet" and the app only works in a single-device preview with no roster.
