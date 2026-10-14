@@ -61,6 +61,11 @@ for(const cl of NON_NORMAL_CHECKLISTS){
  assert((html.match(/data-act="toggle"/g)||[]).length===cl.items.length,'checkable actions');
  for(const block of cl.blocks) assert(html.includes(`id="qrh-${block.id}"`),'block anchors');
 }
+const grouped=checklistGroups(NON_NORMAL_CHECKLISTS);
+assert(grouped.length===16,'system group count');
+assert(grouped[0].label==='General & emergencies','emergencies first');
+assert(grouped.flatMap(g=>g.entries).length===147,'all checklists grouped');
+for(const group of grouped) assert(group.entries.every((cl,i)=>!i||group.entries[i-1].name.localeCompare(cl.name)<=0),'alphabetical checklist order');
 const fire=NON_NORMAL_CHECKLISTS.find(c=>c.name==='Engine Fire on the Ground');
 location.hash=`#/checklists/${fire.id}`;
 assert(fire.blocks.find(b=>b.id==='b6').type==='note','fire switch explanation is a note');

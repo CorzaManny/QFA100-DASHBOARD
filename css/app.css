@@ -1517,3 +1517,17 @@ body.efb .tabs a {
   .qrh-check .cl-re { grid-column: 2; text-align: left; max-width: none; }
   .qrh-links .btn { white-space: normal; text-align: left; }
 }
+
+/* System groups replace the long non-normal checklist strip. */
+.qrh-library { position: relative; max-height: 38vh; overflow-y: auto; border: 1px solid var(--hair); border-radius: var(--r); background: var(--card); }
+.qrh-system + .qrh-system { border-top: 1px solid var(--hair); }
+.qrh-system[hidden] { display: none; }
+.qrh-system summary { display: flex; align-items: center; gap: 10px; padding: 14px 16px; cursor: pointer; font-weight: 600; }
+.qrh-system summary::before { content: '›'; color: var(--muted); }
+.qrh-system[open] summary::before { transform: rotate(90deg); }
+.qrh-system summary > span:first-of-type { flex: 1; }
+.qrh-system-list { display: flex; flex-direction: column; gap: 4px; padding: 0 8px 10px; }
+.qrh-library .chip { display: flex; justify-content: space-between; width: 100%; gap: 12px; padding: 12px; border-radius: var(--r-sm); }
+.qrh-library .chip-t { white-space: normal; overflow-wrap: anywhere; }
+.qrh-library .chip-n { display: inline; flex-shrink: 0; font-size: 0.75rem; }
+@media (min-width: 900px) { .qrh-library { max-height: 75vh; } }

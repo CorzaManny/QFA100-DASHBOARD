@@ -109,6 +109,28 @@ function focusBlock(id) {
 }
 const ofKind = (kind) => CHECKLISTS.filter((cl) => (cl.kind || 'normal') === kind);
 
+function systemLabel(cl) {
+  const labels = {
+    'Miscellaneous': 'General & emergencies',
+    'Evacuation': 'General & emergencies',
+    'Engine Fire on the Ground Checklist': 'Fire Protection',
+    'Airplane Gen., Emer. Equip., Doors, Windows': 'Doors, windows & emergency equipment',
+  };
+  return labels[cl.section] || cl.section || 'General & emergencies';
+}
+
+export function checklistGroups(checklists) {
+  const groups = new Map();
+  for (const cl of checklists) {
+    const label = systemLabel(cl);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(cl);
+  }
+  return [...groups].sort(([a], [b]) => a === 'General & emergencies' ? -1 : b === 'General & emergencies' ? 1 : a.localeCompare(b))
+    .map(([label, entries]) => ({ label, entries: entries.sort((a, b) => a.name.localeCompare(b.name)) }));
+}
+
+
 // What the Dashboard offers to resume: only the ones flown every sector.
 export function nextIncomplete() {
   return ofKind('normal').find((cl) => !complete(cl)) || null;
@@ -135,13 +157,17 @@ export function render(args) {
     return `<a class="${key === kind ? 'on' : ''}" href="${href}">${esc(label)}</a>`;
   }).join('');
 
-  const chips = group
-    .map(
-      (c) => `<a class="chip ${c === cl ? 'on' : ''} ${complete(c) ? 'done' : ''}" href="#/checklists/${c.id}">
-      <span class="chip-t">${complete(c) ? icon('check') : ''}${esc(c.name)}</span>
-      <span class="chip-n">${done(c)} / ${c.items.length}</span></a>`,
-    )
-    .join('');
+  const chip = (c) => `<a class="chip ${c === cl ? 'on' : ''} ${complete(c) ? 'done' : ''}" data-checklist-id="${esc(c.id)}" href="#/checklists/${c.id}" ${c === cl ? 'aria-current="page"' : ''}>
+      <span class="chip-t">${esc(c.name)}</span>
+      <span class="chip-n">${done(c)} / ${c.items.length}</span></a>`;
+  const chips = group.map(chip).join('');
+  const library = kind === 'non-normal'
+    ? `<nav class="qrh-library" aria-label="Non-normal checklists by system">${checklistGroups(group).map(({ label, entries }) => `
+      <details class="qrh-system" ${entries.includes(cl) ? 'open' : ''}>
+        <summary><span>${esc(label)}</span><span class="tiny" data-system-count>${entries.length}</span></summary>
+        <div class="qrh-system-list">${entries.map(chip).join('')}</div>
+      </details>`).join('')}</nav>`
+    : `<nav class="chip-row" aria-label="Checklists">${chips}</nav>`;
 
   const shell = (body) => `
     <nav class="seg tabs4 on-card" aria-label="Kind of checklist">${kinds}</nav>
@@ -150,7 +176,7 @@ export function render(args) {
       <span class="tiny" data-qrh-count>${group.length} checklists</span>
     </label>` : ''}
     <div class="cl-layout ${chips ? '' : 'solo'} ${kind === 'non-normal' ? 'qrh-layout' : ''}">
-      ${chips ? `<nav class="chip-row" aria-label="Checklists">${chips}</nav>` : ''}
+      ${chips ? library : ''}
       <div class="cl-main">${body}</div>
     </div>`;
 
@@ -245,15 +271,26 @@ export function render(args) {
 export function mounted(root, args = []) {
   const block = args[1];
   if (block) requestAnimationFrame(() => requestAnimationFrame(() => focusBlock(block)));
-  root.querySelector('.chip.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  const library = root.querySelector('.qrh-library');
+  if (library) {
+    const selected = library.querySelector('.chip.on');
+    if (selected) library.scrollTop = selected.offsetTop - library.offsetTop;
+  } else root.querySelector('.chip.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
   root.querySelector('[data-qrh-search]')?.addEventListener('input', (event) => {
     const query = event.target.value.trim().toLowerCase();
     let count = 0;
-    root.querySelectorAll('.chip').forEach((chip, i) => {
-      const cl = ofKind('non-normal')[i];
-      const match = `${cl.name} ${cl.section || ''} ${cl.condition || ''}`.toLowerCase().includes(query);
+    const byId = new Map(ofKind('non-normal').map((cl) => [cl.id, cl]));
+    root.querySelectorAll('.chip').forEach((chip) => {
+      const cl = byId.get(chip.dataset.checklistId);
+      const match = `${cl.name} ${systemLabel(cl)} ${cl.section || ''} ${cl.condition || ''}`.toLowerCase().includes(query);
       chip.hidden = !match;
       if (match) count++;
+    });
+    root.querySelectorAll('.qrh-system').forEach((system) => {
+      const matches = [...system.querySelectorAll('.chip')].filter((chip) => !chip.hidden).length;
+      system.hidden = matches === 0;
+      system.querySelector('[data-system-count]').textContent = matches;
+      system.open = query ? matches > 0 : !!system.querySelector('.chip.on');
     });
     root.querySelector('[data-qrh-count]').textContent = count ? `${count} checklists` : 'No matching procedures';
   });
