@@ -462,7 +462,7 @@ export function render() {
       ${tile('#/airports', 'pin', 'Airport Briefings', next ? `${next.dep} · ${next.arr}` : 'All airports')}
       ${tile('#/techlog', 'wrench', 'Tech Log', open ? `${open} active defect${open > 1 ? 's' : ''}` : 'No active defects')}
       ${tile('#/brief', 'file', 'Sector Briefing', next ? `${next.dep} → ${next.arr} · ${o ? 'OFP imported' : 'no OFP yet'}` : 'OFP, notes, handover')}
-      ${tile('#/progress', 'plane', 'Progress', progressSub())}
+      ${tile('#/progress', 'file', 'Logbook', progressSub())}
     </div>`;
 }
 

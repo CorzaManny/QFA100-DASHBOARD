@@ -14,7 +14,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **MEL** – the 737 Minimum Equipment List as drop-downs (system → item → option) inside the Tech Log: it shows whether the aircraft can go with something inoperative, the conditions, and how long the fix can wait.
 - **Airport Briefings** – runways, elevation, live METAR and TAF, who is controlling the airport on VATSIM with their ATIS, your team's own notes, and links to Navigraph Charts and ChartFox for every airport on the schedule (or any ICAO code).
 - **SimBrief** – opens SimBrief with the next sector filled in, then imports your latest OFP (route, fuel, weights, times).
-- **Progress** – the whole route around the world on one map, how far the team has got, and a logbook of who has flown what, in hours, sectors and miles.
+- **Logbook** – the whole route around the world on one map, how far the team has got, and who has flown what, in hours, sectors and miles.
 
 For flight simulation use only.
 
@@ -175,12 +175,12 @@ it is pointing. It is drawn from the same position the rest of the card uses,
 so it follows the simulator API when that is set up and VATSIM otherwise, and
 it keeps the last known position when the aeroplane goes offline.
 
-**Progress** (a tile on the Dashboard) puts the whole event on one map: every
+**Logbook** (in the navigation, and a tile on the Dashboard) puts the whole event on one map: every
 sector flown so far in solid blue, the one in the air in red, and the rest
 dashed. Under it are the sectors flown, the distance covered against the whole
 route, the block time and the airports visited.
 
-The same page carries the **logbook**: every pilot with the sectors they have
+The same page carries **crew hours**: every pilot with the sectors they have
 flown, their hours, their miles and which seats they sat in, with your own row
 marked. A sector counts once the flight deck stamps on blocks, or once its
 arrival time has passed, so the logbook fills in as the event runs rather than

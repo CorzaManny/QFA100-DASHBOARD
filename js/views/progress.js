@@ -1,5 +1,5 @@
-// Progress and logbook: how far round the world the aeroplane has got, and
-// who flew what. Everything here is worked out from the schedule, the roster
+// The logbook: how far round the world the aeroplane has got, and who flew
+// what. Everything here is worked out from the schedule, the roster
 // and the times the flight deck stamped, so there is nothing extra to keep up
 // to date.
 
@@ -135,7 +135,7 @@ function headline(t, now) {
 }
 
 // Who has flown what. Only sectors that have actually been flown are counted,
-// so the logbook fills up as the event runs rather than showing the plan.
+// so it fills up as the event runs rather than showing the plan.
 function logbook(now) {
   const flown = sortedSectors().filter((s) => flownState(s, now) === 'done');
   const byPilot = new Map();
@@ -155,7 +155,7 @@ function logbook(now) {
   }
   const rows = [...byPilot.values()].sort((a, b) => b.ms - a.ms || a.p.display_name.localeCompare(b.p.display_name));
   if (!rows.length) {
-    return `<section class="card"><h2>Logbook</h2>
+    return `<section class="card"><h2>Crew hours</h2>
       <p class="note">Nobody has flown a sector yet. Each one fills in here as it is flown.</p></section>`;
   }
   const short = { Captain: 'CPT', 'First Officer': 'FO', 'Relief Pilot': 'RLF' };
@@ -176,7 +176,7 @@ function logbook(now) {
     .join('');
   return `
     <section class="card">
-      <div class="card-head"><h2>Logbook</h2><span class="badge info">${rows.length} PILOT${rows.length === 1 ? '' : 'S'}</span></div>
+      <div class="card-head"><h2>Crew hours</h2><span class="badge info">${rows.length} PILOT${rows.length === 1 ? '' : 'S'}</span></div>
       <table class="table logbook">
         <thead><tr><th>Pilot</th><th class="num">Sectors</th><th class="num">Hours</th><th class="num">NM</th><th>Seats</th></tr></thead>
         <tbody>${body}</tbody>
@@ -223,11 +223,11 @@ export function render() {
   const now = Date.now();
   const t = tally(now);
   if (!t.sectors.length) {
-    return `<div class="page-head"><h1>Progress</h1></div>
+    return `<div class="page-head"><h1>Logbook</h1></div>
       <section class="card"><p class="note">No sectors in the schedule yet.</p></section>`;
   }
   return `
-    <div class="page-head"><h1>Progress</h1></div>
+    <div class="page-head"><h1>Logbook</h1></div>
     ${headline(t, now)}
     ${mine(now)}
     ${logbook(now)}
