@@ -1592,6 +1592,46 @@ body.efb .tabs a {
   margin-top: 6px;
 }
 
+/* Asking to be put on the home screen */
+.card.install {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  border-color: rgba(79, 155, 240, 0.4);
+}
+.card.install img {
+  flex: none;
+  border-radius: 10px;
+}
+.install-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.install-main h2 {
+  margin: 0;
+}
+.install-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.install-steps strong {
+  color: var(--text);
+}
+/* The Share and plus glyphs sit on the line with the words. */
+.icon.ios-share {
+  width: 17px;
+  height: 17px;
+  vertical-align: -3px;
+  color: var(--link);
+}
+
 /* The email and password a new account was made with, shown once */
 .made {
   margin-top: 12px;

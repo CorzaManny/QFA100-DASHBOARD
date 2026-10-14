@@ -5,6 +5,7 @@ import { esc, zulu, zdate, span, ago, depWindow, simLocal, icon, rerender } from
 import { round5 } from '../running.js';
 import { saveActual } from '../api.js';
 import { loadWorld, mapSvg, worldReady } from '../map.js';
+import { installState, install, dismiss, isIos } from '../install.js';
 import {
   briefingOf,
   currentSector,
@@ -400,6 +401,44 @@ function approvalBanner() {
     <span><strong>${waiting} account${waiting === 1 ? '' : 's'}</strong> waiting for your approval</span>${icon('chevron')}</a>`;
 }
 
+// Getting onto the home screen. On a phone this is worth asking about: on
+// iPhone and iPad notifications do not work at all until the app is there.
+function installCard() {
+  const how = installState();
+  if (!how || isEfb()) return '';
+  const why = 'It opens full screen, the checklists work with no connection, and notifications can reach you.';
+  if (how === 'chrome') {
+    return `
+      <section class="card install">
+        <img src="icons/icon-192.png" alt="" width="48" height="48">
+        <div class="install-main">
+          <h2>Install QFA100 Ops</h2>
+          <p class="note">${why}</p>
+          <div class="btn-row">
+            <button class="btn primary" data-act="install">Install</button>
+            <button class="btn ghost" data-act="dismissInstall">Not now</button>
+          </div>
+        </div>
+      </section>`;
+  }
+  // iOS cannot be asked; it can only be told where the button is.
+  return `
+    <section class="card install">
+      <img src="icons/icon-192.png" alt="" width="48" height="48">
+      <div class="install-main">
+        <h2>Add QFA100 Ops to your home screen</h2>
+        <p class="note">${why} Apple does not let an app install itself, so it takes two taps:</p>
+        <ol class="install-steps">
+          <li>Tap ${icon('share', 'ios-share')} <strong>Share</strong>${
+            /ipad/i.test(navigator.userAgent) ? ' at the top of the screen' : ' at the bottom of the screen'
+          }</li>
+          <li>Scroll down and tap ${icon('plus_square', 'ios-share')} <strong>Add to Home Screen</strong></li>
+        </ol>
+        <div class="btn-row"><button class="btn ghost" data-act="dismissInstall">Got it</button></div>
+      </div>
+    </section>`;
+}
+
 // While bidding is open, everyone who flies is told when it shuts. Ops staff
 // see it too, since they are the ones waiting on it.
 function biddingBanner(now) {
@@ -475,6 +514,7 @@ export function render() {
   const open = state.defects.filter((d) => d.status !== 'RECTIFIED').length;
   const o = next ? briefingOf(next.id).ofp : null;
   return `
+    ${installCard()}
     ${approvalBanner()}
     ${biddingBanner(now)}
     ${requestsBanner()}
@@ -531,6 +571,12 @@ export const forms = {
 
 export const actions = {
   refresh: () => poll(true),
+
+  install: () => install(),
+  dismissInstall() {
+    dismiss();
+    rerender();
+  },
 
   // Opens or closes the box for correcting a stamped time.
   pick(el) {
