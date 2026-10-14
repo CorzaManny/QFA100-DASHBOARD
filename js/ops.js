@@ -1,7 +1,7 @@
 // Operational logic: airports, distances, the VATSIM feed, schedule maths.
 
 import { state, save } from './store.js';
-import { configured, getSession, loadAll, saveBriefing } from './api.js';
+import { configured, getSession, loadAll, saveBriefing, fetchTaf } from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
 import { running as runningOf, reportAt as reportAtOf } from './running.js';
@@ -449,15 +449,91 @@ export async function refreshTrack() {
   return track;
 }
 
+// The whole VATSIM feed is a few megabytes, and the dashboard and the airport
+// pages both want it, so one copy is kept for a few seconds and shared.
+let feedCache = null;
+
+async function vatsimFeed() {
+  if (feedCache && Date.now() - feedCache.at < 20000) return feedCache.data;
+  const res = await fetch(VATSIM_FEED, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  feedCache = { at: Date.now(), data };
+  return data;
+}
+
+// Who is controlling an airport right now, and what its ATIS says.
+//
+// There is no one way VATSIM names a station. Much of the world uses the whole
+// ICAO code (EGLL_TWR), the United States drops the country letter (KDFW ->
+// DFW_TWR) and Australia uses the two-letter local code (YSSY -> SY_TWR).
+// Sydney uses both at once: YSSY_ATIS alongside SY_TWR. So every form is
+// matched and the results merged.
+//
+// A callsign only counts if it also ends in a position worked at the airport
+// itself, which is what keeps a short code like SY_ from sweeping up something
+// unrelated. Area control is left out on purpose: an enroute sector is not an
+// airport station, and its frequency moves about and is often not published.
+const POSITION = /_(DEL|GND|TWR|APP|DEP|ATIS)$/;
+
+function stationsFor(list, icao, seen) {
+  const out = [];
+  for (const c of list || []) {
+    const callsign = String(c.callsign || '').toUpperCase();
+    if (!POSITION.test(callsign) || seen.has(callsign)) continue;
+    const prefix = [icao, icao.slice(1), icao.slice(2)]
+      .filter((p) => p.length >= 2)
+      .find((p) => callsign.startsWith(`${p}_`));
+    if (!prefix) continue;
+    seen.add(callsign);
+    out.push({ c, prefix });
+  }
+  return out;
+}
+
+export async function fetchStations(code) {
+  const icao = String(code || '').toUpperCase();
+  const feed = await vatsimFeed();
+  const seen = new Set();
+  const prefixes = new Set();
+  const keep = (hit) => {
+    prefixes.add(hit.prefix);
+    return hit.c;
+  };
+
+  const atis = stationsFor(feed.atis, icao, seen)
+    .map(keep)
+    .map((a) => ({
+      callsign: a.callsign,
+      frequency: a.frequency || '',
+      code: a.atis_code || '',
+      text: (a.text_atis || []).join(' ').replace(/\s+/g, ' ').trim(),
+    }));
+  const controllers = stationsFor(
+    (feed.controllers || []).filter((c) => (c.facility ?? 0) > 0),
+    icao,
+    seen,
+  )
+    .map(keep)
+    .map((c) => ({
+      callsign: c.callsign,
+      frequency: c.frequency || '',
+      name: c.name || '',
+      since: c.logon_time || '',
+    }));
+
+  state.stations[icao] = { atis, controllers, prefixes: [...prefixes], at: Date.now() };
+  save();
+  return state.stations[icao];
+}
+
 async function vatsimTrack() {
   const callsign = teamCallsign();
   const prev = state.track;
   const now = Date.now();
   let feed;
   try {
-    const res = await fetch(VATSIM_FEED, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    feed = await res.json();
+    feed = await vatsimFeed();
   } catch (err) {
     state.track = { ...(prev || {}), error: `VATSIM feed unavailable (${err.message})`, checkedAt: now };
     return state.track;
@@ -527,6 +603,18 @@ async function vatsimTrack() {
 }
 
 // ---- Weather ----
+
+// The forecast for an airport, read through the team database because the
+// source does not let a browser read it directly. null means supabase/
+// weather.sql has not been run, so there are no forecasts to show.
+export async function fetchTafFor(code) {
+  if (!configured || !getSession()) return null;
+  const text = await fetchTaf(code);
+  if (text == null) return null;
+  state.taf[code] = { text: String(text).trim(), at: Date.now() };
+  save();
+  return state.taf[code];
+}
 
 export async function fetchMetar(code) {
   const res = await fetch(`https://metar.vatsim.net/${encodeURIComponent(code)}`, { cache: 'no-store' });

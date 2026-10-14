@@ -252,6 +252,17 @@ export const withdrawSwap = (swapId) => rest('POST', 'rpc/withdraw_swap', { swap
 
 // Asking for an empty seat, from supabase/pickups.sql. Like swaps, these only
 // change through the database functions.
+// The current TAF for an airport, from supabase/weather.sql. Returns null when
+// that file has not been run, so the app can simply leave the forecast out.
+export async function fetchTaf(icao) {
+  try {
+    return await rest('POST', 'rpc/taf', { icao_code: icao });
+  } catch (err) {
+    if (/not find|does not exist|404/i.test(err.message)) return null;
+    throw err;
+  }
+}
+
 export const requestPickup = (sectorId, duty) => rest('POST', 'rpc/request_pickup', { sector: sectorId, seat: duty });
 export const withdrawPickup = (pickupId) => rest('POST', 'rpc/withdraw_pickup', { pickup: pickupId });
 export const decidePickup = (pickupId, agree, why = '', report = null) =>

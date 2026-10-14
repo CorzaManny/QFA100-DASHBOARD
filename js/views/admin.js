@@ -455,7 +455,12 @@ function rosterEditor() {
   const now = Date.now();
   const upcoming = sortedSectors().filter((s) => new Date(s.sta) > now);
   const short = upcoming.filter(pilotsShort);
-  const shown = filter === 'short' ? short : upcoming;
+  // Sectors already flown, newest first: the logbook follows the roster, so
+  // this is where a seat somebody else actually sat in gets put right.
+  const flown = sortedSectors()
+    .filter((s) => new Date(s.sta) <= now)
+    .reverse();
+  const shown = filter === 'short' ? short : filter === 'flown' ? flown : upcoming;
   const r = rules();
 
   let day = '';
@@ -488,6 +493,8 @@ function rosterEditor() {
     .join('');
 
   const [state_, auto_, received_, check_] = autoPanels();
+  const empty =
+    filter === 'flown' ? 'No sectors have been flown yet.' : 'Every upcoming sector has its pilots.';
   return `
     ${tabs('roster')}
     ${state_}
@@ -499,13 +506,18 @@ function rosterEditor() {
           r.reliefOverHours > 0 ? `, and ${MIN_PILOTS + 1} when it is longer than ${r.reliefOverHours} hours` : ''
         }.</div>
       </div>
-      <div class="seg">
-        <button type="button" class="${filter === 'all' ? 'on' : ''}" data-act="filter" data-filter="all">All sectors</button>
+      <div class="seg three">
+        <button type="button" class="${filter === 'all' ? 'on' : ''}" data-act="filter" data-filter="all">Upcoming</button>
         <button type="button" class="${filter === 'short' ? 'on' : ''}" data-act="filter" data-filter="short">Needs pilots (${short.length})</button>
+        <button type="button" class="${filter === 'flown' ? 'on' : ''}" data-act="filter" data-filter="flown">Flown (${flown.length})</button>
       </div>
-      <p class="tiny">Open a sector to crew it. Each sector page lists every pilot, what they said about it, what they are already flying and any duty rule that would be broken by rostering them.</p>
+      <p class="tiny">Open a sector to crew it. Each sector page lists every pilot, what they said about it, what they are already flying and any duty rule that would be broken by rostering them.${
+        filter === 'flown'
+          ? ' These have already been flown: changing the crew here corrects the logbook, and nobody is notified.'
+          : ''
+      }</p>
     </section>
-    <section class="card list">${rows || '<p class="note">Every upcoming sector has its pilots.</p>'}</section>
+    <section class="card list">${rows || `<p class="note">${empty}</p>`}</section>
     ${received_}
     ${check_}`;
 }

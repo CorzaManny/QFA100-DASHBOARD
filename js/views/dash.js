@@ -4,6 +4,7 @@ import { state } from '../store.js';
 import { esc, zulu, zdate, span, ago, depWindow, simLocal, icon, rerender } from '../ui.js';
 import { round5 } from '../running.js';
 import { saveActual } from '../api.js';
+import { loadWorld, mapSvg, worldReady } from '../map.js';
 import {
   briefingOf,
   currentSector,
@@ -30,6 +31,8 @@ import {
   pendingPeople,
   pendingPickups,
   claimedSwaps,
+  sortedSectors,
+  actualOf,
 } from '../ops.js';
 import { nextIncomplete } from './checklists.js';
 
@@ -71,6 +74,28 @@ function routeRow(dep, arr, pct) {
       <div class="route-mid">${icon('plane', 'plane')}${bar}</div>
       <div class="right"><div class="apt">${esc(arr || '----')}</div><div class="tiny">${city(arr)}</div></div>
     </div>`;
+}
+
+// The map on the status card: the sector being flown, with the aeroplane on
+// it. Until the coastlines have loaded there is simply no map, rather than an
+// empty box.
+function liveMap(t, sector) {
+  if (!worldReady()) return '';
+  const dep = airport(t?.dep || sector?.dep);
+  const arr = airport(t?.arr || sector?.arr);
+  if (!dep || !arr) return '';
+  const marks = [
+    { lon: dep.lon, lat: dep.lat, label: dep.icao, kind: 'dep' },
+    { lon: arr.lon, lat: arr.lat, label: arr.icao, kind: 'arr' },
+  ];
+  const plane = t?.online && t.lat != null && t.lon != null ? { lon: t.lon, lat: t.lat, hdg: t.hdg } : null;
+  return `<div class="map-wrap">${mapSvg({
+    legs: [{ from: dep, to: arr, active: true }],
+    marks,
+    plane,
+    height: 460,
+    title: `${dep.icao} to ${arr.icao}`,
+  })}</div>`;
 }
 
 function metric(label, value) {
@@ -115,6 +140,7 @@ function liveCard(now) {
           t.flight ? `<span class="badge mute">${esc(t.flight)}</span>` : ''
         }${cur && isMine(cur) ? '<span class="badge warn">YOUR SECTOR</span>' : ''}</div>
         ${routeRow(t.dep, t.arr, pct)}
+        ${liveMap(t, cur)}
         <div class="metrics">
           ${metric('ALTITUDE', level(t.alt))}
           ${metric('GROUND SPEED', knots(t.gs))}
@@ -137,6 +163,7 @@ function liveCard(now) {
       <section class="card">
         ${head(`<span class="badge warn">POSITION STALE</span>`)}
         ${routeRow(t.dep, t.arr, null)}
+        ${liveMap(t, currentSector(now))}
         <p class="note warn">${icon('alert')} ${why} Last position ${level(t.alt)}, ${knots(t.gs)}${
           t.remaining != null ? `, ${Math.round(t.remaining)} NM from ${esc(t.arr)}` : ''
         }. This may be a disconnect, not a landing.</p>
@@ -155,6 +182,7 @@ function liveCard(now) {
     <section class="card">
       ${head(`<span class="badge mute">${!t ? 'CHECKING' : t.error ? 'NO DATA' : 'OFFLINE'}</span>`)}
       <p class="note">${msg}</p>
+      ${liveMap(null, nextSector(now) || currentSector(now))}
       ${fallback}
       <div class="tiny">${
         usingApi ? 'Reading the simulator status API, with VATSIM as backup.' : `Tracking callsign ${cs} on VATSIM.`
@@ -397,6 +425,19 @@ function statusBanner() {
     <span><strong>${aog ? 'AIRCRAFT UNSERVICEABLE' : 'Tech log'}</strong> · ${parts.join(', ')} defect${open.length > 1 ? 's' : ''}</span>${icon('chevron')}</a>`;
 }
 
+// How far round the world, for the tile on the Dashboard.
+function progressSub() {
+  const sectors = sortedSectors();
+  if (!sectors.length) return 'Around the world';
+  const now = Date.now();
+  const done = sectors.filter((s) => {
+    const a = actualOf(s.id);
+    if (a?.skipped) return false;
+    return !!a?.on_blocks || new Date(s.sta) < now;
+  }).length;
+  return `${done} of ${sectors.length} sectors flown`;
+}
+
 function tile(href, ic, title, sub) {
   return `<a class="tile" href="${href}">${icon(ic)}<div class="tile-t">${title}</div><div class="tiny">${esc(sub)}</div></a>`;
 }
@@ -421,11 +462,15 @@ export function render() {
       ${tile('#/airports', 'pin', 'Airport Briefings', next ? `${next.dep} · ${next.arr}` : 'All airports')}
       ${tile('#/techlog', 'wrench', 'Tech Log', open ? `${open} active defect${open > 1 ? 's' : ''}` : 'No active defects')}
       ${tile('#/brief', 'file', 'Sector Briefing', next ? `${next.dep} → ${next.arr} · ${o ? 'OFP imported' : 'no OFP yet'}` : 'OFP, notes, handover')}
+      ${tile('#/progress', 'plane', 'Progress', progressSub())}
     </div>`;
 }
 
 export function mounted() {
   poll();
+  // The coastlines are only needed by the map, so they load after the page is
+  // already up and the map appears when they arrive.
+  if (!worldReady()) loadWorld().then(() => onDashboard() && rerender());
 }
 
 export const forms = {

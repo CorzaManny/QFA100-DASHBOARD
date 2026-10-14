@@ -36,6 +36,8 @@ function defaults() {
     localDefects: [], // entries made on this device before the tech log was shared
     notes: {}, // airport briefing notes by ICAO
     metar: {}, // last METAR by ICAO: { text, at }
+    taf: {}, // last TAF by ICAO: { text, at }, read through the team database
+    stations: {}, // who is controlling an airport on VATSIM: { atis, controllers, at }
     checks: {}, // checklist progress by checklist id
     track: null, // last VATSIM sample for the team aircraft
   };

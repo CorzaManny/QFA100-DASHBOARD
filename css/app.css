@@ -1482,6 +1482,109 @@ body.efb .tabs a {
   flex-wrap: wrap;
 }
 
+/* ---- Map: where the aeroplane is, and the route around the world ---- */
+
+.map {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-sm);
+  background: var(--bg-deep);
+}
+.map-sea {
+  fill: var(--bg-deep);
+}
+.map-land {
+  fill: #16202b;
+  stroke: #263443;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  fill-rule: evenodd;
+}
+/* A leg still to fly is faint; one already flown is solid; the one being
+   flown now is the brand red, because it is the live one. */
+.map-leg {
+  fill: none;
+  stroke: var(--dim);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.map-leg.done {
+  stroke: var(--link);
+  stroke-dasharray: none;
+  opacity: 0.8;
+}
+.map-leg.active {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+  opacity: 1;
+}
+.map-mark circle {
+  fill: var(--card2);
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.map-mark text {
+  fill: var(--text);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  paint-order: stroke;
+  stroke: var(--bg-deep);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.map-mark.dep circle {
+  stroke: var(--link);
+}
+.map-mark.arr circle {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+.map-plane path {
+  fill: var(--text);
+  stroke: var(--bg-deep);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.map-wrap {
+  position: relative;
+  margin: 10px 0 2px;
+}
+/* A line of figures sitting on the map itself, so the card stays compact. */
+.map-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 6px;
+}
+
+/* ATIS as published, under the controllers working the airport */
+.atis {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hair);
+}
+.atis .card-head {
+  margin-bottom: 6px;
+}
+
+/* Logbook: figures line up, and your own row is marked */
+.table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.logbook td:first-child {
+  font-weight: 600;
+}
+.logbook tr.mine td {
+  background: var(--accent-soft);
+}
+
 /* Empty seats on the roster: dashed slots where the crew would be */
 .row-main.grow {
   flex: 1;

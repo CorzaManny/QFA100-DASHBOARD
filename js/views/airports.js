@@ -1,11 +1,15 @@
 // Airport briefings: facts, live METAR, runways, team notes, chart links.
 
 import { state, save } from '../store.js';
-import { esc, ago, icao, icon, rerender } from '../ui.js';
-import { airport, sortedSectors, upcomingSector, fetchMetar } from '../ops.js';
+import { esc, ago, icao, icon, zulu, rerender } from '../ui.js';
+import { airport, sortedSectors, upcomingSector, fetchMetar, fetchTafFor, fetchStations } from '../ops.js';
 
 // The airport whose team notes are open for editing. They read until then.
 let editing = '';
+// What the last read of the forecast did: loading, ok, none, off (the database
+// has no weather.sql) or error.
+let tafState = '';
+let tafError = '';
 
 function list() {
   const next = upcomingSector();
@@ -47,6 +51,53 @@ function metarBlock(code) {
     : '<p class="note">Loading METAR…</p>';
 }
 
+// The forecast. tafState is what the last read did, so a missing TAF reads as
+// "this airport does not publish one" rather than a silent blank.
+function tafBlock(code) {
+  const t = state.taf[code];
+  if (t?.text) {
+    // A TAF is published as one long line; the FM and BECMG groups are where
+    // it changes, so each one starts a new line to make it readable.
+    const text = t.text.replace(/\s+/g, ' ').replace(/ (FM\d|BECMG|TEMPO|INTER|PROB)/g, '\n  $1');
+    return `<pre class="metar">${esc(text)}</pre><div class="tiny">Fetched ${ago(t.at)} · forecast</div>`;
+  }
+  if (tafState === 'loading') return '<p class="note">Loading TAF…</p>';
+  if (tafState === 'off') {
+    return `<p class="note">Forecasts are not switched on for this team yet. An admin runs <code>supabase/weather.sql</code> once, in Supabase.</p>`;
+  }
+  if (tafState === 'error') return `<p class="note warn">${icon('alert')} Could not read the forecast (${esc(tafError)}).</p>`;
+  return `<p class="note">${esc(code)} does not publish a TAF.</p>`;
+}
+
+// Who is working the airport on VATSIM, and the ATIS they are putting out.
+function vatsimBlock(code) {
+  const s = state.stations[code];
+  if (!s) return '<p class="note">Checking VATSIM…</p>';
+  if (!s.controllers.length && !s.atis.length) {
+    return `<p class="note">Nobody is controlling ${esc(code)} on VATSIM right now.</p>
+      <div class="tiny">Checked ${ago(s.at)} · an area controller signed on under a regional name is not counted</div>`;
+  }
+  const rows = s.controllers
+    .map(
+      (c) => `<div class="row"><div class="row-main">
+          <div class="row-t">${esc(c.callsign)}</div>
+          <div class="sub">${esc(c.name)}${c.since ? ` · on since ${zulu(new Date(c.since))}` : ''}</div>
+        </div><div class="right"><span class="badge info">${esc(c.frequency)}</span></div></div>`,
+    )
+    .join('');
+  const atis = s.atis
+    .map(
+      (a) => `<div class="atis">
+        <div class="card-head"><div class="tiny">${esc(a.callsign)}${a.code ? ` · INFO ${esc(a.code)}` : ''}</div>
+          <span class="badge info">${esc(a.frequency)}</span></div>
+        ${a.text ? `<pre class="metar">${esc(a.text)}</pre>` : '<p class="note">No text published.</p>'}
+      </div>`,
+    )
+    .join('');
+  const how = (s.prefixes || []).map((p) => `${esc(p)}_`).join(' and ');
+  return `${rows}${atis}<div class="tiny">Checked ${ago(s.at)}${how ? ` · callsigns starting ${how}` : ''}</div>`;
+}
+
 function detail(code) {
   const a = airport(code);
   const runways = a?.runways.length
@@ -71,8 +122,16 @@ function detail(code) {
     </section>
     <section class="card">
       <div class="card-head"><h2>Weather</h2>
-        <button class="icon-btn" data-act="metar" aria-label="Refresh METAR">${icon('refresh')}</button></div>
+        <button class="icon-btn" data-act="metar" aria-label="Refresh weather">${icon('refresh')}</button></div>
+      <div class="tiny">METAR</div>
       <div id="metar">${metarBlock(code)}</div>
+      <div class="tiny">TAF</div>
+      <div id="taf">${tafBlock(code)}</div>
+    </section>
+    <section class="card list">
+      <div class="card-head"><h2>On VATSIM</h2>
+        <button class="icon-btn" data-act="stations" aria-label="Refresh VATSIM stations">${icon('refresh')}</button></div>
+      <div id="stations">${vatsimBlock(code)}</div>
     </section>
     <section class="card"><h2>Runways</h2>${runways}</section>
     ${
@@ -112,11 +171,43 @@ async function loadMetar(root, code) {
   if (currentCode() === code && box.isConnected) box.innerHTML = metarBlock(code);
 }
 
+async function loadTaf(root, code) {
+  const box = root.querySelector('#taf');
+  tafState = 'loading';
+  tafError = '';
+  if (box?.isConnected) box.innerHTML = tafBlock(code);
+  try {
+    const got = await fetchTafFor(code);
+    tafState = got == null ? 'off' : got.text ? 'ok' : 'none';
+  } catch (err) {
+    tafState = 'error';
+    tafError = err.message;
+  }
+  if (currentCode() === code && box?.isConnected) box.innerHTML = tafBlock(code);
+}
+
+async function loadStations(root, code) {
+  const box = root.querySelector('#stations');
+  try {
+    await fetchStations(code);
+  } catch (err) {
+    if (currentCode() !== code || !box?.isConnected) return;
+    box.innerHTML = `<p class="note warn">${icon('alert')} Could not read VATSIM (${esc(err.message)}).</p>`;
+    return;
+  }
+  if (currentCode() === code && box?.isConnected) box.innerHTML = vatsimBlock(code);
+}
+
 export function mounted(root, args) {
   const code = icao(args[0]);
   if (code.length !== 4) return;
   const cached = state.metar[code];
   if (!cached || Date.now() - cached.at > 5 * 60000) loadMetar(root, code);
+  const taf = state.taf[code];
+  tafState = taf?.text ? 'ok' : '';
+  if (!taf || Date.now() - taf.at > 15 * 60000) loadTaf(root, code);
+  const st = state.stations[code];
+  if (!st || Date.now() - st.at > 60000) loadStations(root, code);
 }
 
 export const forms = {
@@ -141,6 +232,11 @@ export const actions = {
     rerender();
   },
   metar(el) {
-    loadMetar(el.closest('main'), currentCode());
+    const root = el.closest('main');
+    loadMetar(root, currentCode());
+    loadTaf(root, currentCode());
+  },
+  stations(el) {
+    loadStations(el.closest('main'), currentCode());
   },
 };

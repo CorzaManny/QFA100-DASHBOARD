@@ -15,8 +15,9 @@ import * as techlog from './views/techlog.js';
 import * as airports from './views/airports.js';
 import * as brief from './views/brief.js';
 import * as settings from './views/settings.js';
+import * as progress from './views/progress.js';
 
-const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, brief, dispatch: brief, settings, admin, availability };
+const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, brief, dispatch: brief, settings, admin, availability, progress };
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
 const clockSim = document.getElementById('clock-sim');

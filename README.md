@@ -5,15 +5,16 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 ## What it does
 
 - **Login** – everyone signs in with their own account. The first page is the login page.
-- **Dashboard** – shows where the aircraft is, its altitude, ground speed, distance to go and estimated arrival, read from the simulator's status API or from VATSIM. Shows your next rostered sector with your duty, report time and a countdown, and warns when a late arrival will push back the following departure.
+- **Dashboard** – a map of the sector being flown with the aeroplane on it, and shows where the aircraft is, its altitude, ground speed, distance to go and estimated arrival, read from the simulator's status API or from VATSIM. Shows your next rostered sector with your duty, report time and a countdown, and warns when a late arrival will push back the following departure.
 - **737 Checklists** – tap-through checklists in three groups: **Normal** from Preflight to Secure, plus **Non-normal** and **Memory items** to fill in. Each group lists its checklists down the side with how far through each one is, and there is a "CHECKLIST COMPLETE" footer and a Next button. Works with no connection and keeps the screen awake.
 - **Schedule** – the official WorldFlight 2026 schedule. Each sector shows when its departure window opens (UTC), the window, block time and validated route. Admins and dispatchers can add, edit or delete sectors.
 - **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with short-crewed sectors flagged. The cockpit tablets sign in to their own accounts and show the whole team's roster instead.
 - **Admin** (shield icon, top right) – where the roster is built: pick a Captain and First Officer for each sector from a dropdown and it saves straight away. Admins also set each person's role here.
 - **Tech Log** – report defects, check them against the built-in MEL, defer them with a restriction, or mark them rectified. The log is shared by the whole team, stays with the aircraft between sectors and shows as a banner on the Dashboard.
 - **MEL** – the 737 Minimum Equipment List as drop-downs (system → item → option) inside the Tech Log: it shows whether the aircraft can go with something inoperative, the conditions, and how long the fix can wait.
-- **Airport Briefings** – runways, elevation, live METAR, your team's own notes, and links to Navigraph Charts and ChartFox for every airport on the schedule (or any ICAO code).
+- **Airport Briefings** – runways, elevation, live METAR and TAF, who is controlling the airport on VATSIM with their ATIS, your team's own notes, and links to Navigraph Charts and ChartFox for every airport on the schedule (or any ICAO code).
 - **SimBrief** – opens SimBrief with the next sector filled in, then imports your latest OFP (route, fuel, weights, times).
+- **Progress** – the whole route around the world on one map, how far the team has got, and a logbook of who has flown what, in hours, sectors and miles.
 
 For flight simulation use only.
 
@@ -34,11 +35,12 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 2. Open **SQL Editor**, paste in the whole of [`supabase/schema.sql`](supabase/schema.sql) and press **Run**. This creates the accounts, sectors and roster tables and their permissions.
 3. In a new query, paste in [`supabase/schedule.sql`](supabase/schedule.sql) and press **Run**. This loads the 43 WorldFlight sectors.
 4. In another query, paste in [`supabase/pickups.sql`](supabase/pickups.sql) and press **Run**. This lets pilots ask for an empty seat once the roster is published, for an admin or dispatcher to agree.
-5. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
-6. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-7. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
-8. Push the change to GitHub.
-9. Open the app and **create your own account first**. The first account becomes the admin.
+5. In another query, paste in [`supabase/weather.sql`](supabase/weather.sql) and press **Run**. This lets the airport pages show TAFs. It is optional; without it they show the METAR and the VATSIM ATIS only.
+6. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
+7. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+8. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
+9. Push the change to GitHub.
+10. Open the app and **create your own account first**. The first account becomes the admin.
 
 Then send the link to the team. Each person presses **Create account** and is signed straight in, with no email to confirm. A new account then waits on an "Awaiting approval" page and can see nothing until an admin approves it in **Admin → People and roles**. Admins get a banner on the Dashboard when someone is waiting.
 
@@ -124,6 +126,58 @@ Somebody who cannot make a sector after all opens it from the Roster, presses **
 Everyone else sees it in **Cover needed** at the top of the Roster, with any duty rule it would break for them written out. Taking it marks it claimed; an admin then agrees it in **Admin → Roster**, where the same rule warnings are shown, and the sector moves across. Both people are told. Turning it down puts it back on offer, and the person who offered it can take the offer back at any point with **Keep this sector after all**.
 
 Nothing about this bypasses the duty rules: it shows them and lets a person decide, in the same way rostering by hand does.
+
+## The map, and how far round the world
+
+The Dashboard draws the sector being flown: the great-circle track from the
+departure airport to the arrival one, with the aeroplane on it, turned the way
+it is pointing. It is drawn from the same position the rest of the card uses,
+so it follows the simulator API when that is set up and VATSIM otherwise, and
+it keeps the last known position when the aeroplane goes offline.
+
+**Progress** (a tile on the Dashboard) puts the whole event on one map: every
+sector flown so far in solid blue, the one in the air in red, and the rest
+dashed. Under it are the sectors flown, the distance covered against the whole
+route, the block time and the airports visited.
+
+The same page carries the **logbook**: every pilot with the sectors they have
+flown, their hours, their miles and which seats they sat in, with your own row
+marked. A sector counts once the flight deck stamps on blocks, or once its
+arrival time has passed, so the logbook fills in as the event runs rather than
+showing the plan. Block time is what was really stamped, falling back to the
+scheduled time where nobody stamped anything.
+
+The coastlines are Natural Earth 1:110m land, in the public domain, cut down to
+[`js/data/world.json`](js/data/world.json) (about 60 KB) so the map works with
+no connection and needs no mapping service.
+
+## Weather and who is controlling
+
+Each airport page shows the **METAR** (what it is doing now) and the **TAF**
+(what it is forecast to do), and then **who is controlling the airport on
+VATSIM** right now with the **ATIS** they are putting out, word for word.
+
+The METAR, the controllers and the ATIS all come straight from VATSIM and need
+no setting up. The TAF is different: the weather service that publishes
+forecasts for the whole world does not let a browser read it directly, so
+[`supabase/weather.sql`](supabase/weather.sql) has the database read it instead
+and keep each forecast for fifteen minutes. Until that file is run, the airport
+pages say so and show everything else.
+
+There is no one way VATSIM names a station. Much of the world uses the whole
+ICAO code (`EGLL_TWR`), the United States drops the country letter (`KDFW` ->
+`DFW_TWR`) and Australia uses the two-letter local code (`YSSY` -> `SY_TWR`).
+Sydney uses both at once: `YSSY_ATIS` alongside `SY_TWR`. So all three forms
+are matched and the results merged, and the page says which ones it used.
+
+A callsign only counts if it also ends in a position worked at the airport
+itself: `_DEL`, `_GND`, `_TWR`, `_APP`, `_DEP` or `_ATIS`. That is what keeps a
+short code like `SY_` from sweeping up something unrelated on the other side of
+the world.
+
+Area control (`_CTR`) is left out on purpose. An enroute sector is not an
+airport station, its frequency moves about as sectors are split and combined,
+and it is often not published at all.
 
 ## Running late
 
