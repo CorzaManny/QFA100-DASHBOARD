@@ -2,8 +2,11 @@
 // App files are fetched fresh when online and served from cache when not,
 // so edits you publish show up on the next load. Live data (VATSIM, METAR,
 // SimBrief) always goes straight to the network.
+//
+// Bump CACHE with every release: a changed sw.js is how open copies of the
+// app learn there is an update, and they then reload themselves (js/app.js).
 
-const CACHE = 'qfa100-ops-v47';
+const CACHE = 'qfa100-ops-v48';
 const SHELL = [
   './',
   'index.html',

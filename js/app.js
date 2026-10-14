@@ -225,6 +225,28 @@ sync();
 setInterval(sync, 10000);
 window.addEventListener('online', sync);
 
+// Updates install themselves. Every minute (and whenever the app comes back to
+// the front) it asks whether a new version has been published; one has when
+// sw.js has changed, which is why CACHE in sw.js is bumped with every release.
+// The new version takes over in the background and the page reloads itself at
+// the next quiet moment, never while someone is typing or has unsaved changes.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Only a page that was already running an older version reloads, not the
+  // very first visit.
+  const hadVersion = !!navigator.serviceWorker.controller;
+  let updated = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadVersion) updated = true;
+  });
+  setInterval(() => {
+    if (updated && !root.querySelector('form:focus-within, select:focus') && !unsaved()) location.reload();
+  }, 2000);
+  navigator.serviceWorker
+    .register('sw.js')
+    .then((reg) => {
+      const check = () => navigator.onLine && reg.update().catch(() => {});
+      setInterval(check, 60000);
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && check());
+    })
+    .catch(() => {});
 }
