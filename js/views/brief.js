@@ -3,7 +3,7 @@
 // WorldFlight's own page and notes.
 
 import { state } from '../store.js';
-import { esc, zulu, zdate, simLocal, span, ago, icon, rerender } from '../ui.js';
+import { esc, zulu, zdate, simLocal, span, ago, icon, rerender, depWindow } from '../ui.js';
 import {
   sortedSectors,
   upcomingSector,
@@ -386,6 +386,7 @@ export function render(args) {
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
     ${notice ? `<p class="note ok">${esc(notice)}</p>` : ''}
     <section class="card">
+      <h2>${esc(s.dep)} → ${esc(s.arr)}</h2>
       <label class="field">Sector<select data-change="sector">
         ${sectors
           .map((x) => `<option value="${esc(x.id)}" ${x.id === s.id ? 'selected' : ''}>${esc(x.dep)} → ${esc(x.arr)} · ${zdate(x.std)} ${zulu(x.std)}</option>`)
@@ -393,8 +394,10 @@ export function render(args) {
       <div class="kvs">
         ${kv('Flight', esc(s.flight))}
         ${kv('Departs', `${zdate(s.std)} ${zulu(s.std)}`)}
-        ${kv('Sim local', esc(simLocal(s.std)))}
+        ${s.window ? kv('Departure window', depWindow(s)) : ''}
+        ${kv('Arrives', `${zdate(s.sta)} ${zulu(s.sta)}`)}
         ${kv('Block time', span(new Date(s.sta) - new Date(s.std)))}
+        ${kv('Sim local', esc(simLocal(s.std)))}
       </div>
       <p class="note"><strong>Crew:</strong> ${esc(crewLabel(s))}</p>
       ${s.route ? `<pre class="metar">${esc(s.route)}</pre>` : ''}
