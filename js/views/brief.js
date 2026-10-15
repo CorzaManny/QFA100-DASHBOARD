@@ -10,6 +10,7 @@ import {
   currentSector,
   crewLabel,
   canEdit,
+  isAdmin,
   canSetSimbrief,
   canReport,
   sharedLog,
@@ -175,14 +176,16 @@ function trafficChart(d) {
 // recommendation; SimBrief turns whatever is chosen into an actual fuel load.
 function delayCard(s) {
   const d = delayOf(s.id);
-  const testBtn = `<button class="btn ghost small" data-act="testDepart" ${delayLoading ? 'disabled' : ''}>Depart now (test)</button>`;
+  const testBtn = isAdmin()
+    ? `<div class="btn-row"><button class="btn ghost small" data-act="testDepart" ${delayLoading ? 'disabled' : ''}>Depart now (test)</button></div>`
+    : '';
   if (!d) {
     return `
       <section class="card">
         <div class="card-head"><h2>Destination congestion forecast</h2>
           <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button></div>
         <p class="note">${delayLoading ? `Checking VATSIM traffic and the forecast for ${esc(s.arr)}…` : 'Not checked yet.'}</p>
-        <div class="btn-row">${testBtn}</div>
+        ${testBtn}
       </section>`;
   }
   return `
@@ -224,7 +227,7 @@ function delayCard(s) {
         </div>
       </div>
       <div class="tiny">Checked ${ago(d.at)}${d.feedOk ? '' : ' · VATSIM feed unavailable, traffic not counted'}</div>
-      <div class="btn-row">${testBtn}</div>
+      ${testBtn}
     </section>`;
 }
 
@@ -436,7 +439,7 @@ export const actions = {
   },
   testDepart() {
     const s = sortedSectors().find((x) => x.id === currentSectorId());
-    if (!s || delayLoading) return;
+    if (!s || delayLoading || !isAdmin()) return;
     loadDelay(s, true);
     rerender();
   },
