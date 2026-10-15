@@ -13,7 +13,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **Tech Log** – report defects, check them against the built-in MEL, defer them with a restriction, or mark them rectified. The log is shared by the whole team, stays with the aircraft between sectors and shows as a banner on the Dashboard.
 - **MEL** – the 737 Minimum Equipment List as drop-downs (system → item → option) inside the Tech Log: it shows whether the aircraft can go with something inoperative, the conditions, and how long the fix can wait.
 - **Airport Briefings** – runways, elevation, live METAR and TAF, who is controlling the airport on VATSIM with their ATIS, your team's own notes, and links to Navigraph Charts and ChartFox for every airport on the schedule (or any ICAO code).
-- **SimBrief** – opens SimBrief with the next sector filled in, then imports your latest OFP (route, fuel, weights, times).
+- **SimBrief** – opens SimBrief with the next sector filled in, then imports your latest OFP (route, fuel, weights, times). The link already carries extra fuel for any holding or traffic the Briefing expects at the destination.
 - **Stream** – on the flight deck tablets and for ops staff: the team's Twitch chat beside the cockpit, and a list of things worth talking about, half typed in by ops and half worked out from the flight itself.
 - **Ops board** – for admins, dispatchers and operations: where the aeroplane is and how far behind the day is running, swaps and seat requests with the buttons to settle them, any defect grounding the aircraft, who reports next with live countdowns, which sectors are short of pilots, which still have no flight plan, and the weather at the airports coming up.
 - **Logbook** – the whole route around the world on one map, how far the team has got, and who has flown what, in hours, sectors and miles.
@@ -258,6 +258,21 @@ What you see:
 Nothing is shown until somebody stamps a time or the aircraft is being tracked, and estimates are rounded to five minutes, because a guess printed to the minute reads as more certain than it is. Stamped times are shown exactly. **Minimum turnaround** and **Taxi in** are in **Admin → Settings**, so the whole team works from the same numbers.
 
 The estimate takes the best source it has, in this order: a stamped time, the simulator API, the live VATSIM position, then the published block time. With nothing connected at all it is simply the published schedule, which is where you started.
+
+## Anticipated delay (holding and traffic fuel)
+
+Opening a sector's **Briefing** checks two things about the destination and turns them into extra fuel on the **Plan in SimBrief** link, so holding does not come as a surprise with the tanks already loaded:
+
+- **Traffic** – other pilots on VATSIM filed into the same airport, with an ETA (their distance to run over their present ground speed, the same maths the Dashboard uses for the team's own aircraft) within 45 minutes of ours. A prefiled flight with nobody connected yet is not counted, because there is no position to work an ETA from.
+- **Weather** – the destination's METAR, read just far enough to sort it into VFR, MVFR, IFR or LIFR, the same categories a controller thinks in.
+
+```
+traffic minutes = up to 30, 4 minutes for each arrival beyond the first two
+weather minutes = 0 (VFR) · 5 (MVFR) · 12 (IFR) · 20 (LIFR)
+extra fuel       = traffic + weather, rounded to 5 minutes, capped at 45
+```
+
+That figure is sent to SimBrief as **Extra Fuel**, in minutes rather than a weight, so SimBrief works out the actual fuel from the aeroplane's own performance rather than this app guessing at a burn rate. **Plan in SimBrief** says how much it added; the **Anticipated delay** card on the Briefing shows the traffic count and the weather category behind it, and has its own refresh button. It is a sensible-rules estimate, not a feed from ATC, so treat it the way you would a glance at the arrivals board, not a clearance.
 
 ## How it looks
 

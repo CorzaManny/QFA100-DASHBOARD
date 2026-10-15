@@ -646,12 +646,142 @@ export async function fetchMetar(code) {
   return state.metar[code];
 }
 
+// A rough read of a METAR: just enough to say whether conditions are likely
+// to slow arrivals down, not a full decode. 'VFR' | 'MVFR' | 'IFR' | 'LIFR',
+// the categories controllers themselves think in terms of, or null if the
+// METAR has nothing usable (which the airport's own page already warns about
+// before this is ever called).
+function metarTokens(text) {
+  return String(text || '').toUpperCase().split(/\s+/).filter(Boolean);
+}
+
+// Visibility sits right after the wind group (and its variation, if given),
+// as either metres (ICAO) or statute miles (the US and a few others), which
+// can be one token ("3SM", "1/2SM") or two ("1" "1/2SM" meaning 1 1/2).
+function visibilityNm(tokens) {
+  const windIdx = tokens.findIndex((t) => /^(VRB|\d{3})\d{2,3}(G\d{2,3})?(KT|MPS|KMH)$/.test(t));
+  if (windIdx < 0) return null;
+  let i = windIdx + 1;
+  if (/^\d{3}V\d{3}$/.test(tokens[i] || '')) i++;
+  const a = tokens[i] || '';
+  const b = tokens[i + 1] || '';
+  if (a === 'CAVOK') return 10;
+  if (/^\d+$/.test(a) && /^M?\d+\/\d+SM$/.test(b)) {
+    const [, n, d] = /^M?(\d+)\/(\d+)SM$/.exec(b);
+    return Number(a) + Number(n) / Number(d);
+  }
+  if (/SM$/.test(a)) {
+    const frac = /^M?(\d+)\/(\d+)SM$/.exec(a);
+    if (frac) return Number(frac[1]) / Number(frac[2]);
+    const whole = /^M?(\d+)SM$/.exec(a);
+    if (whole) return Number(whole[1]);
+  }
+  if (/^\d{4}$/.test(a)) return a === '9999' ? 10 : Number(a) / 1852;
+  return null;
+}
+
+// The lowest broken or overcast layer (or vertical visibility); scattered and
+// few are not a ceiling.
+function ceilingFt(tokens) {
+  let min = null;
+  for (const t of tokens) {
+    const m = /^(?:BKN|OVC|VV)(\d{3})$/.exec(t);
+    if (m) min = min == null ? Number(m[1]) * 100 : Math.min(min, Number(m[1]) * 100);
+  }
+  return min;
+}
+
+const WX_ORDER = ['VFR', 'MVFR', 'IFR', 'LIFR'];
+const visCategory = (nm) => (nm == null || nm > 5 ? 'VFR' : nm >= 3 ? 'MVFR' : nm >= 1 ? 'IFR' : 'LIFR');
+const ceilCategory = (ft) => (ft == null || ft > 3000 ? 'VFR' : ft >= 1000 ? 'MVFR' : ft >= 500 ? 'IFR' : 'LIFR');
+
+export function metarCategory(text) {
+  if (!text) return null;
+  const tokens = metarTokens(text);
+  if (tokens.includes('CAVOK')) return 'VFR';
+  const vis = visibilityNm(tokens);
+  const ceil = ceilingFt(tokens);
+  if (vis == null && ceil == null) return null;
+  return WX_ORDER[Math.max(WX_ORDER.indexOf(visCategory(vis)), WX_ORDER.indexOf(ceilCategory(ceil)))];
+}
+
+// ---- Anticipated delay (holding / traffic fuel) ----
+
+// How far either side of our own ETA still counts as "around the same
+// time", how many arrivals an airport absorbs before anyone has to hold, and
+// how many minutes each one beyond that is worth. None of this is exact; it
+// is a sensible-rules estimate, the same spirit as auto roster.
+const ARRIVAL_WINDOW_MIN = 45;
+const FREE_ARRIVALS = 2;
+const MINUTES_PER_EXTRA_ARRIVAL = 4;
+const MAX_TRAFFIC_MINUTES = 30;
+const WEATHER_MINUTES = { VFR: 0, MVFR: 5, IFR: 12, LIFR: 20 };
+const MAX_DELAY_MINUTES = 45;
+
+// Our own best guess at when this sector lands: the running estimate if the
+// day is being tracked, otherwise simply the published arrival.
+function expectedEta(sector, now = Date.now()) {
+  const row = running(now).times.get(sector.id);
+  return row?.estOn ?? new Date(sector.sta).getTime();
+}
+
+// How many other VATSIM pilots are heading into the same airport around the
+// same time, worked out the same way the Dashboard works out our own ETA:
+// straight-line distance over present ground speed. A prefiled flight with
+// nobody connected yet has no position to work an ETA from, so it is not
+// counted; it would be guesswork on top of a guess.
+async function arrivalsAround(dest, eta) {
+  const feed = await vatsimFeed();
+  await loadAirports();
+  const arrApt = airport(dest);
+  if (!arrApt) return 0;
+  const own = teamCallsign();
+  let count = 0;
+  for (const p of feed.pilots || []) {
+    if (p.callsign?.toUpperCase() === own) continue;
+    if (p.flight_plan?.arrival?.toUpperCase() !== dest) continue;
+    if (!p.groundspeed || p.groundspeed < 80) continue;
+    const remaining = distNm(p.latitude, p.longitude, arrApt.lat, arrApt.lon);
+    const otherEta = Date.now() + (remaining / p.groundspeed) * 3600000;
+    if (Math.abs(otherEta - eta) <= ARRIVAL_WINDOW_MIN * 60000) count++;
+  }
+  return count;
+}
+
+// Predicts how much holding or sequencing a sector is likely to pick up, from
+// who else is arriving at the same airport around the same time and what the
+// weather is doing there, and saves it so SimBrief can be asked to plan the
+// extra fuel for it. Cached per sector; call again to refresh it.
+export async function estimateArrivalDelay(sector) {
+  const dest = sector.arr;
+  const eta = expectedEta(sector);
+  let trafficCount = 0;
+  let feedOk = true;
+  try {
+    trafficCount = await arrivalsAround(dest, eta);
+  } catch {
+    feedOk = false;
+  }
+  const metar = await fetchMetar(dest).catch(() => null);
+  const weather = metarCategory(metar?.text ?? state.metar[dest]?.text ?? null);
+  const trafficMinutes = Math.min(MAX_TRAFFIC_MINUTES, Math.max(0, trafficCount - FREE_ARRIVALS) * MINUTES_PER_EXTRA_ARRIVAL);
+  const weatherMinutes = weather ? WEATHER_MINUTES[weather] : 0;
+  const minutes = Math.min(MAX_DELAY_MINUTES, Math.round((trafficMinutes + weatherMinutes) / 5) * 5);
+  const result = { sectorId: sector.id, dest, eta, trafficCount, weather, feedOk, minutes, at: Date.now() };
+  state.delay[sector.id] = result;
+  save();
+  return result;
+}
+
+export const delayOf = (sectorId) => state.delay[sectorId] || null;
+
 // ---- SimBrief ----
 
 // Opens SimBrief with the sector filled in: the team's callsign (QFA100, not the
 // WorldFlight sector number), and the scheduled departure date, time and block
-// time, all in UTC.
-export function simbriefPlanUrl(sector) {
+// time, all in UTC. extraMinutes, from estimateArrivalDelay, is sent as extra
+// fuel in minutes, which SimBrief turns into a weight itself.
+export function simbriefPlanUrl(sector, extraMinutes) {
   const callsign = teamCallsign();
   // The airframe wins when there is one: SimBrief then uses that aeroplane's
   // own weights and layout rather than a generic one of the type.
@@ -675,6 +805,11 @@ export function simbriefPlanUrl(sector) {
     }
   }
   if (sector.route) q.set('route', sector.route);
+  if (extraMinutes > 0) {
+    q.set('addedfuel', String(Math.round(extraMinutes)));
+    q.set('addedfuel_units', 'min');
+    q.set('addedfuel_label', 'HOLD/TFC');
+  }
   return `${SIMBRIEF_PLAN}?${q}`;
 }
 

@@ -20,6 +20,8 @@ import {
   saveBrief,
   simbriefId,
   syncTeam,
+  estimateArrivalDelay,
+  delayOf,
 } from '../ops.js';
 
 const WF_SCHEDULE = 'https://planning.worldflight.center/schedule';
@@ -28,6 +30,7 @@ const TEXT_FIELDS = ['notes', 'wf_url', 'wf_notes', 'handover'];
 let busy = false;
 let error = '';
 let notice = '';
+let delayLoading = false;
 // The text card being edited, as "<sector id>:<card>". Every card reads until
 // someone presses its Edit button.
 let editing = '';
@@ -78,6 +81,7 @@ function ofpSummary(o, b) {
 
 function ofpCard(s, b) {
   const id = simbriefId();
+  const delay = delayOf(s.id);
   return `
     <section class="card">
       <div class="card-head"><h2>Flight plan (OFP)</h2>
@@ -92,7 +96,9 @@ function ofpCard(s, b) {
             }
             <div class="btn-row">
               ${id ? `<button class="btn primary" data-act="importOfp" ${busy ? 'disabled' : ''}>${busy ? 'Importing…' : b.ofp ? 'Import again' : 'Import latest OFP'}</button>` : ''}
-              <a class="btn ghost" href="${esc(simbriefPlanUrl(s))}" target="_blank" rel="noopener">Plan in SimBrief ${icon('external')}</a>
+              <a class="btn ghost" href="${esc(simbriefPlanUrl(s, delay?.minutes))}" target="_blank" rel="noopener">Plan in SimBrief${
+                delay?.minutes ? ` (+${delay.minutes}m fuel)` : ''
+              } ${icon('external')}</a>
             </div>`
           : ''
       }
@@ -102,6 +108,35 @@ function ofpCard(s, b) {
           : canSetSimbrief()
             ? '<p class="tiny">No team SimBrief account yet. Set it in <a href="#/admin/simbrief">Admin → SimBrief</a> and everyone imports the same flight plan.</p>'
             : '<p class="tiny">No team SimBrief account yet. An admin or operations sets it in Admin → SimBrief.</p>'
+      }
+    </section>`;
+}
+
+const WX_BADGE = { VFR: 'ok', MVFR: 'info', IFR: 'warn', LIFR: 'bad' };
+
+// What ATC traffic and the weather at the destination suggest for holding or
+// sequencing, fed into the "Plan in SimBrief" link above as extra fuel.
+function delayCard(s) {
+  const d = delayOf(s.id);
+  return `
+    <section class="card">
+      <div class="card-head"><h2>Anticipated delay</h2>
+        <button class="icon-btn" data-act="delay" aria-label="Refresh delay estimate">${icon('refresh')}</button></div>
+      ${
+        !d
+          ? `<p class="note">${delayLoading ? `Checking VATSIM traffic and the weather at ${esc(s.arr)}…` : 'Not checked yet.'}</p>`
+          : `
+            <div class="kvs">
+              ${kv(`Arriving into ${esc(s.arr)}`, `${d.trafficCount} within 45 min of your ETA`)}
+              ${kv(`Weather at ${esc(s.arr)}`, d.weather ? `<span class="badge ${WX_BADGE[d.weather]}">${d.weather}</span>` : 'Unknown')}
+            </div>
+            <p class="note${d.minutes ? ' warn' : ''}">${
+              d.minutes
+                ? `${icon('alert')} Expect about <strong>${d.minutes} minutes</strong> of holding or sequencing, added as extra fuel to the SimBrief plan below.`
+                : 'Traffic and weather look clear; no extra fuel added.'
+            }</p>
+            <div class="tiny">Checked ${ago(d.at)}${d.feedOk ? '' : ' · VATSIM feed unavailable, traffic not counted'}</div>
+          `
       }
     </section>`;
 }
@@ -209,6 +244,7 @@ export function render(args) {
           </section>`
         : ''
     }
+    ${delayCard(s)}
     ${ofpCard(s, b)}
     ${textCard(s.id, 'Team notes', 'Anything the team wants the crew of this sector to know.', [
       { name: 'notes', label: 'Notes', value: b.notes || '', placeholder: 'e.g. Expect holding into WSSS, ATC is busy' },
@@ -234,6 +270,27 @@ export function render(args) {
 }
 
 const currentSectorId = () => sectorFor(location.hash.split('/').slice(2).map(decodeURIComponent))?.id;
+
+// Checks VATSIM traffic and the destination weather as soon as the briefing
+// opens, so the SimBrief link already carries the extra fuel by the time
+// anyone presses it. loadDelay re-checks on request.
+function loadDelay(s) {
+  if (delayLoading) return;
+  delayLoading = true;
+  estimateArrivalDelay(s)
+    .catch(() => {})
+    .finally(() => {
+      delayLoading = false;
+      if (currentSectorId() === s.id) rerender();
+    });
+}
+
+export function mounted(root, args) {
+  const s = sectorFor(args);
+  if (!s) return;
+  const cached = delayOf(s.id);
+  if (!delayLoading && (!cached || Date.now() - cached.at > 5 * 60000)) loadDelay(s);
+}
 
 async function run(work, done) {
   if (busy) return;
@@ -276,6 +333,12 @@ export const actions = {
   edit(el) {
     editing = el.dataset.card;
     error = '';
+    rerender();
+  },
+  delay() {
+    const s = sortedSectors().find((x) => x.id === currentSectorId());
+    if (!s || delayLoading) return;
+    loadDelay(s);
     rerender();
   },
   importOfp() {
