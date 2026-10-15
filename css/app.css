@@ -819,6 +819,167 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+/* ---- Destination congestion forecast (Briefing) ---- */
+
+.badge.severe {
+  border-color: rgba(186, 12, 47, 0.55);
+  background: rgba(186, 12, 47, 0.18);
+  color: #ff6b85;
+}
+.cgf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 2px 0 12px;
+}
+.cgf-band {
+  padding: 5px 10px;
+  font-size: 0.68rem;
+}
+.cgf-score {
+  text-align: right;
+  color: var(--muted);
+}
+.cgf-score strong {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.cgf-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.cgf-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card2);
+  text-align: center;
+}
+.cgf-n {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.cgf-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 4px;
+}
+.cgf-tick {
+  font-size: 9px;
+  fill: var(--muted);
+}
+.cgf-base {
+  stroke: var(--hair);
+  stroke-width: 1;
+}
+.cgf-eta-line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+.cgf-eta-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  fill: var(--accent);
+}
+.cgf-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.cgf-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.cgf-dot.info {
+  background: var(--info);
+}
+.cgf-dot.accent {
+  background: var(--accent);
+}
+.cgf-fuel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hair);
+}
+.cgf-fuel-n {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.cgf-fuel-n strong {
+  font-size: 2.1rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.cgf-fuel-n span {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.cgf-fuel input[type='range'] {
+  width: 100%;
+  min-height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--accent);
+  margin: 10px 0 2px;
+}
+.cgf-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  text-align: center;
+}
+.cgf-scale span {
+  flex: 1;
+  padding-top: 8px;
+  border-top: 3px solid var(--line);
+  font-size: 0.64rem;
+  line-height: 1.4;
+  color: var(--dim);
+}
+.cgf-scale span.ok {
+  border-top-color: var(--ok);
+}
+.cgf-scale span.info {
+  border-top-color: var(--info);
+}
+.cgf-scale span.warn {
+  border-top-color: var(--warn);
+}
+.cgf-scale span.bad {
+  border-top-color: var(--bad);
+}
+.cgf-scale span.severe {
+  border-top-color: var(--accent-deep);
+}
+.cgf-scale span.on {
+  border-top-width: 4px;
+  color: var(--text);
+  font-weight: 700;
+}
+
 /* ---- Checklists ---- */
 
 .cl-layout {

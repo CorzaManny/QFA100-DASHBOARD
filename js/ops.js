@@ -646,37 +646,30 @@ export async function fetchMetar(code) {
   return state.metar[code];
 }
 
-// A rough read of a METAR: just enough to say whether conditions are likely
-// to slow arrivals down, not a full decode. 'VFR' | 'MVFR' | 'IFR' | 'LIFR',
-// the categories controllers themselves think in terms of, or null if the
-// METAR has nothing usable (which the airport's own page already warns about
-// before this is ever called).
-function metarTokens(text) {
+// A rough read of a METAR or one period of a TAF: just enough to say whether
+// conditions are likely to slow arrivals down, not a full decode. 'VFR' |
+// 'MVFR' | 'IFR' | 'LIFR', the categories controllers themselves think in
+// terms of, or null if nothing usable was found.
+function wxTokens(text) {
   return String(text || '').toUpperCase().split(/\s+/).filter(Boolean);
 }
 
-// Visibility sits right after the wind group (and its variation, if given),
-// as either metres (ICAO) or statute miles (the US and a few others), which
-// can be one token ("3SM", "1/2SM") or two ("1" "1/2SM" meaning 1 1/2).
+// Visibility, as either metres (ICAO, a bare four-digit group) or statute
+// miles (the US and a few others), which can be one token ("3SM", "1/2SM")
+// or two ("1" "1/2SM" meaning 1 1/2). Scans the whole group rather than
+// anchoring on the wind, so it reads a TAF change group as well as a METAR.
 function visibilityNm(tokens) {
-  const windIdx = tokens.findIndex((t) => /^(VRB|\d{3})\d{2,3}(G\d{2,3})?(KT|MPS|KMH)$/.test(t));
-  if (windIdx < 0) return null;
-  let i = windIdx + 1;
-  if (/^\d{3}V\d{3}$/.test(tokens[i] || '')) i++;
-  const a = tokens[i] || '';
-  const b = tokens[i + 1] || '';
-  if (a === 'CAVOK') return 10;
-  if (/^\d+$/.test(a) && /^M?\d+\/\d+SM$/.test(b)) {
-    const [, n, d] = /^M?(\d+)\/(\d+)SM$/.exec(b);
-    return Number(a) + Number(n) / Number(d);
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t === 'CAVOK') return 10;
+    if (/^\d{4}$/.test(t)) return t === '9999' ? 10 : Number(t) / 1852;
+    if (/SM$/.test(t)) {
+      const frac = /^M?(\d+)\/(\d+)SM$/.exec(t);
+      if (frac) return (/^\d+$/.test(tokens[i - 1] || '') ? Number(tokens[i - 1]) : 0) + Number(frac[1]) / Number(frac[2]);
+      const whole = /^M?(\d+)SM$/.exec(t);
+      if (whole) return Number(whole[1]);
+    }
   }
-  if (/SM$/.test(a)) {
-    const frac = /^M?(\d+)\/(\d+)SM$/.exec(a);
-    if (frac) return Number(frac[1]) / Number(frac[2]);
-    const whole = /^M?(\d+)SM$/.exec(a);
-    if (whole) return Number(whole[1]);
-  }
-  if (/^\d{4}$/.test(a)) return a === '9999' ? 10 : Number(a) / 1852;
   return null;
 }
 
@@ -695,9 +688,7 @@ const WX_ORDER = ['VFR', 'MVFR', 'IFR', 'LIFR'];
 const visCategory = (nm) => (nm == null || nm > 5 ? 'VFR' : nm >= 3 ? 'MVFR' : nm >= 1 ? 'IFR' : 'LIFR');
 const ceilCategory = (ft) => (ft == null || ft > 3000 ? 'VFR' : ft >= 1000 ? 'MVFR' : ft >= 500 ? 'IFR' : 'LIFR');
 
-export function metarCategory(text) {
-  if (!text) return null;
-  const tokens = metarTokens(text);
+function categoryOf(tokens) {
   if (tokens.includes('CAVOK')) return 'VFR';
   const vis = visibilityNm(tokens);
   const ceil = ceilingFt(tokens);
@@ -705,18 +696,169 @@ export function metarCategory(text) {
   return WX_ORDER[Math.max(WX_ORDER.indexOf(visCategory(vis)), WX_ORDER.indexOf(ceilCategory(ceil)))];
 }
 
+export function metarCategory(text) {
+  return text ? categoryOf(wxTokens(text)) : null;
+}
+
+// A TAF day-hour (e.g. "15" "08" from "1508/1510") as a real timestamp. TAFs
+// only give the day of the month, so the one nearest the reference time (the
+// moment it was read) is the right one, the same trick METAR/TAF decoders
+// always use to cross a month end.
+function tafDate(day, hour, min, ref) {
+  const d = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), day, hour, min || 0));
+  const DAY = 86400000;
+  if (d - ref > 15 * DAY) d.setUTCMonth(d.getUTCMonth() - 1);
+  else if (ref - d > 15 * DAY) d.setUTCMonth(d.getUTCMonth() + 1);
+  return d.getTime();
+}
+
+// Splits a TAF into its FM groups (a clean restatement of conditions) and
+// BECMG groups (a change, inheriting whatever it does not restate); TEMPO and
+// PROB groups are a temporary excursion, not the prevailing forecast, so they
+// are left out of what a sector's crew plans fuel against.
+const TAF_GROUP = /^(FM\d{6}|BECMG|TEMPO|PROB\d{2})$/;
+
+function tafGroups(tokens) {
+  const groups = [];
+  let cur = { kind: 'BASE', tokens: [] };
+  for (const t of tokens) {
+    if (TAF_GROUP.test(t)) {
+      groups.push(cur);
+      cur = t.startsWith('FM') ? { kind: 'FM', at: t.slice(2), tokens: [] } : { kind: t === 'BECMG' ? 'BECMG' : 'SKIP', tokens: [] };
+    } else {
+      cur.tokens.push(t);
+    }
+  }
+  groups.push(cur);
+  return groups;
+}
+
+// The prevailing visibility and ceiling over time, as a list of periods
+// covering the TAF's whole validity. ref anchors the day-hour groups to a
+// real month.
+function tafSegments(text, ref) {
+  const tokens = wxTokens(text);
+  const validIdx = tokens.findIndex((t) => /^\d{4}\/\d{4}$/.test(t));
+  if (validIdx < 0) return null;
+  const [vFrom, vTo] = tokens[validIdx].split('/');
+  const start = tafDate(Number(vFrom.slice(0, 2)), Number(vFrom.slice(2, 4)), 0, ref);
+  const end = tafDate(Number(vTo.slice(0, 2)), Number(vTo.slice(2, 4)), 0, ref);
+
+  const segments = [];
+  let vis = null;
+  let ceil = null;
+  let segStart = start;
+  const closeAt = (at) => {
+    if (at > segStart) segments.push({ start: segStart, end: at, vis, ceil });
+    segStart = at;
+  };
+
+  for (const g of tafGroups(tokens.slice(validIdx + 1))) {
+    if (g.kind === 'SKIP') continue;
+    if (g.kind === 'BASE') {
+      vis = visibilityNm(g.tokens);
+      ceil = ceilingFt(g.tokens);
+      continue;
+    }
+    const at =
+      g.kind === 'FM'
+        ? tafDate(Number(g.at.slice(0, 2)), Number(g.at.slice(2, 4)), Number(g.at.slice(4, 6)), ref)
+        : (() => {
+            const period = g.tokens.find((t) => /^\d{4}\/\d{4}$/.test(t));
+            return period ? tafDate(Number(period.slice(0, 2)), Number(period.slice(2, 4)), 0, ref) : null;
+          })();
+    if (at == null) continue;
+    closeAt(at);
+    const newVis = visibilityNm(g.tokens);
+    const newCeil = ceilingFt(g.tokens);
+    if (g.kind === 'FM') {
+      vis = newVis;
+      ceil = newCeil;
+    } else {
+      if (newVis != null) vis = newVis;
+      if (newCeil != null) ceil = newCeil;
+    }
+  }
+  closeAt(end);
+  return segments;
+}
+
+// The category forecast for one moment, from whichever TAF period covers it;
+// clamped to the nearest period for a time outside the TAF's own validity.
+function tafCategoryAt(text, atTime, ref = new Date()) {
+  const segments = tafSegments(text, ref);
+  if (!segments?.length) return null;
+  const hit =
+    segments.find((s) => atTime >= s.start && atTime < s.end) ||
+    (atTime < segments[0].start ? segments[0] : segments[segments.length - 1]);
+  if (hit.vis == null && hit.ceil == null) return null;
+  return WX_ORDER[Math.max(WX_ORDER.indexOf(visCategory(hit.vis)), WX_ORDER.indexOf(ceilCategory(hit.ceil)))];
+}
+
+// What a sector's crew should plan fuel against: the TAF read for the moment
+// they are expected to land, since that is what the holding is for, not what
+// the weather happens to be doing right now. Falls back to the current METAR
+// where there is no TAF (supabase/weather.sql not run, or none published).
+async function weatherAt(code, atTime) {
+  const taf = await fetchTafFor(code).catch(() => null);
+  const tafText = taf?.text ?? state.taf[code]?.text ?? null;
+  if (tafText) {
+    const category = tafCategoryAt(tafText, atTime);
+    if (category) return { category, source: 'TAF' };
+  }
+  const metar = await fetchMetar(code).catch(() => null);
+  const metarText = metar?.text ?? state.metar[code]?.text ?? null;
+  return { category: metarCategory(metarText), source: metarText ? 'METAR' : null };
+}
+
 // ---- Anticipated delay (holding / traffic fuel) ----
 
 // How far either side of our own ETA still counts as "around the same
-// time", how many arrivals an airport absorbs before anyone has to hold, and
-// how many minutes each one beyond that is worth. None of this is exact; it
-// is a sensible-rules estimate, the same spirit as auto roster.
+// time", the width of a bar on the traffic chart, and how far either side of
+// it the chart reaches. None of this is exact; it is a sensible-rules
+// estimate, the same spirit as auto roster.
 const ARRIVAL_WINDOW_MIN = 45;
-const FREE_ARRIVALS = 2;
-const MINUTES_PER_EXTRA_ARRIVAL = 4;
-const MAX_TRAFFIC_MINUTES = 30;
-const WEATHER_MINUTES = { VFR: 0, MVFR: 5, IFR: 12, LIFR: 20 };
-const MAX_DELAY_MINUTES = 45;
+const BUCKET_MIN = 30;
+const CHART_SPAN_MIN = 120;
+
+// The bands a destination's traffic is sorted into, and the extra fuel that
+// goes with each, in minutes. Weather pushes a destination up a band: worse
+// conditions mean more spacing between arrivals for the same number of them.
+export const DELAY_BANDS = [
+  { max: 9, minutes: 15, label: 'Light' },
+  { max: 19, minutes: 30, label: 'Moderate' },
+  { max: 29, minutes: 45, label: 'Busy' },
+  { max: 39, minutes: 60, label: 'High' },
+  { max: Infinity, minutes: 90, label: 'Severe' },
+];
+const WEATHER_BAND_BUMP = { VFR: 0, MVFR: 0, IFR: 1, LIFR: 2 };
+const WEATHER_SCORE = { VFR: 0, MVFR: 8, IFR: 20, LIFR: 35 };
+
+function bandFor(arrivals, weather) {
+  const base = DELAY_BANDS.findIndex((b) => arrivals <= b.max);
+  return Math.min(DELAY_BANDS.length - 1, base + (weather ? WEATHER_BAND_BUMP[weather] : 0));
+}
+
+// A 0-100 read of the same thing, for the headline badge: how far through
+// "every slot full" the traffic count is, nudged by the weather.
+function congestionScore(arrivals, weather) {
+  const raw = (arrivals / 45) * 75 + (weather ? WEATHER_SCORE[weather] : 0);
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
+// Full / partial / unstaffed, from who is on frequency at the airport
+// (see fetchStations). Holding is worked by ATC; an airport nobody is
+// controlling falls back to everyone self-sequencing over the radio.
+function atcCoverage(stations) {
+  const positions = new Set(
+    (stations?.controllers || [])
+      .map((c) => /_(DEL|GND|TWR|APP|DEP)$/.exec(c.callsign.toUpperCase())?.[1])
+      .filter(Boolean),
+  );
+  if (!positions.size) return { label: 'Unstaffed', detail: 'No ATC online' };
+  if (positions.has('APP') && (positions.has('TWR') || positions.has('DEP'))) return { label: 'Full', detail: 'Approach + Tower' };
+  return { label: 'Partial', detail: [...positions].sort().join(' + ') };
+}
 
 // Our own best guess at when this sector lands: the running estimate if the
 // day is being tracked, otherwise simply the published arrival.
@@ -725,55 +867,107 @@ function expectedEta(sector, now = Date.now()) {
   return row?.estOn ?? new Date(sector.sta).getTime();
 }
 
-// How many other VATSIM pilots are heading into the same airport around the
-// same time, worked out the same way the Dashboard works out our own ETA:
-// straight-line distance over present ground speed. A prefiled flight with
-// nobody connected yet has no position to work an ETA from, so it is not
-// counted; it would be guesswork on top of a guess.
-async function arrivalsAround(dest, eta) {
+// Who else is at the same airport around the same time, worked out the same
+// way the Dashboard works out our own ETA: straight-line distance over
+// present ground speed. A prefiled flight with nobody connected yet has no
+// position to work an ETA from, so it is not counted; it would be guesswork
+// on top of a guess. Departures have no equivalent "ETD" on VATSIM, so what
+// is counted there is simply who is on the ground at the airport, filed to
+// leave it, right now.
+//
+// buckets covers the chart: every arrival with an ETA within CHART_SPAN_MIN
+// of ours, sorted into BUCKET_MIN-wide slots either side of it.
+async function trafficAround(dest, eta) {
   const feed = await vatsimFeed();
   await loadAirports();
   const arrApt = airport(dest);
-  if (!arrApt) return 0;
   const own = teamCallsign();
-  let count = 0;
+  const bucketMs = BUCKET_MIN * 60000;
+  const counts = new Map();
+  let arrivals = 0;
+  let departures = 0;
+
   for (const p of feed.pilots || []) {
     if (p.callsign?.toUpperCase() === own) continue;
-    if (p.flight_plan?.arrival?.toUpperCase() !== dest) continue;
-    if (!p.groundspeed || p.groundspeed < 80) continue;
+    const fp = p.flight_plan;
+    if (!fp) continue;
+    const onGround = !p.groundspeed || p.groundspeed < 40;
+    if (onGround && fp.departure?.toUpperCase() === dest) departures++;
+    if (!arrApt || fp.arrival?.toUpperCase() !== dest || onGround || p.groundspeed < 80) continue;
     const remaining = distNm(p.latitude, p.longitude, arrApt.lat, arrApt.lon);
     const otherEta = Date.now() + (remaining / p.groundspeed) * 3600000;
-    if (Math.abs(otherEta - eta) <= ARRIVAL_WINDOW_MIN * 60000) count++;
+    if (Math.abs(otherEta - eta) <= ARRIVAL_WINDOW_MIN * 60000) arrivals++;
+    if (Math.abs(otherEta - eta) <= CHART_SPAN_MIN * 60000) {
+      const key = Math.round(otherEta / bucketMs) * bucketMs;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
   }
-  return count;
+
+  const etaBucket = Math.round(eta / bucketMs) * bucketMs;
+  const buckets = [];
+  for (let at = etaBucket - CHART_SPAN_MIN * 60000; at <= etaBucket + CHART_SPAN_MIN * 60000; at += bucketMs) {
+    buckets.push({ at, count: counts.get(at) || 0, own: at === etaBucket });
+  }
+  return { arrivals, departures, buckets };
 }
 
 // Predicts how much holding or sequencing a sector is likely to pick up, from
 // who else is arriving at the same airport around the same time and what the
-// weather is doing there, and saves it so SimBrief can be asked to plan the
-// extra fuel for it. Cached per sector; call again to refresh it.
+// TAF expects the weather to be doing there when we land, and saves it so
+// SimBrief can be asked to plan the extra fuel for it. The crew's own choice
+// of how much to actually take (delay.chosen) survives a refresh; only a
+// first look at a sector sets it to the recommendation.
 export async function estimateArrivalDelay(sector) {
   const dest = sector.arr;
   const eta = expectedEta(sector);
-  let trafficCount = 0;
+  const prev = state.delay[sector.id];
+
+  let arrivals = 0;
+  let departures = 0;
+  let buckets = [];
   let feedOk = true;
   try {
-    trafficCount = await arrivalsAround(dest, eta);
+    ({ arrivals, departures, buckets } = await trafficAround(dest, eta));
   } catch {
     feedOk = false;
   }
-  const metar = await fetchMetar(dest).catch(() => null);
-  const weather = metarCategory(metar?.text ?? state.metar[dest]?.text ?? null);
-  const trafficMinutes = Math.min(MAX_TRAFFIC_MINUTES, Math.max(0, trafficCount - FREE_ARRIVALS) * MINUTES_PER_EXTRA_ARRIVAL);
-  const weatherMinutes = weather ? WEATHER_MINUTES[weather] : 0;
-  const minutes = Math.min(MAX_DELAY_MINUTES, Math.round((trafficMinutes + weatherMinutes) / 5) * 5);
-  const result = { sectorId: sector.id, dest, eta, trafficCount, weather, feedOk, minutes, at: Date.now() };
+
+  const stations = await fetchStations(dest).catch(() => state.stations[dest] || null);
+  const { category: weather, source: weatherSource } = await weatherAt(dest, eta);
+
+  const band = DELAY_BANDS[bandFor(arrivals, weather)];
+  const result = {
+    sectorId: sector.id,
+    dest,
+    eta,
+    arrivals,
+    departures,
+    buckets,
+    weather,
+    weatherSource,
+    atc: atcCoverage(stations),
+    band: band.label,
+    minutes: band.minutes,
+    score: congestionScore(arrivals, weather),
+    chosen: prev?.chosen ?? band.minutes,
+    feedOk,
+    at: Date.now(),
+  };
   state.delay[sector.id] = result;
   save();
   return result;
 }
 
 export const delayOf = (sectorId) => state.delay[sectorId] || null;
+
+// The crew's own pick from the Briefing's slider, in place of the
+// recommendation, for however much holding fuel they actually want to carry.
+export function setChosenDelay(sectorId, minutes) {
+  const d = state.delay[sectorId];
+  if (!d) return;
+  d.chosen = Math.max(0, Math.min(90, Math.round(minutes / 5) * 5));
+  save();
+}
 
 // ---- SimBrief ----
 

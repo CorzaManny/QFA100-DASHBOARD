@@ -259,20 +259,22 @@ Nothing is shown until somebody stamps a time or the aircraft is being tracked, 
 
 The estimate takes the best source it has, in this order: a stamped time, the simulator API, the live VATSIM position, then the published block time. With nothing connected at all it is simply the published schedule, which is where you started.
 
-## Anticipated delay (holding and traffic fuel)
+## Destination congestion forecast (holding and traffic fuel)
 
-Opening a sector's **Briefing** checks two things about the destination and turns them into extra fuel on the **Plan in SimBrief** link, so holding does not come as a surprise with the tanks already loaded:
+Opening a sector's **Briefing** checks the destination and turns what it finds into a recommended extra fuel load on the **Plan in SimBrief** link below, so holding does not come as a surprise with the tanks already loaded:
 
-- **Traffic** – other pilots on VATSIM filed into the same airport, with an ETA (their distance to run over their present ground speed, the same maths the Dashboard uses for the team's own aircraft) within 45 minutes of ours. A prefiled flight with nobody connected yet is not counted, because there is no position to work an ETA from.
-- **Weather** – the destination's METAR, read just far enough to sort it into VFR, MVFR, IFR or LIFR, the same categories a controller thinks in.
+- **Traffic** – other pilots on VATSIM filed into the same airport, with an ETA (their distance to run over their present ground speed, the same maths the Dashboard uses for the team's own aircraft) within 45 minutes of ours, charted either side of our own ETA. Pilots still on the ground there, filed to depart, are counted too, since they share the same runway and airspace. A prefiled flight with nobody connected yet is not counted, because there is no position to work an ETA from.
+- **Weather** – not the current METAR, but the **TAF read for the moment we are expected to land**, since that is what the holding is actually for. It is sorted into VFR, MVFR, IFR or LIFR, the same categories a controller thinks in, reading whichever FM or BECMG period of the forecast covers our ETA (a momentary TEMPO or PROB is left out, as it is not the prevailing forecast). Falls back to the current METAR where there is no TAF, which needs [`supabase/weather.sql`](supabase/weather.sql); without it, or beyond the end of the published forecast, the nearest thing available is used.
+- **ATC coverage** – who is on frequency at the destination right now, the same VATSIM data the airport's own page reads.
 
 ```
-traffic minutes = up to 30, 4 minutes for each arrival beyond the first two
-weather minutes = 0 (VFR) · 5 (MVFR) · 12 (IFR) · 20 (LIFR)
-extra fuel       = traffic + weather, rounded to 5 minutes, capped at 45
+band     = Light (<10 arrivals) · Moderate (10-19) · Busy (20-29) · High (30-39) · Severe (40+)
+         bumped up a band for IFR, two for LIFR
+minutes  = 15 · 30 · 45 · 60 · 90, one per band
+score    = 0-100, traffic scaled against 45 arrivals, weather added on top
 ```
 
-That figure is sent to SimBrief as **Extra Fuel**, in minutes rather than a weight, so SimBrief works out the actual fuel from the aeroplane's own performance rather than this app guessing at a burn rate. **Plan in SimBrief** says how much it added; the **Anticipated delay** card on the Briefing shows the traffic count and the weather category behind it, and has its own refresh button. It is a sensible-rules estimate, not a feed from ATC, so treat it the way you would a glance at the arrivals board, not a clearance.
+That recommendation is only a starting point: the **Destination congestion forecast** card has its own slider, 0 to 90 minutes in steps of five, so the crew can take more or less than it suggests. Whatever the slider is set to is what goes to SimBrief as **Extra Fuel**, in minutes rather than a weight, so SimBrief works out the actual fuel from the aeroplane's own performance rather than this app guessing at a burn rate; the **Plan in SimBrief** link shows how much it is carrying. The card has its own refresh button, and a chosen value survives a refresh rather than being overwritten by the next recommendation. None of this is a feed from ATC — treat it the way you would a glance at the arrivals board, not a clearance.
 
 ## How it looks
 

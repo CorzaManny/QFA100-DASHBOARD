@@ -230,7 +230,7 @@ function view(s) {
       <h2>Prepare this sector</h2>
       <div class="btn-col">
         <a class="btn primary" href="#/brief/${esc(s.id)}">Open the briefing</a>
-        <a class="btn ghost" href="${esc(simbriefPlanUrl(s, delayOf(s.id)?.minutes))}" target="_blank" rel="noopener">Plan in SimBrief ${icon('external')}</a>
+        <a class="btn ghost" href="${esc(simbriefPlanUrl(s, delayOf(s.id)?.chosen))}" target="_blank" rel="noopener">Plan in SimBrief ${icon('external')}</a>
         <a class="btn ghost" href="#/airports/${esc(s.dep)}">${esc(s.dep)} departure briefing</a>
         <a class="btn ghost" href="#/airports/${esc(s.arr)}">${esc(s.arr)} arrival briefing</a>
       </div>

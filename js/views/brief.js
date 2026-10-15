@@ -22,6 +22,8 @@ import {
   syncTeam,
   estimateArrivalDelay,
   delayOf,
+  setChosenDelay,
+  DELAY_BANDS,
 } from '../ops.js';
 
 const WF_SCHEDULE = 'https://planning.worldflight.center/schedule';
@@ -96,8 +98,8 @@ function ofpCard(s, b) {
             }
             <div class="btn-row">
               ${id ? `<button class="btn primary" data-act="importOfp" ${busy ? 'disabled' : ''}>${busy ? 'Importing…' : b.ofp ? 'Import again' : 'Import latest OFP'}</button>` : ''}
-              <a class="btn ghost" href="${esc(simbriefPlanUrl(s, delay?.minutes))}" target="_blank" rel="noopener">Plan in SimBrief${
-                delay?.minutes ? ` (+${delay.minutes}m fuel)` : ''
+              <a class="btn ghost" href="${esc(simbriefPlanUrl(s, delay?.chosen))}" target="_blank" rel="noopener">Plan in SimBrief${
+                delay?.chosen ? ` (+${delay.chosen}m fuel)` : ''
               } ${icon('external')}</a>
             </div>`
           : ''
@@ -113,31 +115,107 @@ function ofpCard(s, b) {
 }
 
 const WX_BADGE = { VFR: 'ok', MVFR: 'info', IFR: 'warn', LIFR: 'bad' };
+const BAND_BADGE = { Light: 'ok', Moderate: 'info', Busy: 'warn', High: 'bad', Severe: 'severe' };
 
-// What ATC traffic and the weather at the destination suggest for holding or
-// sequencing, fed into the "Plan in SimBrief" link above as extra fuel.
+const tile = (value, label, sub) =>
+  `<div class="cgf-tile"><div class="cgf-n">${value}</div><div class="tiny">${label}</div>${sub ? `<div class="tiny mute">${esc(sub)}</div>` : ''}</div>`;
+
+// A small inline chart of predicted arrivals either side of our ETA, binned
+// from the same real VATSIM traffic the tiles above are counted from — the
+// bucket holding our own ETA is picked out in the brand colour.
+function trafficChart(d) {
+  const buckets = d.buckets || [];
+  if (!buckets.length) return '';
+  const w = 600;
+  const h = 132;
+  const padT = 18;
+  const padB = 20;
+  const innerH = h - padT - padB;
+  const max = Math.max(1, ...buckets.map((b) => b.count));
+  const barW = w / buckets.length;
+  const gap = Math.min(4, barW * 0.15);
+  const ownIdx = buckets.findIndex((b) => b.own);
+  const bars = buckets
+    .map((b, i) => {
+      const bh = b.count ? Math.max(3, (b.count / max) * innerH) : 1;
+      const x = i * barW + gap / 2;
+      const bw = Math.max(1, barW - gap);
+      const y = padT + (innerH - bh);
+      const label = b.own || i % 2 === 0 ? esc(zulu(b.at)) : '';
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${
+        b.own ? 'var(--accent)' : 'var(--info)'
+      }"><title>${b.count} arriving around ${esc(zulu(b.at))}</title></rect>${
+        label ? `<text x="${(x + bw / 2).toFixed(1)}" y="${h - 4}" text-anchor="middle" class="cgf-tick">${label}</text>` : ''
+      }`;
+    })
+    .join('');
+  const ownX = ownIdx >= 0 ? (ownIdx * barW + barW / 2).toFixed(1) : null;
+  const summary = buckets.map((b) => `${esc(zulu(b.at))}: ${b.count}`).join(', ');
+  return `
+    <svg class="cgf-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Predicted arrivals by time — ${summary}">
+      <line x1="0" y1="${h - padB}" x2="${w}" y2="${h - padB}" class="cgf-base"/>
+      ${bars}
+      ${
+        ownX != null
+          ? `<line x1="${ownX}" y1="14" x2="${ownX}" y2="${h - padB}" class="cgf-eta-line"/>
+             <text x="${ownX}" y="10" text-anchor="middle" class="cgf-eta-label">YOUR ETA</text>`
+          : ''
+      }
+    </svg>
+    <div class="cgf-legend">
+      <span><i class="cgf-dot info"></i>Other traffic</span>
+      <span><i class="cgf-dot accent"></i>Your ETA</span>
+    </div>`;
+}
+
+// What ATC traffic and the destination's forecast weather suggest for
+// holding or sequencing around our ETA, fed into the "Plan in SimBrief" link
+// below as extra fuel. The slider lets the crew take more or less than the
+// recommendation; SimBrief turns whatever is chosen into an actual fuel load.
 function delayCard(s) {
   const d = delayOf(s.id);
+  if (!d) {
+    return `
+      <section class="card">
+        <div class="card-head"><h2>Destination congestion forecast</h2>
+          <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button></div>
+        <p class="note">${delayLoading ? `Checking VATSIM traffic and the forecast for ${esc(s.arr)}…` : 'Not checked yet.'}</p>
+      </section>`;
+  }
   return `
-    <section class="card">
-      <div class="card-head"><h2>Anticipated delay</h2>
-        <button class="icon-btn" data-act="delay" aria-label="Refresh delay estimate">${icon('refresh')}</button></div>
-      ${
-        !d
-          ? `<p class="note">${delayLoading ? `Checking VATSIM traffic and the weather at ${esc(s.arr)}…` : 'Not checked yet.'}</p>`
-          : `
-            <div class="kvs">
-              ${kv(`Arriving into ${esc(s.arr)}`, `${d.trafficCount} within 45 min of your ETA`)}
-              ${kv(`Weather at ${esc(s.arr)}`, d.weather ? `<span class="badge ${WX_BADGE[d.weather]}">${d.weather}</span>` : 'Unknown')}
-            </div>
-            <p class="note${d.minutes ? ' warn' : ''}">${
-              d.minutes
-                ? `${icon('alert')} Expect about <strong>${d.minutes} minutes</strong> of holding or sequencing, added as extra fuel to the SimBrief plan below.`
-                : 'Traffic and weather look clear; no extra fuel added.'
-            }</p>
-            <div class="tiny">Checked ${ago(d.at)}${d.feedOk ? '' : ' · VATSIM feed unavailable, traffic not counted'}</div>
-          `
-      }
+    <section class="card cgf-card">
+      <div class="card-head">
+        <div><h2>Destination congestion forecast</h2>
+          <div class="tiny">Predicted traffic at ${esc(d.dest)} around your ETA, ${zulu(d.eta)}</div></div>
+        <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button>
+      </div>
+      <div class="cgf-head">
+        <span class="badge ${BAND_BADGE[d.band] || 'mute'} cgf-band">${esc(d.band.toUpperCase())} CONGESTION</span>
+        <div class="cgf-score"><strong>${d.score}</strong><span>/100</span><div class="tiny">Congestion score</div></div>
+      </div>
+      <div class="cgf-tiles">
+        ${tile(d.arrivals, 'Predicted arrivals', '±45 min of ETA')}
+        ${tile(d.departures, 'Filed to depart', `on the ground at ${d.dest} now`)}
+        ${tile(esc(d.atc.label), 'ATC coverage', d.atc.detail)}
+        ${tile(
+          d.weather ? `<span class="badge ${WX_BADGE[d.weather] || 'mute'}">${d.weather}</span>` : '—',
+          'Weather at ETA',
+          d.weatherSource ? `from the ${d.weatherSource}` : 'unavailable',
+        )}
+      </div>
+      ${trafficChart(d)}
+      <div class="cgf-fuel">
+        <div class="cgf-fuel-n"><strong>${d.chosen}</strong><span>minutes</span></div>
+        <div class="tiny">Holding/traffic fuel sent to SimBrief · recommended ${d.minutes} min for ${esc(d.band).toLowerCase()} congestion</div>
+        <input type="range" name="holdFuel" data-change="holdFuel" min="0" max="90" step="5" value="${d.chosen}" aria-label="Holding/traffic fuel, in minutes">
+        <div class="cgf-scale">
+          ${DELAY_BANDS.map(
+            (b) =>
+              `<span class="${BAND_BADGE[b.label]}${b.minutes === d.minutes ? ' on' : ''}">${b.minutes}m<br>${b.label}</span>`,
+          ).join('')}
+        </div>
+      </div>
+      <div class="tiny">Checked ${ago(d.at)}${d.feedOk ? '' : ' · VATSIM feed unavailable, traffic not counted'}</div>
     </section>`;
 }
 
@@ -309,6 +387,10 @@ async function run(work, done) {
 export const changes = {
   sector(el) {
     location.hash = `#/brief/${encodeURIComponent(el.value)}`;
+  },
+  holdFuel(el) {
+    setChosenDelay(currentSectorId(), Number(el.value));
+    rerender();
   },
 };
 
