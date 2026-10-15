@@ -21,6 +21,7 @@ import {
   simbriefId,
   syncTeam,
   estimateArrivalDelay,
+  testDepartNow,
   delayOf,
   setChosenDelay,
   DELAY_BANDS,
@@ -174,12 +175,14 @@ function trafficChart(d) {
 // recommendation; SimBrief turns whatever is chosen into an actual fuel load.
 function delayCard(s) {
   const d = delayOf(s.id);
+  const testBtn = `<button class="btn ghost small" data-act="testDepart" ${delayLoading ? 'disabled' : ''}>Depart now (test)</button>`;
   if (!d) {
     return `
       <section class="card">
         <div class="card-head"><h2>Destination congestion forecast</h2>
           <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button></div>
         <p class="note">${delayLoading ? `Checking VATSIM traffic and the forecast for ${esc(s.arr)}…` : 'Not checked yet.'}</p>
+        <div class="btn-row">${testBtn}</div>
       </section>`;
   }
   return `
@@ -189,6 +192,11 @@ function delayCard(s) {
           <div class="tiny">Predicted traffic at ${esc(d.dest)} around your ETA, ${zulu(d.eta)}</div></div>
         <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button>
       </div>
+      ${
+        d.test
+          ? `<p class="note warn">${icon('alert')} Testing: as if departing right now and flying the published block time. Press refresh above for the real estimate.</p>`
+          : ''
+      }
       <div class="cgf-head">
         <span class="badge ${BAND_BADGE[d.band] || 'mute'} cgf-band">${esc(d.band.toUpperCase())} CONGESTION</span>
         <div class="cgf-score"><strong>${d.score}</strong><span>/100</span><div class="tiny">Congestion score</div></div>
@@ -216,6 +224,7 @@ function delayCard(s) {
         </div>
       </div>
       <div class="tiny">Checked ${ago(d.at)}${d.feedOk ? '' : ' · VATSIM feed unavailable, traffic not counted'}</div>
+      <div class="btn-row">${testBtn}</div>
     </section>`;
 }
 
@@ -351,11 +360,13 @@ const currentSectorId = () => sectorFor(location.hash.split('/').slice(2).map(de
 
 // Checks VATSIM traffic and the destination weather as soon as the briefing
 // opens, so the SimBrief link already carries the extra fuel by the time
-// anyone presses it. loadDelay re-checks on request.
-function loadDelay(s) {
+// anyone presses it. loadDelay re-checks on request; test runs it against a
+// "departing right now" time instead, so the forecast can be tried without
+// waiting for a sector that is actually close.
+function loadDelay(s, test) {
   if (delayLoading) return;
   delayLoading = true;
-  estimateArrivalDelay(s)
+  (test ? testDepartNow(s) : estimateArrivalDelay(s))
     .catch(() => {})
     .finally(() => {
       delayLoading = false;
@@ -421,6 +432,12 @@ export const actions = {
     const s = sortedSectors().find((x) => x.id === currentSectorId());
     if (!s || delayLoading) return;
     loadDelay(s);
+    rerender();
+  },
+  testDepart() {
+    const s = sortedSectors().find((x) => x.id === currentSectorId());
+    if (!s || delayLoading) return;
+    loadDelay(s, true);
     rerender();
   },
   importOfp() {

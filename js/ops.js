@@ -917,9 +917,13 @@ async function trafficAround(dest, eta) {
 // SimBrief can be asked to plan the extra fuel for it. The crew's own choice
 // of how much to actually take (delay.chosen) survives a refresh; only a
 // first look at a sector sets it to the recommendation.
-export async function estimateArrivalDelay(sector) {
+//
+// etaOverride tests the forecast against a different landing time than the
+// one the schedule gives, for "what would this say if we left right now" -
+// see testDepartNow.
+export async function estimateArrivalDelay(sector, etaOverride) {
   const dest = sector.arr;
-  const eta = expectedEta(sector);
+  const eta = etaOverride ?? expectedEta(sector);
   const prev = state.delay[sector.id];
 
   let arrivals = 0;
@@ -951,11 +955,20 @@ export async function estimateArrivalDelay(sector) {
     score: congestionScore(arrivals, weather),
     chosen: prev?.chosen ?? band.minutes,
     feedOk,
+    test: !!etaOverride,
     at: Date.now(),
   };
   state.delay[sector.id] = result;
   save();
   return result;
+}
+
+// For testing: what the forecast would say landing one block time from now,
+// as if departing this moment, regardless of what the schedule or the
+// running estimate actually says.
+export function testDepartNow(sector) {
+  const block = new Date(sector.sta).getTime() - new Date(sector.std).getTime();
+  return estimateArrivalDelay(sector, Date.now() + Math.max(0, block));
 }
 
 export const delayOf = (sectorId) => state.delay[sectorId] || null;
