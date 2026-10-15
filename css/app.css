@@ -979,6 +979,20 @@ button:focus-visible {
   color: var(--text);
   font-weight: 700;
 }
+.cgf-test {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+}
+.cgf-test > .tiny {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+.cgf-test .field {
+  margin: 8px 0;
+}
 
 /* ---- Checklists ---- */
 

@@ -971,6 +971,57 @@ export function testDepartNow(sector) {
   return estimateArrivalDelay(sector, Date.now() + Math.max(0, block));
 }
 
+// How the chart's arrival count tapers out from the ETA bucket, so a
+// simulated traffic level still looks like a plausible rush rather than one
+// giant bar. Shares nine buckets (four either side of the ETA) in these
+// proportions.
+const SIM_SHAPE = [0.1, 0.18, 0.3, 0.42, 1, 0.42, 0.3, 0.18, 0.1];
+
+// For testing: a made-up forecast for a chosen band and weather, so every
+// congestion level can be previewed without waiting for the right traffic to
+// turn up on VATSIM. bandIndex picks which of DELAY_BANDS to build an
+// arrival count for; weather, if given, still bumps the band the same way a
+// real forecast would, so picking Busy + LIFR correctly shows Severe.
+export function simulateDelay(sector, bandIndex, weather) {
+  const picked = DELAY_BANDS[bandIndex] || DELAY_BANDS[0];
+  const floor = bandIndex > 0 ? DELAY_BANDS[bandIndex - 1].max + 1 : 0;
+  const arrivals = picked.max === Infinity ? floor + 8 : Math.round((floor + picked.max) / 2);
+  const eta = expectedEta(sector);
+  const bucketMs = BUCKET_MIN * 60000;
+  const etaBucket = Math.round(eta / bucketMs) * bucketMs;
+  const shapeTotal = SIM_SHAPE.reduce((a, b) => a + b, 0);
+  const mid = (SIM_SHAPE.length - 1) / 2;
+  const buckets = SIM_SHAPE.map((weight, i) => ({
+    at: etaBucket + (i - mid) * bucketMs,
+    count: Math.round((weight / shapeTotal) * arrivals),
+    own: i === mid,
+  }));
+
+  const band = DELAY_BANDS[bandFor(arrivals, weather)];
+  const result = {
+    sectorId: sector.id,
+    dest: sector.arr,
+    eta,
+    arrivals,
+    departures: Math.round(arrivals / 4),
+    buckets,
+    weather: weather || null,
+    weatherSource: weather ? 'a simulated forecast' : null,
+    atc: { label: 'Not simulated', detail: '' },
+    band: band.label,
+    minutes: band.minutes,
+    score: congestionScore(arrivals, weather),
+    chosen: band.minutes,
+    feedOk: true,
+    test: true,
+    simulated: true,
+    at: Date.now(),
+  };
+  state.delay[sector.id] = result;
+  save();
+  return result;
+}
+
 export const delayOf = (sectorId) => state.delay[sectorId] || null;
 
 // The crew's own pick from the Briefing's slider, in place of the

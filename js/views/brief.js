@@ -23,6 +23,7 @@ import {
   syncTeam,
   estimateArrivalDelay,
   testDepartNow,
+  simulateDelay,
   delayOf,
   setChosenDelay,
   DELAY_BANDS,
@@ -30,9 +31,14 @@ import {
 
 const WF_SCHEDULE = 'https://planning.worldflight.center/schedule';
 const TEXT_FIELDS = ['notes', 'wf_url', 'wf_notes', 'handover'];
+const SIM_WEATHER = ['', 'VFR', 'MVFR', 'IFR', 'LIFR'];
 
 let busy = false;
 let error = '';
+// The weather picked for the next simulated preview; survives a rerender the
+// same way editing/busy do, since the admin test panel is rebuilt from
+// scratch on every click.
+let simWeather = '';
 let notice = '';
 let delayLoading = false;
 // The text card being edited, as "<sector id>:<card>". Every card reads until
@@ -174,18 +180,35 @@ function trafficChart(d) {
 // holding or sequencing around our ETA, fed into the "Plan in SimBrief" link
 // below as extra fuel. The slider lets the crew take more or less than the
 // recommendation; SimBrief turns whatever is chosen into an actual fuel load.
+// Admin-only: lets a congestion level be previewed on demand instead of
+// waiting for the right traffic to turn up on VATSIM, or a real check run
+// against "departing right now" rather than the schedule's own estimate.
+// Nothing here reaches anyone who is not an admin — see isAdmin() in both
+// actions below, not just this markup.
+function testPanel() {
+  if (!isAdmin()) return '';
+  return `
+    <div class="cgf-test">
+      <div class="tiny">ADMIN TEST — preview only, not real traffic</div>
+      <div class="btn-row">
+        ${DELAY_BANDS.map((b, i) => `<button class="btn ghost small" data-act="simulate" data-band="${i}">${esc(b.label)}</button>`).join('')}
+      </div>
+      <label class="field">Weather for the preview<select data-change="simWeather">
+        ${SIM_WEATHER.map((w) => `<option value="${w}" ${w === simWeather ? 'selected' : ''}>${w || 'Not simulated'}</option>`).join('')}
+      </select></label>
+      <div class="btn-row"><button class="btn ghost small" data-act="testDepart" ${delayLoading ? 'disabled' : ''}>Depart now (real data)</button></div>
+    </div>`;
+}
+
 function delayCard(s) {
   const d = delayOf(s.id);
-  const testBtn = isAdmin()
-    ? `<div class="btn-row"><button class="btn ghost small" data-act="testDepart" ${delayLoading ? 'disabled' : ''}>Depart now (test)</button></div>`
-    : '';
   if (!d) {
     return `
       <section class="card">
         <div class="card-head"><h2>Destination congestion forecast</h2>
           <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button></div>
         <p class="note">${delayLoading ? `Checking VATSIM traffic and the forecast for ${esc(s.arr)}…` : 'Not checked yet.'}</p>
-        ${testBtn}
+        ${testPanel()}
       </section>`;
   }
   return `
@@ -196,9 +219,11 @@ function delayCard(s) {
         <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button>
       </div>
       ${
-        d.test
-          ? `<p class="note warn">${icon('alert')} Testing: as if departing right now and flying the published block time. Press refresh above for the real estimate.</p>`
-          : ''
+        d.simulated
+          ? `<p class="note warn">${icon('alert')} Simulated: made-up traffic for ${esc(d.band)} congestion, not real data. Press refresh above for the real estimate.</p>`
+          : d.test
+            ? `<p class="note warn">${icon('alert')} Testing: as if departing right now and flying the published block time. Press refresh above for the real estimate.</p>`
+            : ''
       }
       <div class="cgf-head">
         <span class="badge ${BAND_BADGE[d.band] || 'mute'} cgf-band">${esc(d.band.toUpperCase())} CONGESTION</span>
@@ -227,7 +252,7 @@ function delayCard(s) {
         </div>
       </div>
       <div class="tiny">Checked ${ago(d.at)}${d.feedOk ? '' : ' · VATSIM feed unavailable, traffic not counted'}</div>
-      ${testBtn}
+      ${testPanel()}
     </section>`;
 }
 
@@ -406,6 +431,9 @@ export const changes = {
     setChosenDelay(currentSectorId(), Number(el.value));
     rerender();
   },
+  simWeather(el) {
+    simWeather = el.value;
+  },
 };
 
 export const forms = {
@@ -441,6 +469,12 @@ export const actions = {
     const s = sortedSectors().find((x) => x.id === currentSectorId());
     if (!s || delayLoading || !isAdmin()) return;
     loadDelay(s, true);
+    rerender();
+  },
+  simulate(el) {
+    const s = sortedSectors().find((x) => x.id === currentSectorId());
+    if (!s || !isAdmin()) return;
+    simulateDelay(s, Number(el.dataset.band), simWeather || null);
     rerender();
   },
   importOfp() {
