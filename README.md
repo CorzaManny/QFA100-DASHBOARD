@@ -7,7 +7,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **Login** – everyone signs in with their own account. The first page is the login page.
 - **Dashboard** – a map of the sector being flown with the aeroplane on it, and shows where the aircraft is, its altitude, ground speed, distance to go and estimated arrival, read from the simulator's status API or from VATSIM. Shows your next rostered sector with your duty, report time and a countdown, and warns when a late arrival will push back the following departure.
 - **737 Checklists** – tap-through checklists in three groups: **Normal** from Preflight to Secure, plus **Non-normal** and **Memory items** to fill in. Each group lists its checklists down the side with how far through each one is, and there is a "CHECKLIST COMPLETE" footer and a Next button. Works with no connection and keeps the screen awake.
-- **Schedule** – the official WorldFlight 2026 schedule. Each sector shows when its departure window opens (UTC), the window, block time and validated route. Admins and dispatchers can add, edit or delete sectors.
+- **Schedule** – the official WorldFlight 2026 schedule. Each sector shows when its departure window opens (UTC), the window, block time and validated route. Tapping a sector opens its briefing; admins and dispatchers can add, edit or delete sectors.
 - **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with short-crewed sectors flagged. The cockpit tablets sign in to their own accounts and show the whole team's roster instead.
 - **Admin** (shield icon, top right) – where the roster is built: pick a Captain and First Officer for each sector from a dropdown and it saves straight away. Admins also set each person's role here.
 - **Tech Log** – report defects, check them against the built-in MEL, defer them with a restriction, or mark them rectified. The log is shared by the whole team, stays with the aircraft between sectors and shows as a banner on the Dashboard.
@@ -326,14 +326,16 @@ The Dashboard can read the aircraft's position, phase, ETA and fuel straight fro
 
 ## Sector briefings
 
-The **Briefings** tab opens the briefing for the next sector (pick any other from the drop-down). It is saved in the team database, so everyone sees the same thing:
+The **Briefings** tab opens the briefing for the next sector (pick any other from the drop-down, or tap a sector on the **WF Schedule**, which opens straight into its briefing). It is saved in the team database, so everyone sees the same thing:
 
+- **Weather** – the METAR and TAF for both the departure and arrival airports, right there on the page, so a pilot does not have to leave the briefing just to check them. The airport's own page (still reachable from the DEP/ARR briefing buttons) adds runways, who is controlling it on VATSIM, and the team's notes.
+- **Destination congestion forecast** – see above.
 - **Flight plan (OFP)** – imported from SimBrief and saved for the whole team. An admin or dispatcher sets the team's one SimBrief username or Pilot ID on the briefing page; until then each person imports from their own account in Settings. A plan for a different sector is refused.
 - **Aircraft status** – open and deferred defects from the tech log, with their restrictions.
 - **Handover** – what the previous sector's crew left for this one, and a box for this crew to leave theirs.
 - **Team notes**, and **WorldFlight's page and briefing notes** for the sector (paste the address and their notes).
 
-Pilots, dispatchers and admins can write; observers read. The MEL lookup and the defect form also have a search box (try "radar" or "34-15").
+Every one of those is its own card with a chevron in the corner: fold away what you don't need and it stays folded while you work through the rest, so the page is as short or as long as you want it. Pilots, dispatchers and admins can write; observers read. The MEL lookup and the defect form also have a search box (try "radar" or "34-15").
 
 ## Live updates, password reset and removing accounts
 

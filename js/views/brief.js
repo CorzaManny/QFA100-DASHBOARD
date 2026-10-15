@@ -10,20 +10,19 @@ import {
   currentSector,
   crewLabel,
   canEdit,
-  isAdmin,
   canSetSimbrief,
   canReport,
   sharedLog,
   me,
   simbriefPlanUrl,
   fetchOfp,
+  fetchMetar,
+  fetchTafFor,
   briefingOf,
   saveBrief,
   simbriefId,
   syncTeam,
   estimateArrivalDelay,
-  testDepartNow,
-  simulateDelay,
   delayOf,
   setChosenDelay,
   DELAY_BANDS,
@@ -31,19 +30,21 @@ import {
 
 const WF_SCHEDULE = 'https://planning.worldflight.center/schedule';
 const TEXT_FIELDS = ['notes', 'wf_url', 'wf_notes', 'handover'];
-const SIM_WEATHER = ['', 'VFR', 'MVFR', 'IFR', 'LIFR'];
 
 let busy = false;
 let error = '';
-// The weather picked for the next simulated preview; survives a rerender the
-// same way editing/busy do, since the admin test panel is rebuilt from
-// scratch on every click.
-let simWeather = '';
 let notice = '';
 let delayLoading = false;
 // The text card being edited, as "<sector id>:<card>". Every card reads until
 // someone presses its Edit button.
 let editing = '';
+// Which cards are collapsed, by key. Survives a rerender the same way
+// editing/busy do, since the whole page is rebuilt from scratch each time.
+let collapsed = new Set();
+// The TAF read for an airport (loading/ok/none/off/error) and why, same idea
+// as the Airport Briefings page but tracked for two airports at once.
+let tafState = {};
+let tafError = {};
 
 const isLink = (url) => /^https?:\/\/\S+$/i.test(url || '');
 
@@ -57,6 +58,56 @@ const hhmm = (secs) =>
   secs == null ? '—' : `${String(Math.floor(secs / 3600)).padStart(2, '0')}:${String(Math.floor((secs % 3600) / 60)).padStart(2, '0')}`;
 
 const kv = (label, value) => `<div class="kv"><span>${label}</span><strong>${value}</strong></div>`;
+
+// Every card on this page can be folded away, so a pilot who only wants the
+// weather and the OFP is not scrolling past everything else to get there.
+const isOpen = (key) => !collapsed.has(key);
+const toggleBtn = (key) => {
+  const open = isOpen(key);
+  return `<button type="button" class="icon-btn chevron-btn${open ? ' open' : ''}" data-act="toggleCard" data-card="${esc(
+    key,
+  )}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'}">${icon('chevron')}</button>`;
+};
+
+// METAR and TAF for an airport, read the same way the Airport Briefings page
+// reads them, so a sector's weather is on the Briefing itself and a pilot
+// does not have to leave it just to check.
+function metarBlock(code) {
+  const m = state.metar[code];
+  return m
+    ? `<pre class="metar">${esc(m.text)}</pre><div class="tiny">${ago(m.at)} from VATSIM</div>`
+    : '<p class="note">Loading METAR…</p>';
+}
+
+function tafBlock(code) {
+  const t = state.taf[code];
+  if (t?.text) {
+    const text = t.text.replace(/\s+/g, ' ').replace(/ (FM\d|BECMG|TEMPO|INTER|PROB)/g, '\n  $1');
+    return `<pre class="metar">${esc(text)}</pre><div class="tiny">${ago(t.at)} · forecast</div>`;
+  }
+  const st = tafState[code];
+  if (st === 'loading') return '<p class="note">Loading TAF…</p>';
+  if (st === 'off') {
+    return '<p class="note">Forecasts are not switched on for this team yet. An admin runs <code>supabase/weather.sql</code> once, in Supabase.</p>';
+  }
+  if (st === 'error') return `<p class="note warn">${icon('alert')} Could not read the forecast (${esc(tafError[code] || '')}).</p>`;
+  return `<p class="note">${esc(code)} does not publish a TAF.</p>`;
+}
+
+function weatherCard(s) {
+  const open = isOpen('weather');
+  const airport = (code, label) => `
+    <div class="wx-col">
+      <div class="wx-col-head"><span class="apt">${esc(code)}</span><span class="badge mute">${label}</span></div>
+      <div class="tiny">METAR</div>${metarBlock(code)}
+      <div class="tiny">TAF</div>${tafBlock(code)}
+    </div>`;
+  return `
+    <section class="card">
+      <div class="card-head"><h2>Weather</h2>${toggleBtn('weather')}</div>
+      ${open ? `<div class="wx-grid">${airport(s.dep, 'DEPARTURE')}${airport(s.arr, 'ARRIVAL')}</div>` : ''}
+    </section>`;
+}
 
 function ofpSummary(o, b) {
   const u = esc(String(o.units || 'kgs').toUpperCase());
@@ -92,11 +143,18 @@ function ofpSummary(o, b) {
 function ofpCard(s, b) {
   const id = simbriefId();
   const delay = delayOf(s.id);
+  const open = isOpen('ofp');
   return `
     <section class="card">
       <div class="card-head"><h2>Flight plan (OFP)</h2>
-        <span class="badge ${b.ofp ? 'ok' : 'mute'}">${b.ofp ? 'IMPORTED' : 'NOT IMPORTED'}</span></div>
-      ${b.ofp ? ofpSummary(b.ofp, b) : '<p class="note">Nobody has imported the flight plan for this sector yet.</p>'}
+        <div class="head-right">
+          <span class="badge ${b.ofp ? 'ok' : 'mute'}">${b.ofp ? 'IMPORTED' : 'NOT IMPORTED'}</span>
+          ${toggleBtn('ofp')}
+        </div>
+      </div>
+      ${
+        open
+          ? `${b.ofp ? ofpSummary(b.ofp, b) : '<p class="note">Nobody has imported the flight plan for this sector yet.</p>'}
       ${
         canReport()
           ? `${
@@ -118,6 +176,8 @@ function ofpCard(s, b) {
           : canSetSimbrief()
             ? '<p class="tiny">No team SimBrief account yet. Set it in <a href="#/admin/simbrief">Admin → SimBrief</a> and everyone imports the same flight plan.</p>'
             : '<p class="tiny">No team SimBrief account yet. An admin or operations sets it in Admin → SimBrief.</p>'
+      }`
+          : ''
       }
     </section>`;
 }
@@ -180,35 +240,19 @@ function trafficChart(d) {
 // holding or sequencing around our ETA, fed into the "Plan in SimBrief" link
 // below as extra fuel. The slider lets the crew take more or less than the
 // recommendation; SimBrief turns whatever is chosen into an actual fuel load.
-// Admin-only: lets a congestion level be previewed on demand instead of
-// waiting for the right traffic to turn up on VATSIM, or a real check run
-// against "departing right now" rather than the schedule's own estimate.
-// Nothing here reaches anyone who is not an admin — see isAdmin() in both
-// actions below, not just this markup.
-function testPanel() {
-  if (!isAdmin()) return '';
-  return `
-    <div class="cgf-test">
-      <div class="tiny">ADMIN TEST — preview only, not real traffic</div>
-      <div class="btn-row">
-        ${DELAY_BANDS.map((b, i) => `<button class="btn ghost small" data-act="simulate" data-band="${i}">${esc(b.label)}</button>`).join('')}
-      </div>
-      <label class="field">Weather for the preview<select data-change="simWeather">
-        ${SIM_WEATHER.map((w) => `<option value="${w}" ${w === simWeather ? 'selected' : ''}>${w || 'Not simulated'}</option>`).join('')}
-      </select></label>
-      <div class="btn-row"><button class="btn ghost small" data-act="testDepart" ${delayLoading ? 'disabled' : ''}>Depart now (real data)</button></div>
-    </div>`;
-}
-
 function delayCard(s) {
   const d = delayOf(s.id);
+  const open = isOpen('congestion');
   if (!d) {
     return `
       <section class="card">
         <div class="card-head"><h2>Destination congestion forecast</h2>
-          <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button></div>
-        <p class="note">${delayLoading ? `Checking VATSIM traffic and the forecast for ${esc(s.arr)}…` : 'Not checked yet.'}</p>
-        ${testPanel()}
+          <div class="head-right">
+            <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button>
+            ${toggleBtn('congestion')}
+          </div>
+        </div>
+        ${open ? `<p class="note">${delayLoading ? `Checking VATSIM traffic and the forecast for ${esc(s.arr)}…` : 'Not checked yet.'}</p>` : ''}
       </section>`;
   }
   return `
@@ -216,16 +260,14 @@ function delayCard(s) {
       <div class="card-head">
         <div><h2>Destination congestion forecast</h2>
           <div class="tiny">Predicted traffic at ${esc(d.dest)} around your ETA, ${zulu(d.eta)}</div></div>
-        <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button>
+        <div class="head-right">
+          <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button>
+          ${toggleBtn('congestion')}
+        </div>
       </div>
       ${
-        d.simulated
-          ? `<p class="note warn">${icon('alert')} Simulated: made-up traffic for ${esc(d.band)} congestion, not real data. Press refresh above for the real estimate.</p>`
-          : d.test
-            ? `<p class="note warn">${icon('alert')} Testing: as if departing right now and flying the published block time. Press refresh above for the real estimate.</p>`
-            : ''
-      }
-      <div class="cgf-head">
+        open
+          ? `<div class="cgf-head">
         <span class="badge ${BAND_BADGE[d.band] || 'mute'} cgf-band">${esc(d.band.toUpperCase())} CONGESTION</span>
         <div class="cgf-score"><strong>${d.score}</strong><span>/100</span><div class="tiny">Congestion score</div></div>
       </div>
@@ -251,8 +293,9 @@ function delayCard(s) {
           ).join('')}
         </div>
       </div>
-      <div class="tiny">Checked ${ago(d.at)}${d.feedOk ? '' : ' · VATSIM feed unavailable, traffic not counted'}</div>
-      ${testPanel()}
+      <div class="tiny">Checked ${ago(d.at)}${d.feedOk ? '' : ' · VATSIM feed unavailable, traffic not counted'}</div>`
+          : ''
+      }
     </section>`;
 }
 
@@ -273,32 +316,44 @@ function defectsCard() {
       </a>`,
     )
     .join('');
+  const open = isOpen('defects');
   return `
     <section class="card list">
       <div class="card-head"><div class="tiny">AIRCRAFT STATUS</div>
-        <span class="badge ${aog ? 'bad' : active.length ? 'warn' : 'ok'}">${aog ? 'UNSERVICEABLE' : active.length ? `${active.length} DEFECT${active.length > 1 ? 'S' : ''}` : 'SERVICEABLE'}</span></div>
-      ${rows || '<p class="note">No open or deferred defects in the tech log.</p>'}
+        <div class="head-right">
+          <span class="badge ${aog ? 'bad' : active.length ? 'warn' : 'ok'}">${aog ? 'UNSERVICEABLE' : active.length ? `${active.length} DEFECT${active.length > 1 ? 'S' : ''}` : 'SERVICEABLE'}</span>
+          ${toggleBtn('defects')}
+        </div>
+      </div>
+      ${open ? rows || '<p class="note">No open or deferred defects in the tech log.</p>' : ''}
     </section>`;
 }
 
-// A card of text everyone reads. The crew press Edit to change it.
-function textCard(sectorId, title, help, fields) {
+// A card of text everyone reads. The crew press Edit to change it. collapseKey
+// folds it away like every other card; editing always shows in full.
+function textCard(sectorId, collapseKey, title, help, fields) {
   const key = `${sectorId}:${fields[0].name}`;
   if (!canReport() || editing !== key) {
+    const open = isOpen(collapseKey);
     const shown = fields.filter((f) => f.value);
     return `
       <section class="card">
-        <div class="card-head"><h2>${title}</h2>${
-          canReport() ? `<button class="btn ghost" data-act="edit" data-card="${esc(key)}">${shown.length ? 'Edit' : 'Add'}</button>` : ''
-        }</div>
+        <div class="card-head"><h2>${title}</h2>
+          <div class="head-right">
+            ${canReport() ? `<button class="btn ghost" data-act="edit" data-card="${esc(key)}">${shown.length ? 'Edit' : 'Add'}</button>` : ''}
+            ${toggleBtn(collapseKey)}
+          </div>
+        </div>
         ${
-          shown
-            .map((f) =>
-              f.url && isLink(f.value)
-                ? `<p class="note"><a href="${esc(f.value)}" target="_blank" rel="noopener">${esc(f.value)}</a></p>`
-                : `<p class="mel-text">${esc(f.value)}</p>`,
-            )
-            .join('') || '<p class="note">Nothing here yet.</p>'
+          open
+            ? shown
+                .map((f) =>
+                  f.url && isLink(f.value)
+                    ? `<p class="note"><a href="${esc(f.value)}" target="_blank" rel="noopener">${esc(f.value)}</a></p>`
+                    : `<p class="mel-text">${esc(f.value)}</p>`,
+                )
+                .join('') || '<p class="note">Nothing here yet.</p>'
+            : ''
         }
       </section>`;
   }
@@ -349,33 +404,42 @@ export function render(args) {
         <a class="btn ghost" href="#/airports/${esc(s.arr)}">${esc(s.arr)} briefing</a>
       </div>
     </section>
+    ${weatherCard(s)}
     ${defectsCard()}
     ${
       prev
         ? `<section class="card">
-            <div class="card-head"><h2>Handover from ${esc(prev.dep)} → ${esc(prev.arr)}</h2></div>
-            <div class="sub">${esc(crewLabel(prev))}</div>
-            ${briefingOf(prev.id).handover ? `<p class="mel-text">${esc(briefingOf(prev.id).handover)}</p>` : '<p class="note">The crew before has not left a handover yet.</p>'}
+            <div class="card-head"><h2>Handover from ${esc(prev.dep)} → ${esc(prev.arr)}</h2>${toggleBtn('handoverPrev')}</div>
+            ${
+              isOpen('handoverPrev')
+                ? `<div class="sub">${esc(crewLabel(prev))}</div>
+            ${briefingOf(prev.id).handover ? `<p class="mel-text">${esc(briefingOf(prev.id).handover)}</p>` : '<p class="note">The crew before has not left a handover yet.</p>'}`
+                : ''
+            }
           </section>`
         : ''
     }
     ${delayCard(s)}
     ${ofpCard(s, b)}
-    ${textCard(s.id, 'Team notes', 'Anything the team wants the crew of this sector to know.', [
+    ${textCard(s.id, 'notes', 'Team notes', 'Anything the team wants the crew of this sector to know.', [
       { name: 'notes', label: 'Notes', value: b.notes || '', placeholder: 'e.g. Expect holding into WSSS, ATC is busy' },
     ])}
     <section class="card">
-      <h2>WorldFlight</h2>
-      <div class="btn-row">
+      <div class="card-head"><h2>WorldFlight</h2>${toggleBtn('worldflight')}</div>
+      ${
+        isOpen('worldflight')
+          ? `<div class="btn-row">
         ${isLink(b.wf_url) ? `<a class="btn primary" href="${esc(b.wf_url)}" target="_blank" rel="noopener">Official page for this sector ${icon('external')}</a>` : ''}
         <a class="btn ghost" href="${WF_SCHEDULE}" target="_blank" rel="noopener">WorldFlight schedule ${icon('external')}</a>
-      </div>
+      </div>`
+          : ''
+      }
     </section>
-    ${textCard(s.id, "WorldFlight's page and briefing notes", "Paste the address of WorldFlight's page for this sector, and their briefing notes, so nobody has to go looking.", [
+    ${textCard(s.id, 'wfnotes', "WorldFlight's page and briefing notes", "Paste the address of WorldFlight's page for this sector, and their briefing notes, so nobody has to go looking.", [
       { name: 'wf_url', label: 'Official page address', value: b.wf_url || '', placeholder: 'https://…', url: true },
       { name: 'wf_notes', label: "WorldFlight's briefing notes", value: b.wf_notes || '', placeholder: 'Paste their notes for this sector', rows: 6 },
     ])}
-    ${textCard(s.id, 'Handover to the next crew', 'Written by this sector’s crew: fuel state, quirks, what is already set up. It shows on the next sector’s briefing.', [
+    ${textCard(s.id, 'handoverNext', 'Handover to the next crew', 'Written by this sector’s crew: fuel state, quirks, what is already set up. It shows on the next sector’s briefing.', [
       { name: 'handover', label: 'Handover notes', value: b.handover || '', placeholder: 'e.g. Parked gate 54, APU running, 6.2 t on board' },
     ])}
     <p class="tiny center">${sharedLog() ? 'Saved for the whole team.' : 'Saved on this device only.'}</p>`;
@@ -388,13 +452,11 @@ const currentSectorId = () => sectorFor(location.hash.split('/').slice(2).map(de
 
 // Checks VATSIM traffic and the destination weather as soon as the briefing
 // opens, so the SimBrief link already carries the extra fuel by the time
-// anyone presses it. loadDelay re-checks on request; test runs it against a
-// "departing right now" time instead, so the forecast can be tried without
-// waiting for a sector that is actually close.
-function loadDelay(s, test) {
+// anyone presses it. Re-checks on request from the refresh button.
+function loadDelay(s) {
   if (delayLoading) return;
   delayLoading = true;
-  (test ? testDepartNow(s) : estimateArrivalDelay(s))
+  estimateArrivalDelay(s)
     .catch(() => {})
     .finally(() => {
       delayLoading = false;
@@ -402,11 +464,53 @@ function loadDelay(s, test) {
     });
 }
 
+// METAR for both airports if it's more than five minutes old, TAF if more
+// than fifteen — the same staleness windows the Airport Briefings page uses.
+// mounted() runs on every rerender (toggling a card, dragging the slider),
+// not just on first opening the page, so each fetch is guarded against
+// being fired again while it's still in flight.
+const wxLoading = new Set();
+
+function loadWx(s) {
+  for (const code of [s.dep, s.arr]) {
+    const m = state.metar[code];
+    const mKey = `${code}:metar`;
+    if (!wxLoading.has(mKey) && (!m || Date.now() - m.at > 5 * 60000)) {
+      wxLoading.add(mKey);
+      fetchMetar(code)
+        .catch(() => {})
+        .finally(() => {
+          wxLoading.delete(mKey);
+          if (currentSectorId() === s.id) rerender();
+        });
+    }
+    const t = state.taf[code];
+    const tKey = `${code}:taf`;
+    if (!wxLoading.has(tKey) && (!t || Date.now() - t.at > 15 * 60000)) {
+      wxLoading.add(tKey);
+      tafState[code] = 'loading';
+      fetchTafFor(code)
+        .then((got) => {
+          tafState[code] = got == null ? 'off' : got.text ? 'ok' : 'none';
+        })
+        .catch((err) => {
+          tafState[code] = 'error';
+          tafError[code] = err.message;
+        })
+        .finally(() => {
+          wxLoading.delete(tKey);
+          if (currentSectorId() === s.id) rerender();
+        });
+    }
+  }
+}
+
 export function mounted(root, args) {
   const s = sectorFor(args);
   if (!s) return;
   const cached = delayOf(s.id);
   if (!delayLoading && (!cached || Date.now() - cached.at > 5 * 60000)) loadDelay(s);
+  loadWx(s);
 }
 
 async function run(work, done) {
@@ -430,9 +534,6 @@ export const changes = {
   holdFuel(el) {
     setChosenDelay(currentSectorId(), Number(el.value));
     rerender();
-  },
-  simWeather(el) {
-    simWeather = el.value;
   },
 };
 
@@ -465,16 +566,10 @@ export const actions = {
     loadDelay(s);
     rerender();
   },
-  testDepart() {
-    const s = sortedSectors().find((x) => x.id === currentSectorId());
-    if (!s || delayLoading || !isAdmin()) return;
-    loadDelay(s, true);
-    rerender();
-  },
-  simulate(el) {
-    const s = sortedSectors().find((x) => x.id === currentSectorId());
-    if (!s || !isAdmin()) return;
-    simulateDelay(s, Number(el.dataset.band), simWeather || null);
+  toggleCard(el) {
+    const key = el.dataset.card;
+    if (collapsed.has(key)) collapsed.delete(key);
+    else collapsed.add(key);
     rerender();
   },
   importOfp() {

@@ -111,7 +111,7 @@ function list(editing) {
       // The published time always stays on screen; the estimate sits under it.
       const moved = run.trusted && row && Math.abs(row.delay) >= 5 * 60000 && !row.on;
       return `${header}
-        <a class="row ${new Date(s.sta) < now && s !== cur ? 'past' : ''}" href="#/schedule/${esc(s.id)}${editing ? '/edit' : ''}">
+        <a class="row ${new Date(s.sta) < now && s !== cur ? 'past' : ''}" href="${editing ? `#/schedule/${esc(s.id)}/edit` : `#/brief/${esc(s.id)}`}">
           <div class="row-main">
             <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${status}${
               row?.off ? ` <span class="badge mute">OFF ${zulu(row.off)}</span>` : ''

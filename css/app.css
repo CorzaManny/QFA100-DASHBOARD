@@ -979,19 +979,23 @@ button:focus-visible {
   color: var(--text);
   font-weight: 700;
 }
-.cgf-test {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px dashed var(--line);
+.chevron-btn .icon {
+  transition: transform 0.15s ease;
 }
-.cgf-test > .tiny {
-  color: var(--dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
+.chevron-btn.open .icon {
+  transform: rotate(90deg);
 }
-.cgf-test .field {
-  margin: 8px 0;
+.wx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.wx-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 /* ---- Checklists ---- */

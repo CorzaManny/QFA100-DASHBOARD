@@ -917,13 +917,9 @@ async function trafficAround(dest, eta) {
 // SimBrief can be asked to plan the extra fuel for it. The crew's own choice
 // of how much to actually take (delay.chosen) survives a refresh; only a
 // first look at a sector sets it to the recommendation.
-//
-// etaOverride tests the forecast against a different landing time than the
-// one the schedule gives, for "what would this say if we left right now" -
-// see testDepartNow.
-export async function estimateArrivalDelay(sector, etaOverride) {
+export async function estimateArrivalDelay(sector) {
   const dest = sector.arr;
-  const eta = etaOverride ?? expectedEta(sector);
+  const eta = expectedEta(sector);
   const prev = state.delay[sector.id];
 
   let arrivals = 0;
@@ -955,66 +951,6 @@ export async function estimateArrivalDelay(sector, etaOverride) {
     score: congestionScore(arrivals, weather),
     chosen: prev?.chosen ?? band.minutes,
     feedOk,
-    test: !!etaOverride,
-    at: Date.now(),
-  };
-  state.delay[sector.id] = result;
-  save();
-  return result;
-}
-
-// For testing: what the forecast would say landing one block time from now,
-// as if departing this moment, regardless of what the schedule or the
-// running estimate actually says.
-export function testDepartNow(sector) {
-  const block = new Date(sector.sta).getTime() - new Date(sector.std).getTime();
-  return estimateArrivalDelay(sector, Date.now() + Math.max(0, block));
-}
-
-// How the chart's arrival count tapers out from the ETA bucket, so a
-// simulated traffic level still looks like a plausible rush rather than one
-// giant bar. Shares nine buckets (four either side of the ETA) in these
-// proportions.
-const SIM_SHAPE = [0.1, 0.18, 0.3, 0.42, 1, 0.42, 0.3, 0.18, 0.1];
-
-// For testing: a made-up forecast for a chosen band and weather, so every
-// congestion level can be previewed without waiting for the right traffic to
-// turn up on VATSIM. bandIndex picks which of DELAY_BANDS to build an
-// arrival count for; weather, if given, still bumps the band the same way a
-// real forecast would, so picking Busy + LIFR correctly shows Severe.
-export function simulateDelay(sector, bandIndex, weather) {
-  const picked = DELAY_BANDS[bandIndex] || DELAY_BANDS[0];
-  const floor = bandIndex > 0 ? DELAY_BANDS[bandIndex - 1].max + 1 : 0;
-  const arrivals = picked.max === Infinity ? floor + 8 : Math.round((floor + picked.max) / 2);
-  const eta = expectedEta(sector);
-  const bucketMs = BUCKET_MIN * 60000;
-  const etaBucket = Math.round(eta / bucketMs) * bucketMs;
-  const shapeTotal = SIM_SHAPE.reduce((a, b) => a + b, 0);
-  const mid = (SIM_SHAPE.length - 1) / 2;
-  const buckets = SIM_SHAPE.map((weight, i) => ({
-    at: etaBucket + (i - mid) * bucketMs,
-    count: Math.round((weight / shapeTotal) * arrivals),
-    own: i === mid,
-  }));
-
-  const band = DELAY_BANDS[bandFor(arrivals, weather)];
-  const result = {
-    sectorId: sector.id,
-    dest: sector.arr,
-    eta,
-    arrivals,
-    departures: Math.round(arrivals / 4),
-    buckets,
-    weather: weather || null,
-    weatherSource: weather ? 'a simulated forecast' : null,
-    atc: { label: 'Not simulated', detail: '' },
-    band: band.label,
-    minutes: band.minutes,
-    score: congestionScore(arrivals, weather),
-    chosen: band.minutes,
-    feedOk: true,
-    test: true,
-    simulated: true,
     at: Date.now(),
   };
   state.delay[sector.id] = result;
