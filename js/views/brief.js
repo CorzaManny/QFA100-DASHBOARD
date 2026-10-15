@@ -61,6 +61,9 @@ const kv = (label, value) => `<div class="kv"><span>${label}</span><strong>${val
 
 // Every card on this page can be folded away, so a pilot who only wants the
 // weather and the OFP is not scrolling past everything else to get there.
+// The whole header is the press target, not just the chevron — collapseHead
+// wraps a card-head's contents with the toggle, a button inside it still
+// fires its own action instead (closest() matches itself before the row).
 const isOpen = (key) => !collapsed.has(key);
 const toggleBtn = (key) => {
   const open = isOpen(key);
@@ -68,6 +71,8 @@ const toggleBtn = (key) => {
     key,
   )}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'}">${icon('chevron')}</button>`;
 };
+const collapseHead = (key, innerHtml) =>
+  `<div class="card-head collapse-head" data-act="toggleCard" data-card="${esc(key)}">${innerHtml}</div>`;
 
 // METAR and TAF for an airport, read the same way the Airport Briefings page
 // reads them, so a sector's weather is on the Briefing itself and a pilot
@@ -104,7 +109,7 @@ function weatherCard(s) {
     </div>`;
   return `
     <section class="card">
-      <div class="card-head"><h2>Weather</h2>${toggleBtn('weather')}</div>
+      ${collapseHead('weather', `<h2>Weather</h2>${toggleBtn('weather')}`)}
       ${open ? `<div class="wx-grid">${airport(s.dep, 'DEPARTURE')}${airport(s.arr, 'ARRIVAL')}</div>` : ''}
     </section>`;
 }
@@ -146,12 +151,14 @@ function ofpCard(s, b) {
   const open = isOpen('ofp');
   return `
     <section class="card">
-      <div class="card-head"><h2>Flight plan (OFP)</h2>
+      ${collapseHead(
+        'ofp',
+        `<h2>Flight plan (OFP)</h2>
         <div class="head-right">
           <span class="badge ${b.ofp ? 'ok' : 'mute'}">${b.ofp ? 'IMPORTED' : 'NOT IMPORTED'}</span>
           ${toggleBtn('ofp')}
-        </div>
-      </div>
+        </div>`,
+      )}
       ${
         open
           ? `${b.ofp ? ofpSummary(b.ofp, b) : '<p class="note">Nobody has imported the flight plan for this sector yet.</p>'}
@@ -246,25 +253,28 @@ function delayCard(s) {
   if (!d) {
     return `
       <section class="card">
-        <div class="card-head"><h2>Destination congestion forecast</h2>
+        ${collapseHead(
+          'congestion',
+          `<h2>Destination congestion forecast</h2>
           <div class="head-right">
             <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button>
             ${toggleBtn('congestion')}
-          </div>
-        </div>
+          </div>`,
+        )}
         ${open ? `<p class="note">${delayLoading ? `Checking VATSIM traffic and the forecast for ${esc(s.arr)}…` : 'Not checked yet.'}</p>` : ''}
       </section>`;
   }
   return `
     <section class="card cgf-card">
-      <div class="card-head">
-        <div><h2>Destination congestion forecast</h2>
+      ${collapseHead(
+        'congestion',
+        `<div><h2>Destination congestion forecast</h2>
           <div class="tiny">Predicted traffic at ${esc(d.dest)} around your ETA, ${zulu(d.eta)}</div></div>
         <div class="head-right">
           <button class="icon-btn" data-act="delay" aria-label="Refresh">${icon('refresh')}</button>
           ${toggleBtn('congestion')}
-        </div>
-      </div>
+        </div>`,
+      )}
       ${
         open
           ? `<div class="cgf-head">
@@ -319,12 +329,14 @@ function defectsCard() {
   const open = isOpen('defects');
   return `
     <section class="card list">
-      <div class="card-head"><div class="tiny">AIRCRAFT STATUS</div>
+      ${collapseHead(
+        'defects',
+        `<div class="tiny">AIRCRAFT STATUS</div>
         <div class="head-right">
           <span class="badge ${aog ? 'bad' : active.length ? 'warn' : 'ok'}">${aog ? 'UNSERVICEABLE' : active.length ? `${active.length} DEFECT${active.length > 1 ? 'S' : ''}` : 'SERVICEABLE'}</span>
           ${toggleBtn('defects')}
-        </div>
-      </div>
+        </div>`,
+      )}
       ${open ? rows || '<p class="note">No open or deferred defects in the tech log.</p>' : ''}
     </section>`;
 }
@@ -338,12 +350,14 @@ function textCard(sectorId, collapseKey, title, help, fields) {
     const shown = fields.filter((f) => f.value);
     return `
       <section class="card">
-        <div class="card-head"><h2>${title}</h2>
+        ${collapseHead(
+          collapseKey,
+          `<h2>${title}</h2>
           <div class="head-right">
             ${canReport() ? `<button class="btn ghost" data-act="edit" data-card="${esc(key)}">${shown.length ? 'Edit' : 'Add'}</button>` : ''}
             ${toggleBtn(collapseKey)}
-          </div>
-        </div>
+          </div>`,
+        )}
         ${
           open
             ? shown
@@ -412,7 +426,7 @@ export function render(args) {
     ${
       prev
         ? `<section class="card">
-            <div class="card-head"><h2>Handover from ${esc(prev.dep)} → ${esc(prev.arr)}</h2>${toggleBtn('handoverPrev')}</div>
+            ${collapseHead('handoverPrev', `<h2>Handover from ${esc(prev.dep)} → ${esc(prev.arr)}</h2>${toggleBtn('handoverPrev')}`)}
             ${
               isOpen('handoverPrev')
                 ? `<div class="sub">${esc(crewLabel(prev))}</div>
@@ -428,7 +442,7 @@ export function render(args) {
       { name: 'notes', label: 'Notes', value: b.notes || '', placeholder: 'e.g. Expect holding into WSSS, ATC is busy' },
     ])}
     <section class="card">
-      <div class="card-head"><h2>WorldFlight</h2>${toggleBtn('worldflight')}</div>
+      ${collapseHead('worldflight', `<h2>WorldFlight</h2>${toggleBtn('worldflight')}`)}
       ${
         isOpen('worldflight')
           ? `<div class="btn-row">

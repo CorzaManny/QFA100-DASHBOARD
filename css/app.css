@@ -979,6 +979,9 @@ button:focus-visible {
   color: var(--text);
   font-weight: 700;
 }
+.collapse-head {
+  cursor: pointer;
+}
 .chevron-btn .icon {
   transition: transform 0.15s ease;
 }
