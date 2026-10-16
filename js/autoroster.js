@@ -17,6 +17,8 @@ export const DEFAULT_RULES = {
   bocEnd: 5, // ...and ends
   maxBoc: 2, // back-of-clock sectors per person for the whole event; 0 = no limit
   bocEveryDays: 2, // at most one back-of-clock sector every this many days; 0 = no limit
+  maxConsecutiveBoc: 0, // back-of-clock sectors flown back-to-back in one duty, before a rest; 0 = no limit
+  maxDutyHoursBoc: 0, // duty limit when any sector in it is back-of-clock; 0 = use maxDutyHours
   maxSectors: 0, // per person for the whole event; 0 = no limit
   reliefOverHours: 6, // sectors longer than this also need a relief pilot; 0 = never
   unmarkedAvailable: true, // everyone counts as available until they say otherwise
@@ -67,9 +69,25 @@ export function problems(sectors, rules) {
     if (duty.length > rules.maxSectorsPerDuty) {
       out.push(`${duty.length} sectors without a rest from ${first.flight} (limit ${rules.maxSectorsPerDuty})`);
     }
+    // A duty that touches back-of-clock hours can carry its own, shorter
+    // limit, separate from an ordinary daytime duty's.
+    const boc = duty.filter((s) => isBoc(s, rules));
     const hours = (sta(duty.at(-1)) - std(first)) / HOUR + rules.reportLeadMinutes / 60;
-    if (hours > rules.maxDutyHours) {
-      out.push(`${hours.toFixed(1)} hour duty from ${first.flight} (limit ${rules.maxDutyHours})`);
+    const dutyLimit = boc.length && rules.maxDutyHoursBoc > 0 ? rules.maxDutyHoursBoc : rules.maxDutyHours;
+    if (hours > dutyLimit) {
+      out.push(`${hours.toFixed(1)} hour duty from ${first.flight} (limit ${dutyLimit}${boc.length ? ', back-of-clock' : ''})`);
+    }
+    // Back-of-clock sectors flown one after another in the same duty, not
+    // the spacing between separate back-of-clock duties (that's bocEveryDays).
+    if (rules.maxConsecutiveBoc > 0) {
+      let run = 0;
+      for (const s of duty) {
+        run = isBoc(s, rules) ? run + 1 : 0;
+        if (run > rules.maxConsecutiveBoc) {
+          out.push(`${run} back-of-clock sectors in a row from ${first.flight} (limit ${rules.maxConsecutiveBoc})`);
+          break;
+        }
+      }
     }
     duty = [];
   };

@@ -360,8 +360,10 @@ function rulesPage() {
       <div class="grid2">
         ${num('maxBoc', 'Back-of-clock sectors per person', 'For the whole event; 0 = no limit')}
         ${num('bocEveryDays', 'One back of clock every (days)', '2 = never on consecutive nights; 0 = no limit')}
+        ${num('maxConsecutiveBoc', 'Back-of-clock sectors in a row', 'In one duty, before a rest; 0 = no limit')}
+        ${num('maxDutyHoursBoc', 'Longest back-of-clock duty (hours)', 'Only when the duty touches that window; 0 = use the duty limit above', 0.5)}
       </div>
-      <p class="tiny">A sector is back of clock if any of it is flown in that window. A night runs midday to midday, sim local time.</p>
+      <p class="tiny">A sector is back of clock if any of it is flown in that window. A night runs midday to midday, sim local time. "In a row" looks within one duty; "one every X days" is the gap between separate back-of-clock duties.</p>
       <h3>Report time</h3>
       <div class="grid2">
         ${num('reportLeadMinutes', 'Minutes before departure', 'Before the window opens', 5)}
