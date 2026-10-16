@@ -94,21 +94,28 @@ function crewRows(start, end) {
     const flies = bars.some((b) => PILOT_DUTIES.includes(b.entry.duty));
     const ruleBreaks = flies ? problems(flownBy(p.id), r) : [];
     for (const b of bars) if (PILOT_DUTIES.includes(b.entry.duty)) b.ruleBreaks = ruleBreaks;
-    return { p, bars, unavail: unavailBlocks(p, start, end, bars) };
+    return { p, bars, hints: hintBlocks(p, start, end, bars) };
   });
 }
 
-// Sectors in the window this person said they can't fly (or have not said
-// they can, when the team requires an answer), and are not already on.
-function unavailBlocks(p, start, end, bars) {
+// Sectors in the window this person is not already on, but putting them on
+// one would cost something: red if they can't fly it at all, orange if they
+// could but it would break a duty rule (rest, duty hours, a sector too many).
+// Can't-fly wins when both are true, same as an already-rostered bar.
+function hintBlocks(p, start, end, bars) {
   const busy = new Set(bars.map((b) => b.sector.id));
   const out = [];
   for (const s of state.sectors) {
-    if (busy.has(s.id) || !cantFly(p.id, s.id)) continue;
+    if (busy.has(s.id)) continue;
     const from = new Date(s.std).getTime();
     const to = new Date(s.sta).getTime();
     if (to < start || from > end) continue;
-    out.push({ p, sector: s, from, to });
+    if (cantFly(p.id, s.id)) {
+      out.push({ p, sector: s, from, to, kind: 'unavail', reason: cantFlyReason(p.id, s.id) });
+      continue;
+    }
+    const breaks = wouldBreak(p.id, s);
+    if (breaks.length) out.push({ p, sector: s, from, to, kind: 'break', reason: breaks.join('; ') });
   }
   return out;
 }
@@ -186,18 +193,19 @@ function bar(b, start, end) {
   </div>`;
 }
 
-// A sector this person said they can't fly, drawn on their row so ops can see
-// it without opening their availability. Not a roster row, so not draggable.
-function unavailBlock(u, start, end) {
+// A sector this person is not on, drawn on their row to say why putting them
+// there would cost something: red and they can't fly it at all, orange and
+// it would break a duty rule. Not a roster row, so not draggable.
+function hintBlock(u, start, end) {
   const s = u.sector;
-  const title = `${s.flight} · ${s.dep} → ${s.arr}\n${cantFlyReason(u.p.id, s.id)}`;
-  return `<div class="lr-unavail" style="left:${left(Math.max(u.from, start), start)}px;width:${widthPx(
+  const title = `${s.flight} · ${s.dep} → ${s.arr}\n${u.reason}`;
+  return `<div class="lr-unavail ${u.kind}" style="left:${left(Math.max(u.from, start), start)}px;width:${widthPx(
     u.from,
     u.to,
     start,
     end,
   )}px" title="${esc(title)}">
-    <span class="lr-unavail-s">CAN'T FLY</span>
+    <span class="lr-unavail-s">${u.kind === 'unavail' ? "CAN'T FLY" : 'WOULD BREAK'}</span>
   </div>`;
 }
 
@@ -258,12 +266,12 @@ function initials(name) {
   return (words[0][0] + words.at(-1)[0]).toUpperCase();
 }
 
-function row({ p, bars, unavail }, start, end) {
+function row({ p, bars, hints }, start, end) {
   return `
     <div class="lr-row">
       <div class="lr-name"><span class="lr-avatar">${esc(initials(p.display_name))}</span>${esc(p.display_name)}</div>
       <div class="lr-track" style="width:${trackWidth(start, end)}px" data-user="${esc(p.id)}">
-        ${unavail.map((u) => unavailBlock(u, start, end)).join('')}
+        ${hints.map((u) => hintBlock(u, start, end)).join('')}
         ${bars.map((b) => bar(b, start, end)).join('')}
       </div>
     </div>`;
@@ -360,7 +368,7 @@ export function renderRoster() {
                 ${rows.map((r) => row(r, start, end)).join('')}
               </div>
             </div>
-            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, drag it onto another row to move that duty to them, or drag it up into Unrostered to clear the seat.</p>`
+            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, drag it onto another row to move that duty to them, or drag it up into Unrostered to clear the seat. A striped red space is a sector someone can't fly; striped orange is a sector they could, but it would break a duty rule.</p>`
           : `<p class="note">Nobody is rostered in this window.</p>`
       }
     </section>
