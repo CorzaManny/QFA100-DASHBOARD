@@ -111,11 +111,11 @@ function hintBlocks(p, start, end, bars) {
     const to = new Date(s.sta).getTime();
     if (to < start || from > end) continue;
     if (cantFly(p.id, s.id)) {
-      out.push({ p, sector: s, from, to, kind: 'unavail', reason: cantFlyReason(p.id, s.id) });
+      out.push({ p, sector: s, from, to, kind: 'unavail', reasons: [cantFlyReason(p.id, s.id)] });
       continue;
     }
     const breaks = wouldBreak(p.id, s);
-    if (breaks.length) out.push({ p, sector: s, from, to, kind: 'break', reason: breaks.join('; ') });
+    if (breaks.length) out.push({ p, sector: s, from, to, kind: 'break', reasons: breaks });
   }
   return out;
 }
@@ -198,14 +198,15 @@ function bar(b, start, end) {
 // it would break a duty rule. Not a roster row, so not draggable.
 function hintBlock(u, start, end) {
   const s = u.sector;
-  const title = `${s.flight} · ${s.dep} → ${s.arr}\n${u.reason}`;
+  const title = `${s.flight} · ${s.dep} → ${s.arr}\n${u.reasons.join('\n')}`;
+  const label = u.reasons[0] + (u.reasons.length > 1 ? ` (+${u.reasons.length - 1} more)` : '');
   return `<div class="lr-unavail ${u.kind}" style="left:${left(Math.max(u.from, start), start)}px;width:${widthPx(
     u.from,
     u.to,
     start,
     end,
   )}px" title="${esc(title)}">
-    <span class="lr-unavail-s">${u.kind === 'unavail' ? "CAN'T FLY" : 'WOULD BREAK'}</span>
+    <span class="lr-unavail-s">${esc(label)}</span>
   </div>`;
 }
 
