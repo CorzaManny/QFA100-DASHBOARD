@@ -20,7 +20,19 @@ import {
   wouldBreak,
   defaultReport,
   syncTeam,
+  prefOf,
+  rules,
 } from '../ops.js';
+
+// Whether someone has, in effect, said they cannot fly a sector: either they
+// marked it unavailable, or the team requires an answer and they gave none.
+// The same rule the Admin roster's candidate list uses.
+const cantFly = (userId, sectorId) => {
+  const choice = prefOf(userId, sectorId);
+  return choice === 'unavailable' || (!choice && !rules().unmarkedAvailable);
+};
+const cantFlyReason = (userId, sectorId) =>
+  prefOf(userId, sectorId) === 'unavailable' ? "Said they can't fly this sector" : 'Has not said they are available';
 
 // One screen's worth of the timeline: a day either side of "now" by default,
 // moved a day at a time.
@@ -58,14 +70,29 @@ function crewRows(start, end) {
     const from = run.trusted && row ? reportAt(entry, row) : new Date(entry.report_at).getTime();
     const to = run.trusted && row ? row.estOn : new Date(sector.sta).getTime();
     if (to < start || from > end) continue;
-    const slot = { entry, sector, from, to, state: row?.state || 'later' };
+    const slot = { entry, sector, from, to, state: row?.state || 'later', conflict: cantFly(entry.user_id, sector.id) };
     if (!byPerson.has(entry.user_id)) byPerson.set(entry.user_id, []);
     byPerson.get(entry.user_id).push(slot);
   }
-  return rosterable().map((p) => ({
-    p,
-    bars: (byPerson.get(p.id) || []).sort((a, b) => a.from - b.from),
-  }));
+  return rosterable().map((p) => {
+    const bars = (byPerson.get(p.id) || []).sort((a, b) => a.from - b.from);
+    return { p, bars, unavail: unavailBlocks(p, start, end, bars) };
+  });
+}
+
+// Sectors in the window this person said they can't fly (or have not said
+// they can, when the team requires an answer), and are not already on.
+function unavailBlocks(p, start, end, bars) {
+  const busy = new Set(bars.map((b) => b.sector.id));
+  const out = [];
+  for (const s of state.sectors) {
+    if (busy.has(s.id) || !cantFly(p.id, s.id)) continue;
+    const from = new Date(s.std).getTime();
+    const to = new Date(s.sta).getTime();
+    if (to < start || from > end) continue;
+    out.push({ p, sector: s, from, to });
+  }
+  return out;
 }
 
 const left = (t, start) => Math.max(0, ((t - start) / HOUR) * PX_PER_HOUR);
@@ -119,17 +146,32 @@ function barClass(b) {
 
 function bar(b, start, end) {
   const s = b.sector;
-  const title = `${s.flight} · ${s.dep} → ${s.arr} · ${b.entry.duty}\n${hourText(b.from)}–${hourText(b.to)} · tap to edit crew, drag onto another row to move it`;
-  return `<div class="lr-bar ${barClass(b)}" style="left:${left(Math.max(b.from, start), start)}px;width:${widthPx(
-    b.from,
-    b.to,
+  const title = `${s.flight} · ${s.dep} → ${s.arr} · ${b.entry.duty}\n${hourText(b.from)}–${hourText(b.to)} · tap to edit crew, drag onto another row to move it${
+    b.conflict ? `\n⚠ ${cantFlyReason(b.entry.user_id, s.id)}` : ''
+  }`;
+  return `<div class="lr-bar ${barClass(b)}${b.conflict ? ' conflict' : ''}" style="left:${left(
+    Math.max(b.from, start),
+    start,
+  )}px;width:${widthPx(b.from, b.to, start, end)}px" role="button" tabindex="0" draggable="true" data-act="editSector" data-sector="${esc(
+    s.id,
+  )}" data-roster="${esc(b.entry.id)}" title="${esc(title)}">
+    <span class="lr-bar-t">${b.conflict ? icon('alert') : ''}${esc(b.entry.duty)}</span>
+    <span class="lr-bar-s">${esc(s.flight)} · ${esc(s.dep)}–${esc(s.arr)}</span>
+  </div>`;
+}
+
+// A sector this person said they can't fly, drawn on their row so ops can see
+// it without opening their availability. Not a roster row, so not draggable.
+function unavailBlock(u, start, end) {
+  const s = u.sector;
+  const title = `${s.flight} · ${s.dep} → ${s.arr}\n${cantFlyReason(u.p.id, s.id)}`;
+  return `<div class="lr-unavail" style="left:${left(Math.max(u.from, start), start)}px;width:${widthPx(
+    u.from,
+    u.to,
     start,
     end,
-  )}px" role="button" tabindex="0" draggable="true" data-act="editSector" data-sector="${esc(s.id)}" data-roster="${esc(
-    b.entry.id,
-  )}" title="${esc(title)}">
-    <span class="lr-bar-t">${esc(b.entry.duty)}</span>
-    <span class="lr-bar-s">${esc(s.flight)} · ${esc(s.dep)}–${esc(s.arr)}</span>
+  )}px" title="${esc(title)}">
+    <span class="lr-unavail-s">CAN'T FLY</span>
   </div>`;
 }
 
@@ -165,14 +207,29 @@ function initials(name) {
   return (words[0][0] + words.at(-1)[0]).toUpperCase();
 }
 
-function row({ p, bars }, start, end) {
+function row({ p, bars, unavail }, start, end) {
   return `
     <div class="lr-row">
       <div class="lr-name"><span class="lr-avatar">${esc(initials(p.display_name))}</span>${esc(p.display_name)}</div>
       <div class="lr-track" style="width:${trackWidth(start, end)}px" data-user="${esc(p.id)}">
+        ${unavail.map((u) => unavailBlock(u, start, end)).join('')}
         ${bars.map((b) => bar(b, start, end)).join('')}
       </div>
     </div>`;
+}
+
+// What this candidate said about this sector, for the quick editor's
+// dropdown: the same words and priority order as the Admin roster's list.
+const CHOICE_RANK = { prefer: 0, available: 1, none: 2, unavailable: 3 };
+const CHOICE_WORD = {
+  prefer: 'asked for this sector',
+  available: 'available',
+  unavailable: "can't fly it",
+};
+function choiceLabel(userId, sectorId) {
+  const choice = prefOf(userId, sectorId) || 'none';
+  if (choice === 'none') return rules().unmarkedAvailable ? 'available (has not said)' : 'has not answered';
+  return CHOICE_WORD[choice];
 }
 
 // The crew-quick-edit card: every seat the sector needs, with a dropdown each,
@@ -182,14 +239,23 @@ function modal() {
   const s = state.sectors.find((x) => x.id === editingSectorId);
   if (!s) return '';
   const crew = crewOf(s);
-  const candidates = rosterable();
+  const candidates = [...rosterable()].sort(
+    (a, b) =>
+      (CHOICE_RANK[prefOf(a.id, s.id) || 'none'] ?? 2) - (CHOICE_RANK[prefOf(b.id, s.id) || 'none'] ?? 2) ||
+      a.display_name.localeCompare(b.display_name),
+  );
   const seatFields = seats(s)
     .map((duty) => {
       const holder = crew.find((r) => r.duty === duty);
       const elsewhere = new Set(crew.filter((r) => r.duty !== duty).map((r) => r.user_id));
       const options = candidates
         .filter((p) => !elsewhere.has(p.id) || p.id === holder?.user_id)
-        .map((p) => `<option value="${esc(p.id)}" ${p.id === holder?.user_id ? 'selected' : ''}>${esc(p.display_name)}</option>`)
+        .map(
+          (p) =>
+            `<option value="${esc(p.id)}" ${p.id === holder?.user_id ? 'selected' : ''}>${esc(p.display_name)} · ${esc(
+              choiceLabel(p.id, s.id),
+            )}</option>`,
+        )
         .join('');
       return `<label class="field">${esc(duty)}
         <select data-change="quickSeat" data-sector="${esc(s.id)}" data-duty="${esc(duty)}">
@@ -287,15 +353,23 @@ async function setSeat(sector, duty, userId) {
   });
 }
 
+// Duty rules a move would break, plus what the person said about the sector,
+// so dragging someone in asks about both before it saves.
+function warningsFor(userId, sector) {
+  const out = [...wouldBreak(userId, sector)];
+  if (cantFly(userId, sector.id)) out.push(cantFlyReason(userId, sector.id));
+  return out;
+}
+
 async function moveDuty(rosterId, targetUserId) {
   const entry = state.roster.find((r) => r.id === rosterId);
   if (!entry || entry.user_id === targetUserId) return;
   const sector = state.sectors.find((s) => s.id === entry.sector_id);
   if (!sector) return;
-  const breaks = wouldBreak(targetUserId, sector);
+  const warnings = warningsFor(targetUserId, sector);
   if (
-    breaks.length &&
-    !confirm(`Moving this to ${person(targetUserId)?.display_name || 'them'} breaks: ${breaks.join(', ')}. Move anyway?`)
+    warnings.length &&
+    !confirm(`Moving this to ${person(targetUserId)?.display_name || 'them'}: ${warnings.join(', ')}. Move anyway?`)
   ) {
     return;
   }
@@ -313,10 +387,10 @@ async function moveDuty(rosterId, targetUserId) {
 async function fillSeat(sectorId, duty, targetUserId) {
   const sector = state.sectors.find((s) => s.id === sectorId);
   if (!sector || !targetUserId) return;
-  const breaks = wouldBreak(targetUserId, sector);
+  const warnings = warningsFor(targetUserId, sector);
   if (
-    breaks.length &&
-    !confirm(`Rostering ${person(targetUserId)?.display_name || 'them'} breaks: ${breaks.join(', ')}. Roster them anyway?`)
+    warnings.length &&
+    !confirm(`Rostering ${person(targetUserId)?.display_name || 'them'}: ${warnings.join(', ')}. Roster them anyway?`)
   ) {
     return;
   }
