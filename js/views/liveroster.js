@@ -8,6 +8,7 @@
 
 import { state } from '../store.js';
 import { saveRoster, deleteRoster } from '../api.js';
+import { problems } from '../autoroster.js';
 import { esc, zulu, zdate, simClock, simLocal, icon, rerender } from '../ui.js';
 import {
   rosterable,
@@ -22,7 +23,17 @@ import {
   syncTeam,
   prefOf,
   rules,
+  PILOT_DUTIES,
 } from '../ops.js';
+
+// Everything this person is currently rostered to fly, for the duty-rule
+// check: the same read the Admin roster's "Duty rules" card uses.
+function flownBy(userId) {
+  const byId = new Map(state.sectors.map((s) => [s.id, s]));
+  return state.roster
+    .filter((r) => r.user_id === userId && PILOT_DUTIES.includes(r.duty) && byId.has(r.sector_id))
+    .map((r) => byId.get(r.sector_id));
+}
 
 // Whether someone has, in effect, said they cannot fly a sector: either they
 // marked it unavailable, or the team requires an answer and they gave none.
@@ -74,8 +85,15 @@ function crewRows(start, end) {
     if (!byPerson.has(entry.user_id)) byPerson.set(entry.user_id, []);
     byPerson.get(entry.user_id).push(slot);
   }
+  const r = rules();
   return rosterable().map((p) => {
     const bars = (byPerson.get(p.id) || []).sort((a, b) => a.from - b.from);
+    // Whatever duty rule their whole rostered load breaks, same check the
+    // Admin roster's "Duty rules" card makes: not pinned to one leg, since a
+    // rest or duty-hours break is really about the pair or the run of them.
+    const flies = bars.some((b) => PILOT_DUTIES.includes(b.entry.duty));
+    const ruleBreaks = flies ? problems(flownBy(p.id), r) : [];
+    for (const b of bars) if (PILOT_DUTIES.includes(b.entry.duty)) b.ruleBreaks = ruleBreaks;
     return { p, bars, unavail: unavailBlocks(p, start, end, bars) };
   });
 }
@@ -146,17 +164,25 @@ function barClass(b) {
 
 function bar(b, start, end) {
   const s = b.sector;
+  const ruleBreaks = b.ruleBreaks || [];
+  // Can't-fly (red) outranks a duty-rule break (orange) when a bar is both;
+  // either way the tooltip says what is actually wrong.
+  const flag = b.conflict ? 'conflict' : ruleBreaks.length ? 'rule-break' : '';
+  const warnings = [
+    ...(b.conflict ? [cantFlyReason(b.entry.user_id, s.id)] : []),
+    ...ruleBreaks,
+  ];
   const title = `${s.flight} · ${s.dep} → ${s.arr} · ${b.entry.duty}\n${hourText(b.from)}–${hourText(b.to)} · tap to edit crew, drag onto another row to move it${
-    b.conflict ? `\n⚠ ${cantFlyReason(b.entry.user_id, s.id)}` : ''
+    warnings.length ? `\n⚠ ${warnings.join('\n⚠ ')}` : ''
   }`;
-  return `<div class="lr-bar ${barClass(b)}${b.conflict ? ' conflict' : ''}" style="left:${left(
+  return `<div class="lr-bar ${barClass(b)}${flag ? ` ${flag}` : ''}" style="left:${left(
     Math.max(b.from, start),
     start,
   )}px;width:${widthPx(b.from, b.to, start, end)}px" role="button" tabindex="0" draggable="true" data-act="editSector" data-sector="${esc(
     s.id,
   )}" data-roster="${esc(b.entry.id)}" title="${esc(title)}">
-    <span class="lr-bar-t">${b.conflict ? icon('alert') : ''}${esc(b.entry.duty)}</span>
-    <span class="lr-bar-s">${esc(s.flight)} · ${esc(s.dep)}–${esc(s.arr)}</span>
+    <span class="lr-bar-t">${flag ? icon('alert') : ''}${esc(s.flight)} · ${esc(s.dep)}–${esc(s.arr)}</span>
+    <span class="lr-bar-s">${esc(b.entry.duty)}</span>
   </div>`;
 }
 
@@ -175,28 +201,53 @@ function unavailBlock(u, start, end) {
   </div>`;
 }
 
+const CHIP_H = 36;
+const CHIP_GAP = 6;
+const chipTop = (lane) => 8 + lane * (CHIP_H + CHIP_GAP);
+const unrosteredHeight = (lanes) => (lanes ? 16 + lanes * CHIP_H + (lanes - 1) * CHIP_GAP : 54);
+
 // An unfilled seat, somewhere in the window: not tied to a roster row at all,
 // just a sector and a duty it still needs. Dragged onto a crew row, it fills
 // it; dropped back here, nothing happens because it was never filled.
+//
+// Drawn on the timeline rather than listed, so it reads in line with every
+// other duty; packed into lanes like overlapping appointments, so two seats
+// open on the same sector at once stack instead of hiding each other.
 function openSeatChips(start, end) {
   const list = [];
   for (const s of state.sectors) {
-    const std = new Date(s.std).getTime();
-    const sta = new Date(s.sta).getTime();
-    if (sta < start || std > end) continue;
-    for (const duty of openSeats(s)) list.push({ sector: s, duty, std });
+    const from = new Date(s.std).getTime();
+    const to = new Date(s.sta).getTime();
+    if (to < start || from > end) continue;
+    for (const duty of openSeats(s)) list.push({ sector: s, duty, from, to, lane: 0 });
   }
-  return list.sort((a, b) => a.std - b.std);
+  list.sort((a, b) => a.from - b.from);
+  const laneEnds = [];
+  for (const c of list) {
+    let lane = laneEnds.findIndex((endsAt) => endsAt <= c.from);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(0);
+    }
+    laneEnds[lane] = c.to;
+    c.lane = lane;
+  }
+  return { list, lanes: laneEnds.length };
 }
 
-function chip(c) {
+function chip(c, start, end) {
   const s = c.sector;
   const title = `${s.flight} · ${s.dep} → ${s.arr} needs a ${c.duty}\nDrag onto a crew row to roster them, or tap to pick from a list.`;
-  return `<div class="lr-chip" role="button" tabindex="0" draggable="true" data-act="editSector" data-sector="${esc(
+  return `<div class="lr-chip" style="left:${left(Math.max(c.from, start), start)}px;width:${widthPx(
+    c.from,
+    c.to,
+    start,
+    end,
+  )}px;top:${chipTop(c.lane)}px" role="button" tabindex="0" draggable="true" data-act="editSector" data-sector="${esc(
     s.id,
   )}" data-open-sector="${esc(s.id)}" data-open-duty="${esc(c.duty)}" title="${esc(title)}">
+    <span class="lr-chip-flight">${esc(s.flight)} · ${esc(s.dep)}–${esc(s.arr)}</span>
     <span class="lr-chip-duty">${esc(c.duty)}</span>
-    <span class="lr-chip-flight">${esc(s.flight)} · ${esc(s.dep)}–${esc(s.arr)} · ${esc(hourText(c.std))}</span>
   </div>`;
 }
 
@@ -305,34 +356,31 @@ export function renderRoster() {
                   <div class="lr-corner">Name</div>
                   ${header(start, end)}
                 </div>
+                ${unrosteredRow(start, end)}
                 ${rows.map((r) => row(r, start, end)).join('')}
               </div>
             </div>
-            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, drag it onto another row to move that duty to them, or drag it down into Unrostered to clear the seat.</p>`
+            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, drag it onto another row to move that duty to them, or drag it up into Unrostered to clear the seat.</p>`
           : `<p class="note">Nobody is rostered in this window.</p>`
       }
     </section>
-    ${unrostered(start, end)}
     ${modal()}`;
 }
 
-// Every empty seat in the window, in one place: drag a chip onto a crew row
-// to fill it, or drag a bar from the timeline back in here to clear it.
-function unrostered(start, end) {
-  const chips = openSeatChips(start, end);
+// Every empty seat in the window, drawn in its own row at the same place on
+// the timeline as the sector it belongs to: drag a chip down onto a crew row
+// to fill it, or drag a bar up into this row to clear it.
+function unrosteredRow(start, end) {
+  const { list: chips, lanes } = openSeatChips(start, end);
   return `
-    <section class="card">
-      <div class="card-head"><h2>Unrostered</h2><span class="badge ${chips.length ? 'warn' : 'ok'}">${
-        chips.length ? `${chips.length} OPEN` : 'ALL FILLED'
-      }</span></div>
-      <div class="lr-chips" id="lr-unrostered">
-        ${
-          chips.length
-            ? chips.map(chip).join('')
-            : '<p class="tiny">Every seat in this window is filled. Drag a bar here to take someone off a sector.</p>'
-        }
+    <div class="lr-row lr-row-unrostered">
+      <div class="lr-name">Unrostered${chips.length ? ` <span class="badge warn">${chips.length}</span>` : ''}</div>
+      <div class="lr-track" id="lr-unrostered" style="width:${trackWidth(start, end)}px;height:${unrosteredHeight(
+        lanes,
+      )}px">
+        ${chips.map((c) => chip(c, start, end)).join('')}
       </div>
-    </section>`;
+    </div>`;
 }
 
 // Put someone in a seat, swap them, or clear it. Rules are not enforced here:

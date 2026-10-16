@@ -2021,11 +2021,25 @@ body.editor .tabs a[data-tab='ops'] {
   background: rgba(239, 68, 68, 0.22);
   border-color: var(--bad);
 }
-.lr-bar.conflict .lr-bar-t {
+.lr-bar.conflict .lr-bar-s {
   color: var(--bad);
 }
 .lr-bar.conflict .icon {
   color: var(--bad);
+  margin-right: 2px;
+}
+/* Rostered, and flyable, but their load breaks a duty rule (rest, duty
+   hours, sectors without a break, back-of-clock spacing): orange, a rank
+   below the red of a can't-fly clash. */
+.lr-bar.rule-break {
+  background: rgba(240, 166, 60, 0.22);
+  border-color: var(--warn);
+}
+.lr-bar.rule-break .lr-bar-s {
+  color: var(--warn);
+}
+.lr-bar.rule-break .icon {
+  color: var(--warn);
   margin-right: 2px;
 }
 .lr-bar-t {
@@ -2083,33 +2097,32 @@ body.editor .tabs a[data-tab='ops'] {
   }
 }
 
-/* Unrostered: every empty seat in the window as a chip, dragged onto a crew
-   row to fill it, or the target when a bar is dragged off the timeline to
-   clear a seat. */
-.lr-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-height: 48px;
-  padding: 2px;
-  border-radius: var(--r-sm);
-  transition: background-color 0.12s ease;
+/* Unrostered: every empty seat in the window as a chip, drawn on the
+   timeline at the same place as the sector it belongs to, so it reads in
+   line with everyone else's duties rather than off in a list somewhere.
+   Dragged onto a crew row to fill it, or the target when a bar is dragged
+   off the timeline to clear a seat. */
+.lr-row-unrostered {
+  border-bottom: 2px solid var(--line);
+  background: rgba(240, 166, 60, 0.04);
 }
-.lr-chips.drop-target {
-  background: var(--accent-soft);
-  outline: 2px dashed var(--accent);
-  outline-offset: 2px;
+.lr-row-unrostered .lr-name {
+  background: rgba(240, 166, 60, 0.07);
+  gap: 6px;
 }
 .lr-chip {
+  position: absolute;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 1px;
-  padding: 6px 10px;
+  height: 36px;
+  padding: 0 8px;
   border-radius: var(--r-sm);
-  background: rgba(240, 166, 60, 0.14);
-  border: 1px solid rgba(240, 166, 60, 0.45);
+  background: rgba(240, 166, 60, 0.18);
+  border: 1px dashed rgba(240, 166, 60, 0.6);
+  overflow: hidden;
   cursor: grab;
-  max-width: 220px;
 }
 .lr-chip:hover {
   filter: brightness(1.12);
@@ -2120,14 +2133,16 @@ body.editor .tabs a[data-tab='ops'] {
 .lr-chip.dragging {
   opacity: 0.35;
 }
-.lr-chip-duty {
-  font-size: 0.74rem;
-  font-weight: 700;
-  color: var(--warn);
-}
 .lr-chip-flight {
-  font-size: 0.64rem;
-  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lr-chip-duty {
+  font-size: 0.6rem;
+  color: var(--warn);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
