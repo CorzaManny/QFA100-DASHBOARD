@@ -44,6 +44,8 @@ const cantFly = (userId, sectorId) => {
 };
 const cantFlyReason = (userId, sectorId) =>
   prefOf(userId, sectorId) === 'unavailable' ? "Said they can't fly this sector" : 'Has not said they are available';
+// The short form for a block's own label; the full sentence stays in the tooltip.
+const cantFlyShort = (userId, sectorId) => (prefOf(userId, sectorId) === 'unavailable' ? 'Unavailable' : 'No answer');
 
 // One screen's worth of the timeline: a day either side of "now" by default,
 // moved a day at a time.
@@ -98,10 +100,15 @@ function crewRows(start, end) {
   });
 }
 
+// A short, specific label for a hint block: the real rule text when there is
+// one, a short word otherwise. The full list stays in the tooltip.
+const breakLabel = (reasons) => reasons[0] + (reasons.length > 1 ? ` (+${reasons.length - 1} more)` : '');
+
 // Sectors in the window this person is not already on, but putting them on
-// one would cost something: red if they can't fly it at all, orange if they
-// could but it would break a duty rule (rest, duty hours, a sector too many).
-// Can't-fly wins when both are true, same as an already-rostered bar.
+// one says something: red if they can't fly it at all, orange if they could
+// but it would break a duty rule, green if they asked for it. Red beats
+// orange beats green when more than one is true, same priority an
+// already-rostered bar uses between can't-fly and a rule break.
 function hintBlocks(p, start, end, bars) {
   const busy = new Set(bars.map((b) => b.sector.id));
   const out = [];
@@ -111,11 +118,17 @@ function hintBlocks(p, start, end, bars) {
     const to = new Date(s.sta).getTime();
     if (to < start || from > end) continue;
     if (cantFly(p.id, s.id)) {
-      out.push({ p, sector: s, from, to, kind: 'unavail', reasons: [cantFlyReason(p.id, s.id)] });
+      out.push({ p, sector: s, from, to, kind: 'unavail', reasons: [cantFlyReason(p.id, s.id)], label: cantFlyShort(p.id, s.id) });
       continue;
     }
     const breaks = wouldBreak(p.id, s);
-    if (breaks.length) out.push({ p, sector: s, from, to, kind: 'break', reasons: breaks });
+    if (breaks.length) {
+      out.push({ p, sector: s, from, to, kind: 'break', reasons: breaks, label: breakLabel(breaks) });
+      continue;
+    }
+    if (prefOf(p.id, s.id) === 'prefer') {
+      out.push({ p, sector: s, from, to, kind: 'prefer', reasons: ['Asked for this sector'], label: 'Prefers this' });
+    }
   }
   return out;
 }
@@ -193,20 +206,19 @@ function bar(b, start, end) {
   </div>`;
 }
 
-// A sector this person is not on, drawn on their row to say why putting them
-// there would cost something: red and they can't fly it at all, orange and
-// it would break a duty rule. Not a roster row, so not draggable.
+// A sector this person is not on, drawn on their row to say what putting
+// them there means: red and they can't fly it, orange and it would break a
+// duty rule, green and they asked for it. Not a roster row, so not draggable.
 function hintBlock(u, start, end) {
   const s = u.sector;
   const title = `${s.flight} · ${s.dep} → ${s.arr}\n${u.reasons.join('\n')}`;
-  const label = u.reasons[0] + (u.reasons.length > 1 ? ` (+${u.reasons.length - 1} more)` : '');
   return `<div class="lr-unavail ${u.kind}" style="left:${left(Math.max(u.from, start), start)}px;width:${widthPx(
     u.from,
     u.to,
     start,
     end,
   )}px" title="${esc(title)}">
-    <span class="lr-unavail-s">${esc(label)}</span>
+    <span class="lr-unavail-s">${esc(u.label)}</span>
   </div>`;
 }
 
@@ -369,7 +381,7 @@ export function renderRoster() {
                 ${rows.map((r) => row(r, start, end)).join('')}
               </div>
             </div>
-            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, drag it onto another row to move that duty to them, or drag it up into Unrostered to clear the seat. A striped red space is a sector someone can't fly; striped orange is a sector they could, but it would break a duty rule.</p>`
+            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, drag it onto another row to move that duty to them, or drag it up into Unrostered to clear the seat. A striped red space is a sector someone can't fly; striped orange is a sector they could, but it would break a duty rule; solid green is a sector they asked for and nobody has put them on yet.</p>`
           : `<p class="note">Nobody is rostered in this window.</p>`
       }
     </section>

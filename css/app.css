@@ -2099,6 +2099,15 @@ body.editor .tabs a[data-tab='ops'] {
 .lr-unavail.break .lr-unavail-s {
   color: var(--warn);
 }
+/* Green, and solid rather than striped: not a warning, an opportunity -
+   they asked for this sector and nobody has put them on it yet. */
+.lr-unavail.prefer {
+  background: rgba(46, 194, 126, 0.14);
+  border: 1px solid rgba(46, 194, 126, 0.4);
+}
+.lr-unavail.prefer .lr-unavail-s {
+  color: var(--ok);
+}
 .lr-unavail-s {
   font-size: 0.6rem;
   font-weight: 700;
