@@ -47,26 +47,48 @@ const cantFlyReason = (userId, sectorId) =>
 // The short form for a block's own label; the full sentence stays in the tooltip.
 const cantFlyShort = (userId, sectorId) => (prefOf(userId, sectorId) === 'unavailable' ? 'Unavailable' : 'No answer');
 
-// One screen's worth of the timeline: a day either side of "now" by default,
-// moved a day at a time.
-const WINDOW_HOURS = 24;
+// One screen's worth of the timeline: one calendar day of the event (UTC),
+// picked from a "Day 1", "Day 2"... list rather than today's date, since the
+// event's own days are what the schedule actually runs on.
 const PX_PER_HOUR = 100;
 const MINUTE = 60000;
 const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 
-// How far the window has been moved from today, in whole days.
-let dayOffset = 0;
+// Which event day is picked, by index into eventDays(). null means "whichever
+// day 'now' falls in", worked out fresh each time so it tracks the clock
+// until somebody picks a day by hand.
+let dayIndex = null;
 // 'zulu' or 'local': which clock the hour labels and ranges are read in.
 let timeMode = 'zulu';
 // The sector whose crew is open for a quick edit, if any.
 let editingSectorId = null;
 let error = '';
 
+// Every UTC calendar day the published schedule touches, earliest first.
+// With no sectors yet, today is the only day there is.
+function eventDays() {
+  if (!state.sectors.length) return [Math.floor(Date.now() / DAY) * DAY];
+  const times = state.sectors.map((s) => new Date(s.std).getTime());
+  const first = Math.floor(Math.min(...times) / DAY) * DAY;
+  const last = Math.floor(Math.max(...times) / DAY) * DAY;
+  const days = [];
+  for (let t = first; t <= last; t += DAY) days.push(t);
+  return days;
+}
+
+function currentDayIndex(days) {
+  if (dayIndex != null) return Math.min(Math.max(dayIndex, 0), days.length - 1);
+  const now = Date.now();
+  const idx = days.findIndex((d) => now < d + DAY);
+  return idx === -1 ? days.length - 1 : Math.max(idx, 0);
+}
+
 function windowRange() {
-  const base = new Date();
-  base.setUTCHours(0, 0, 0, 0);
-  const start = base.getTime() + dayOffset * 24 * HOUR - 3 * HOUR;
-  return { start, end: start + WINDOW_HOURS * HOUR };
+  const days = eventDays();
+  const idx = currentDayIndex(days);
+  const start = days[idx];
+  return { start, end: start + DAY, days, idx };
 }
 
 // Every rosterable person, in the team's own order, with whatever duty rows
@@ -150,7 +172,7 @@ function hourTicks(start, end) {
 // The hour label, in whichever clock is selected.
 const hourText = (t) => (timeMode === 'zulu' ? zulu(t) : simClock(t));
 const rangeText = (start, end) =>
-  timeMode === 'zulu' ? `${zdate(start)} – ${zdate(end - MINUTE)} UTC` : `${simLocal(start)} – ${simLocal(end - MINUTE)}`;
+  timeMode === 'zulu' ? `${zdate(start)} UTC` : `${simLocal(start)} – ${simLocal(end - MINUTE)}`;
 
 function header(start, end) {
   const ticks = hourTicks(start, end);
@@ -359,21 +381,29 @@ function modal() {
     </div>`;
 }
 
+// "Day 1", "Day 2"... one option per day the schedule runs, so picking a day
+// means picking a leg of the event rather than hunting for a date.
+function daySelect(days, idx) {
+  const options = days
+    .map((d, i) => `<option value="${i}" ${i === idx ? 'selected' : ''}>Day ${i + 1} · ${esc(zdate(d))}</option>`)
+    .join('');
+  return `<select data-change="day" aria-label="Day">${options}</select>`;
+}
+
 export function renderRoster() {
-  const { start, end } = windowRange();
+  const { start, end, days, idx } = windowRange();
   const rows = crewRows(start, end);
   return `
     <section class="card lr-card">
       <div class="lr-toolbar">
+        <div class="btn-row">
+          ${daySelect(days, idx)}
+          <button class="btn ghost small" type="button" data-act="today">Today</button>
+        </div>
         <div class="tiny">${esc(rangeText(start, end))}</div>
         <div class="btn-row">
           <button class="btn ${timeMode === 'zulu' ? 'primary' : 'ghost'} small" type="button" data-act="timeZulu">UTC</button>
           <button class="btn ${timeMode === 'local' ? 'primary' : 'ghost'} small" type="button" data-act="timeLocal">Local</button>
-        </div>
-        <div class="btn-row">
-          <button class="btn ghost small" type="button" data-act="today">Today</button>
-          <button class="icon-btn" type="button" data-act="prev" aria-label="Previous day">${icon('back')}</button>
-          <button class="icon-btn" type="button" data-act="next" aria-label="Next day">${icon('chevron')}</button>
         </div>
       </div>
       ${rows.some((r) => r.bars.length) ? '' : '<p class="note" style="margin:0 16px 14px">Nobody has a sector in this window; the full team is listed below.</p>'}
@@ -495,16 +525,9 @@ async function unassign(rosterId) {
 }
 
 export const rosterActions = {
-  prev() {
-    dayOffset -= 1;
-    rerender();
-  },
-  next() {
-    dayOffset += 1;
-    rerender();
-  },
+  // Back to whichever day "now" falls in, tracking the clock again from here.
   today() {
-    dayOffset = 0;
+    dayIndex = null;
     rerender();
   },
   timeZulu() {
@@ -529,6 +552,10 @@ export const rosterActions = {
 };
 
 export const rosterChanges = {
+  day(el) {
+    dayIndex = Number(el.value);
+    rerender();
+  },
   quickSeat(el) {
     const s = state.sectors.find((x) => x.id === el.dataset.sector);
     if (!s) return;
@@ -568,9 +595,9 @@ function acceptDrop(zone) {
 export function mountedRoster(root) {
   const scroll = root.querySelector('#lr-scroll');
   if (scroll) {
-    const { start } = windowRange();
+    const { start, end } = windowRange();
     const now = Date.now();
-    if (now >= start) scroll.scrollLeft = Math.max(0, left(now, start) - 140);
+    if (now >= start && now <= end) scroll.scrollLeft = Math.max(0, left(now, start) - 140);
   }
   for (const b of root.querySelectorAll('.lr-bar')) {
     b.addEventListener('dragstart', (e) => {

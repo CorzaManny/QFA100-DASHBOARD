@@ -58,11 +58,17 @@ import {
   syncTeam,
   pendingPeople,
 } from '../ops.js';
+import { renderRoster, mountedRoster, rosterActions, rosterChanges } from './liveroster.js';
 
 let error = '';
 let result = '';
 let gapNote = '';
 let filter = 'all';
+// Which of the Roster tab's two views is showing: the sector list, or the
+// Live Roster timeline.
+let rosterView = 'list';
+// Wider main column while the timeline needs the room; app.js reads this.
+export const wide = (args) => rosterView === 'timeline' && (!args[0] || args[0] === 'auto');
 
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -526,8 +532,18 @@ function swapsCard() {
     </section>`;
 }
 
+// The toggle between the sector-by-sector list and the Live Roster timeline.
+function rosterToggle() {
+  return `<nav class="seg ops-toggle" aria-label="Roster view">
+    <button type="button" class="${rosterView === 'list' ? 'on' : ''}" data-act="viewList">List</button>
+    <button type="button" class="${rosterView === 'timeline' ? 'on' : ''}" data-act="viewTimeline">Live Roster</button>
+  </nav>`;
+}
+
 // The list of sectors to roster. Open one to crew it.
 function rosterEditor() {
+  if (rosterView === 'timeline') return `${tabs('roster')}${rosterToggle()}${renderRoster()}`;
+
   const now = Date.now();
   const upcoming = sortedSectors().filter((s) => new Date(s.sta) > now);
   const short = upcoming.filter(pilotsShort);
@@ -586,6 +602,7 @@ function rosterEditor() {
     filter === 'flown' ? 'No sectors have been flown yet.' : 'Every upcoming sector has its pilots.';
   return `
     ${tabs('roster')}
+    ${rosterToggle()}
     ${state_}
     ${auto_}
     ${swapsCard()}
@@ -912,6 +929,7 @@ export const changes = {
     el.disabled = true;
     return change(() => setRole(el.dataset.id, el.value));
   },
+  ...rosterChanges,
 };
 
 export const forms = {
@@ -1127,4 +1145,19 @@ export const actions = {
     el.disabled = true;
     return change(() => deleteRoster(el.dataset.id));
   },
+  viewList() {
+    rosterView = 'list';
+    rerender();
+  },
+  viewTimeline() {
+    rosterView = 'timeline';
+    rerender();
+  },
+  ...rosterActions,
 };
+
+// The Live Roster timeline needs its drag-and-drop wired up once it is in
+// the DOM; nothing else on this page needs a mount step.
+export function mounted(root, args = []) {
+  if (rosterView === 'timeline' && (!args[0] || args[0] === 'auto')) mountedRoster(root);
+}

@@ -52,6 +52,8 @@ let error = '';
 // Which of the board's two views is showing: the status cards, or the Live
 // Roster timeline.
 let view = 'board';
+// Wider main column while the timeline needs the room; app.js reads this.
+export const wide = () => view === 'roster';
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
 
 const upcoming = (now) => sortedSectors().filter((s) => new Date(s.std) > now);
