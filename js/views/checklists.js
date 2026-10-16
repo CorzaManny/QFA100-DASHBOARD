@@ -4,7 +4,7 @@ import { state, save } from '../store.js';
 import { esc, icon, rerender } from '../ui.js';
 import { CHECKLISTS, CHECKLIST_KINDS } from '../data/checklists.js';
 import { saveChecklistStatus } from '../api.js';
-import { me, syncTeam, syncChecklistStatus, teamChecklistStatus } from '../ops.js';
+import { me, syncChecklistStatus, teamChecklistStatus } from '../ops.js';
 
 const done = (cl) => cl.items.filter((_, i) => state.checks[cl.id]?.[cl.progressKeys?.[i] ?? i]).length;
 // Complete on this device, or completed on the other EFB account and synced
@@ -17,13 +17,20 @@ const trail = [];
 // Only the fact a checklist is complete is shared between the two EFB
 // accounts, not every tick - so broadcast fires once on the transition to
 // complete (and once back, on an explicit reset), never on every toggle.
+// The local cache is updated straight away: without this, resetting a
+// checklist that the *other* EFB had marked complete left complete(cl)
+// reading the stale cached status as still true until the next poll caught up.
 function syncCompletion(cl, isComplete) {
+  const existing = (state.checklistStatus ??= []).find((c) => c.checklist_id === cl.id);
+  if (existing) existing.complete = isComplete;
+  else state.checklistStatus.push({ checklist_id: cl.id, complete: isComplete });
+  save();
   saveChecklistStatus(cl.id, {
     complete: isComplete,
     completed_by: isComplete ? me()?.display_name || '' : '',
     completed_at: isComplete ? new Date().toISOString() : null,
   })
-    .then(syncTeam)
+    .then(syncChecklistStatus)
     .catch(() => {});
 }
 
@@ -409,7 +416,7 @@ export const actions = {
   },
   reset() {
     const { cl } = active(location.hash.split('/').slice(2));
-    const was = cl && localComplete(cl);
+    const was = cl && complete(cl);
     delete state.checks[cl?.id];
     if (was) syncCompletion(cl, false);
     save();
@@ -418,6 +425,12 @@ export const actions = {
   },
   resetAll() {
     if (!confirm('Reset every checklist for a new flight?')) return;
+    // Clears the shared completion too - otherwise any checklist the other
+    // EFB had finished (or this one, before this device last synced) kept
+    // showing as done, since complete() also reads the cached team status.
+    for (const cl of CHECKLISTS) {
+      if (complete(cl)) syncCompletion(cl, false);
+    }
     state.checks = {};
     trail.length = 0;
     save();
