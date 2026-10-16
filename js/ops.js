@@ -1,7 +1,7 @@
 // Operational logic: airports, distances, the VATSIM feed, schedule maths.
 
 import { state, save } from './store.js';
-import { configured, getSession, loadAll, saveBriefing, fetchTaf } from './api.js';
+import { configured, getSession, loadAll, saveBriefing, fetchTaf, fetchChecklistStatus } from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
 import { running as runningOf, reportAt as reportAtOf } from './running.js';
@@ -296,6 +296,20 @@ export async function syncTeam() {
       state.defects = defects;
     }
     state.sharedLog = !!defects;
+    save();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A narrow, fast poll of just checklist_status - the Checklists page uses
+// this to see the other EFB's completion within a couple of seconds, rather
+// than waiting on the full ten-second team sync (which pulls everything).
+export async function syncChecklistStatus() {
+  if (!configured || !getSession()) return false;
+  try {
+    state.checklistStatus = await fetchChecklistStatus();
     save();
     return true;
   } catch {

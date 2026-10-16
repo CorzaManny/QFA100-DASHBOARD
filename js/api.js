@@ -288,6 +288,8 @@ export const saveActual = (sectorId, fields) =>
 // Broadcasting that a checklist is complete (or no longer is), one row per
 // checklist. Only the completion fact is shared; tick-by-tick progress stays
 // on the device, in state.checks.
+export const fetchChecklistStatus = () => rest('GET', 'checklist_status?select=*');
+
 export const saveChecklistStatus = (checklistId, fields) =>
   rest(
     'POST',

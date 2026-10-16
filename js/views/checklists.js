@@ -4,7 +4,7 @@ import { state, save } from '../store.js';
 import { esc, icon, rerender } from '../ui.js';
 import { CHECKLISTS, CHECKLIST_KINDS } from '../data/checklists.js';
 import { saveChecklistStatus } from '../api.js';
-import { me, syncTeam, teamChecklistStatus } from '../ops.js';
+import { me, syncTeam, syncChecklistStatus, teamChecklistStatus } from '../ops.js';
 
 const done = (cl) => cl.items.filter((_, i) => state.checks[cl.id]?.[cl.progressKeys?.[i] ?? i]).length;
 // Complete on this device, or completed on the other EFB account and synced
@@ -290,7 +290,30 @@ export function render(args) {
     <p class="tiny center">Boeing 737NG checklists. For flight simulation use only.</p>`;
 }
 
+// Polls checklist_status every couple of seconds, but only while the
+// Checklists page is actually open - the other EFB's completion then shows
+// up in a couple of seconds instead of waiting on the ten-second team sync.
+// Stops itself the moment the page is left, rather than running forever.
+let statusPoll = null;
+let polling = false;
+function pollStatus() {
+  if (!location.hash.startsWith('#/checklists')) {
+    clearInterval(statusPoll);
+    statusPoll = null;
+    return;
+  }
+  if (polling || document.visibilityState !== 'visible') return;
+  polling = true;
+  const before = JSON.stringify(state.checklistStatus);
+  syncChecklistStatus()
+    .then((ok) => {
+      if (ok && JSON.stringify(state.checklistStatus) !== before && location.hash.startsWith('#/checklists')) rerender();
+    })
+    .finally(() => (polling = false));
+}
+
 export function mounted(root, args = []) {
+  if (!statusPoll) statusPoll = setInterval(pollStatus, 2000);
   const block = args[1];
   if (block) requestAnimationFrame(() => requestAnimationFrame(() => focusBlock(block)));
   const library = root.querySelector('.qrh-library');
