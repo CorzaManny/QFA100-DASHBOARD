@@ -50,7 +50,7 @@ let lastPoll = 0;
 const onDashboard = () => !location.hash || location.hash.startsWith('#/dashboard');
 // The ops board shows the same live position, so a poll there is worth the
 // same redraw.
-const watching = () => onDashboard() || location.hash.startsWith('#/ops') || location.hash.startsWith('#/liveroster');
+const watching = () => onDashboard() || location.hash.startsWith('#/ops');
 
 export async function poll(force = false) {
   if (busy || (!force && Date.now() - lastPoll < pollMs() - 5000)) return;

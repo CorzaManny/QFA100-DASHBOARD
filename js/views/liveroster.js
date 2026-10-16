@@ -1,26 +1,40 @@
-// Live roster: a Gantt-style timeline of who is on duty, sector by sector,
-// so ops staff can see the whole team's day at a glance instead of reading
-// it one sector at a time. Ops only — pilots already have their own roster.
+// Live roster: a Gantt-style timeline of who is on duty, sector by sector, so
+// ops staff can see the whole team's day at a glance instead of reading it one
+// sector at a time. A sub-view of the Ops board, not a route of its own.
+//
+// Tap a bar to open a quick crew editor for that sector; drag a bar onto
+// another row to move that duty to them, the same write the Admin roster
+// uses, just reached from the timeline instead of a dropdown list.
 
 import { state } from '../store.js';
-import { esc, zulu, zdate, icon, rerender } from '../ui.js';
+import { saveRoster, deleteRoster } from '../api.js';
+import { esc, zulu, zdate, simClock, simLocal, icon, rerender } from '../ui.js';
 import {
-  canEdit,
   rosterable,
   running,
   reportAt,
-  isDraft,
+  person,
+  crewOf,
+  seats,
+  wouldBreak,
+  defaultReport,
+  syncTeam,
 } from '../ops.js';
 
 // One screen's worth of the timeline: a day either side of "now" by default,
 // moved a day at a time.
 const WINDOW_HOURS = 24;
-const PX_PER_HOUR = 90;
+const PX_PER_HOUR = 100;
 const MINUTE = 60000;
 const HOUR = 60 * MINUTE;
 
 // How far the window has been moved from today, in whole days.
 let dayOffset = 0;
+// 'zulu' or 'local': which clock the hour labels and ranges are read in.
+let timeMode = 'zulu';
+// The sector whose crew is open for a quick edit, if any.
+let editingSectorId = null;
+let error = '';
 
 function windowRange() {
   const base = new Date();
@@ -30,7 +44,7 @@ function windowRange() {
 }
 
 // Everyone who could be on a sector, with the duty rows that fall in this
-// window attached, worst (earliest) first.
+// window attached, earliest first.
 function crewRows(start, end) {
   const run = running();
   const bySector = new Map(state.sectors.map((s) => [s.id, s]));
@@ -42,9 +56,9 @@ function crewRows(start, end) {
     const from = run.trusted && row ? reportAt(entry, row) : new Date(entry.report_at).getTime();
     const to = run.trusted && row ? row.estOn : new Date(sector.sta).getTime();
     if (to < start || from > end) continue;
-    const bar = { entry, sector, from, to, state: row?.state || 'later' };
+    const slot = { entry, sector, from, to, state: row?.state || 'later' };
     if (!byPerson.has(entry.user_id)) byPerson.set(entry.user_id, []);
-    byPerson.get(entry.user_id).push(bar);
+    byPerson.get(entry.user_id).push(slot);
   }
   const rows = [];
   for (const p of rosterable()) {
@@ -56,8 +70,9 @@ function crewRows(start, end) {
 }
 
 const left = (t, start) => Math.max(0, ((t - start) / HOUR) * PX_PER_HOUR);
-const width = (from, to, start, end) =>
+const widthPx = (from, to, start, end) =>
   Math.max(6, ((Math.min(to, end) - Math.max(from, start)) / HOUR) * PX_PER_HOUR);
+const trackWidth = (start, end) => ((end - start) / HOUR) * PX_PER_HOUR;
 
 function hourTicks(start, end) {
   const out = [];
@@ -66,19 +81,19 @@ function hourTicks(start, end) {
   return out;
 }
 
-function dayLabel(t) {
-  const d = new Date(t);
-  return d.getUTCHours() === 0 ? zdate(t) : '';
-}
+// The hour label, in whichever clock is selected.
+const hourText = (t) => (timeMode === 'zulu' ? zulu(t) : simClock(t));
+const rangeText = (start, end) =>
+  timeMode === 'zulu' ? `${zdate(start)} – ${zdate(end - MINUTE)} UTC` : `${simLocal(start)} – ${simLocal(end - MINUTE)}`;
 
 function header(start, end) {
   const ticks = hourTicks(start, end);
   const marks = ticks
     .map((t) => {
-      const day = dayLabel(t);
+      const day = new Date(t).getUTCHours() === 0 ? zdate(t) : '';
       return `<div class="lr-tick" style="left:${left(t, start)}px">
         ${day ? `<div class="lr-day">${esc(day)}</div>` : ''}
-        <div class="lr-hour">${esc(zulu(t))}</div>
+        <div class="lr-hour">${esc(hourText(t))}</div>
       </div>`;
     })
     .join('');
@@ -87,7 +102,7 @@ function header(start, end) {
     now >= start && now <= end
       ? `<div class="lr-now-line" style="left:${left(now, start)}px"><span>NOW</span></div>`
       : '';
-  return `<div class="lr-head-track" style="width:${((end - start) / HOUR) * PX_PER_HOUR}px">${marks}${nowMark}</div>`;
+  return `<div class="lr-head-track" style="width:${trackWidth(start, end)}px">${marks}${nowMark}</div>`;
 }
 
 // A single CSS variable, set once on the grid, that every row's track reads
@@ -97,34 +112,26 @@ function nowLeftVar(start, end) {
   return now >= start && now <= end ? `${left(now, start)}px` : '-9999px';
 }
 
-function barClass(bar) {
-  if (bar.state === 'done') return 'done';
-  if (bar.state === 'airborne') return 'live';
+function barClass(b) {
+  if (b.state === 'done') return 'done';
+  if (b.state === 'airborne') return 'live';
   return 'plan';
 }
 
 function bar(b, start, end) {
   const s = b.sector;
-  const title = `${s.flight} · ${s.dep} → ${s.arr} · ${esc(b.entry.duty)}\n${zulu(b.from)}–${zulu(b.to)}Z`;
-  return `<a class="lr-bar ${barClass(b)}" style="left:${left(Math.max(b.from, start), start)}px;width:${width(
+  const title = `${s.flight} · ${s.dep} → ${s.arr} · ${b.entry.duty}\n${hourText(b.from)}–${hourText(b.to)} · tap to edit crew, drag onto another row to move it`;
+  return `<div class="lr-bar ${barClass(b)}" style="left:${left(Math.max(b.from, start), start)}px;width:${widthPx(
     b.from,
     b.to,
     start,
     end,
-  )}px" href="#/roster/${esc(s.id)}" title="${esc(title)}">
+  )}px" role="button" tabindex="0" draggable="true" data-act="editSector" data-sector="${esc(s.id)}" data-roster="${esc(
+    b.entry.id,
+  )}" title="${esc(title)}">
     <span class="lr-bar-t">${esc(s.flight)}</span>
     <span class="lr-bar-s">${esc(s.dep)}–${esc(s.arr)}</span>
-  </a>`;
-}
-
-function row({ p, bars }, start, end) {
-  return `
-    <div class="lr-row">
-      <div class="lr-name"><span class="lr-avatar">${esc(initials(p.display_name))}</span>${esc(p.display_name)}</div>
-      <div class="lr-track" style="width:${((end - start) / HOUR) * PX_PER_HOUR}px">
-        ${bars.map((b) => bar(b, start, end)).join('')}
-      </div>
-    </div>`;
+  </div>`;
 }
 
 function initials(name) {
@@ -134,25 +141,69 @@ function initials(name) {
   return (words[0][0] + words.at(-1)[0]).toUpperCase();
 }
 
-export function render() {
-  if (!canEdit()) {
-    return `<div class="page-head"><h1>Live roster</h1></div>
-      <section class="card"><p class="note">This page is for admins, dispatchers and operations.</p></section>`;
-  }
+function row({ p, bars }, start, end) {
+  return `
+    <div class="lr-row">
+      <div class="lr-name"><span class="lr-avatar">${esc(initials(p.display_name))}</span>${esc(p.display_name)}</div>
+      <div class="lr-track" style="width:${trackWidth(start, end)}px" data-user="${esc(p.id)}">
+        ${bars.map((b) => bar(b, start, end)).join('')}
+      </div>
+    </div>`;
+}
+
+// The crew-quick-edit card: every seat the sector needs, with a dropdown each,
+// the same write the Admin roster makes, just a tap away from the timeline.
+function modal() {
+  if (!editingSectorId) return '';
+  const s = state.sectors.find((x) => x.id === editingSectorId);
+  if (!s) return '';
+  const crew = crewOf(s);
+  const candidates = rosterable();
+  const seatFields = seats(s)
+    .map((duty) => {
+      const holder = crew.find((r) => r.duty === duty);
+      const elsewhere = new Set(crew.filter((r) => r.duty !== duty).map((r) => r.user_id));
+      const options = candidates
+        .filter((p) => !elsewhere.has(p.id) || p.id === holder?.user_id)
+        .map((p) => `<option value="${esc(p.id)}" ${p.id === holder?.user_id ? 'selected' : ''}>${esc(p.display_name)}</option>`)
+        .join('');
+      return `<label class="field">${esc(duty)}
+        <select data-change="quickSeat" data-sector="${esc(s.id)}" data-duty="${esc(duty)}">
+          <option value="">Not assigned</option>${options}
+        </select>
+      </label>`;
+    })
+    .join('');
+  return `
+    <div class="lr-modal-backdrop" data-act="closeModal">
+      <div class="lr-modal" data-act="none">
+        <div class="card-head">
+          <h2>${esc(s.flight)} · ${esc(s.dep)} → ${esc(s.arr)}</h2>
+          <button class="btn ghost small" type="button" data-act="closeModal">${icon('chevron')} Close</button>
+        </div>
+        <p class="tiny">${esc(zdate(s.std))} · ${esc(zulu(s.std))}–${esc(zulu(s.sta))}Z</p>
+        ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
+        <div class="lr-modal-seats">${seatFields}</div>
+        <p class="tiny">Changes save immediately. Dragging a bar onto another row does the same thing.</p>
+      </div>
+    </div>`;
+}
+
+export function renderRoster() {
   const { start, end } = windowRange();
   const rows = crewRows(start, end);
   return `
-    <div class="page-head">
-      <h1>Live roster</h1>
-      <span class="badge ${isDraft() ? 'warn' : 'ok'}">ROSTER ${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span>
-    </div>
     <section class="card lr-card">
       <div class="lr-toolbar">
-        <div class="tiny">${esc(zdate(start))} – ${esc(zdate(end - MINUTE))}</div>
+        <div class="tiny">${esc(rangeText(start, end))}</div>
         <div class="btn-row">
-          <button class="btn ghost small" data-act="today">Today</button>
-          <button class="btn ghost small icon-btn" data-act="prev" aria-label="Previous day">${icon('back')}</button>
-          <button class="btn ghost small icon-btn" data-act="next" aria-label="Next day">${icon('chevron')}</button>
+          <button class="btn ${timeMode === 'zulu' ? 'primary' : 'ghost'} small" type="button" data-act="timeZulu">UTC</button>
+          <button class="btn ${timeMode === 'local' ? 'primary' : 'ghost'} small" type="button" data-act="timeLocal">Local</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost small" type="button" data-act="today">Today</button>
+          <button class="icon-btn" type="button" data-act="prev" aria-label="Previous day">${icon('back')}</button>
+          <button class="icon-btn" type="button" data-act="next" aria-label="Next day">${icon('chevron')}</button>
         </div>
       </div>
       ${
@@ -166,13 +217,54 @@ export function render() {
                 ${rows.map((r) => row(r, start, end)).join('')}
               </div>
             </div>
-            <p class="tiny">Each bar is a report-to-debrief duty period; it follows the running delay once the day is live. Tap a bar to open that sector.</p>`
+            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, or drag it onto another row to move that duty to them.</p>`
           : `<p class="note">Nobody is rostered in this window.</p>`
       }
-    </section>`;
+    </section>
+    ${modal()}`;
 }
 
-export const actions = {
+// Put someone in a seat, swap them, or clear it. Rules are not enforced here:
+// ops may roster whoever they like, and the quick editor says what it would break.
+async function setSeat(sector, duty, userId) {
+  const crew = crewOf(sector);
+  const holder = crew.find((r) => r.duty === duty);
+  if (holder && holder.user_id !== userId) await deleteRoster(holder.id);
+  if (!userId) return;
+  const existing = crew.find((r) => r.user_id === userId);
+  await saveRoster({
+    sector_id: sector.id,
+    user_id: userId,
+    duty,
+    report_at: existing?.report_at || defaultReport(sector).toISOString(),
+    notes: existing?.notes || '',
+    auto: false,
+  });
+}
+
+async function moveDuty(rosterId, targetUserId) {
+  const entry = state.roster.find((r) => r.id === rosterId);
+  if (!entry || entry.user_id === targetUserId) return;
+  const sector = state.sectors.find((s) => s.id === entry.sector_id);
+  if (!sector) return;
+  const breaks = wouldBreak(targetUserId, sector);
+  if (
+    breaks.length &&
+    !confirm(`Moving this to ${person(targetUserId)?.display_name || 'them'} breaks: ${breaks.join(', ')}. Move anyway?`)
+  ) {
+    return;
+  }
+  error = '';
+  try {
+    await setSeat(sector, entry.duty, targetUserId);
+    await syncTeam();
+  } catch (err) {
+    error = err.message;
+  }
+  rerender();
+}
+
+export const rosterActions = {
   prev() {
     dayOffset -= 1;
     rerender();
@@ -185,15 +277,71 @@ export const actions = {
     dayOffset = 0;
     rerender();
   },
+  timeZulu() {
+    timeMode = 'zulu';
+    rerender();
+  },
+  timeLocal() {
+    timeMode = 'local';
+    rerender();
+  },
+  editSector(el) {
+    editingSectorId = el.dataset.sector;
+    error = '';
+    rerender();
+  },
+  closeModal() {
+    editingSectorId = null;
+    error = '';
+    rerender();
+  },
+  none() {},
 };
 
-// Bring "now" into view instead of leaving the operator to scroll for it.
-export function mounted() {
-  if (!canEdit()) return;
-  const el = document.getElementById('lr-scroll');
-  if (!el) return;
-  const { start } = windowRange();
-  const now = Date.now();
-  if (now < start) return;
-  el.scrollLeft = Math.max(0, left(now, start) - 120);
+export const rosterChanges = {
+  quickSeat(el) {
+    const s = state.sectors.find((x) => x.id === el.dataset.sector);
+    if (!s) return;
+    el.disabled = true;
+    error = '';
+    return setSeat(s, el.dataset.duty, el.value)
+      .then(syncTeam)
+      .catch((err) => {
+        error = err.message;
+      })
+      .then(rerender);
+  },
+};
+
+// Bring "now" into view, and wire up the drag-and-drop that the click
+// delegation in app.js does not cover.
+export function mountedRoster(root) {
+  const scroll = root.querySelector('#lr-scroll');
+  if (scroll) {
+    const { start } = windowRange();
+    const now = Date.now();
+    if (now >= start) scroll.scrollLeft = Math.max(0, left(now, start) - 140);
+  }
+  for (const b of root.querySelectorAll('.lr-bar')) {
+    b.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', b.dataset.roster);
+      e.dataTransfer.effectAllowed = 'move';
+      b.classList.add('dragging');
+    });
+    b.addEventListener('dragend', () => b.classList.remove('dragging'));
+  }
+  for (const t of root.querySelectorAll('.lr-track')) {
+    t.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      t.classList.add('drop-target');
+    });
+    t.addEventListener('dragleave', () => t.classList.remove('drop-target'));
+    t.addEventListener('drop', (e) => {
+      e.preventDefault();
+      t.classList.remove('drop-target');
+      const rosterId = e.dataTransfer.getData('text/plain');
+      if (rosterId) moveDuty(rosterId, t.dataset.user);
+    });
+  }
 }
