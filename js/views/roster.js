@@ -134,8 +134,8 @@ function openSeatsCard() {
     </section>`;
 }
 
-const stat = (label, value, sub = '') =>
-  `<div class="kv"><span>${label}</span><strong>${value}</strong>${sub ? `<span class="tiny">${sub}</span>` : ''}</div>`;
+const stat = (label, value, sub = '', cls = '') =>
+  `<div class="kv"><span>${label}</span><strong class="${cls}">${value}</strong>${sub ? `<span class="tiny">${sub}</span>` : ''}</div>`;
 
 // How much of the flying you've said you can do you have actually answered
 // for, so there is one number to chase toward 100% rather than reading the
@@ -144,10 +144,11 @@ function myStats(myId, upcoming) {
   const load = workload(myId);
   const answered = upcoming.filter((s) => prefOf(myId, s.id)).length;
   const pct = upcoming.length ? Math.round((answered / upcoming.length) * 100) : 100;
+  const sub = !upcoming.length ? 'No upcoming sectors' : pct === 100 ? 'All caught up' : `${answered} of ${upcoming.length} answered`;
   return `<div class="kvs">
     ${stat('Flight hours', load.hours.toFixed(1))}
     ${stat('Sectors', String(load.total))}
-    ${stat('Preferences answered', `${pct}%`, upcoming.length ? `${answered} of ${upcoming.length} upcoming` : 'no upcoming sectors')}
+    ${stat('Preferences', `${pct}%`, sub, pct === 100 ? 'ok-text' : upcoming.length ? 'warn-text' : '')}
   </div>`;
 }
 
