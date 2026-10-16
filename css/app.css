@@ -2051,17 +2051,13 @@ body.editor .tabs a[data-tab='ops'] {
 .lr-bar.prefer .lr-bar-s {
   color: var(--ok);
 }
-/* Both at once: breaks a rule, but they wanted it. Striped in both colours
-   rather than letting orange hide the green. */
+/* Both at once: breaks a rule, but they wanted it. Still read as the orange
+   rule-break first, with a clean green edge saying they asked for it,
+   rather than a barber-pole of both colours. */
 .lr-bar.rule-break.prefer {
-  background: repeating-linear-gradient(
-    135deg,
-    rgba(240, 166, 60, 0.26),
-    rgba(240, 166, 60, 0.26) 7px,
-    rgba(46, 194, 126, 0.26) 7px,
-    rgba(46, 194, 126, 0.26) 14px
-  );
+  background: rgba(240, 166, 60, 0.2);
   border-color: var(--warn);
+  box-shadow: inset 3px 0 0 var(--ok);
 }
 .lr-bar.rule-break.prefer .lr-bar-s {
   color: var(--warn);
@@ -2143,17 +2139,19 @@ body.editor .tabs a[data-tab='ops'] {
 .lr-unavail.prefer .lr-unavail-s {
   color: var(--ok);
 }
-/* Both at once: would break a rule, but they asked for this sector. Striped
-   in both colours together rather than orange hiding the green. */
+/* Both at once: would break a rule, but they asked for this sector. Still
+   the familiar orange stripe, with a clean green edge added rather than a
+   barber-pole of both colours. */
 .lr-unavail.break.prefer {
   background: repeating-linear-gradient(
     135deg,
-    rgba(240, 166, 60, 0.22),
-    rgba(240, 166, 60, 0.22) 7px,
-    rgba(46, 194, 126, 0.22) 7px,
-    rgba(46, 194, 126, 0.22) 14px
+    rgba(240, 166, 60, 0.1),
+    rgba(240, 166, 60, 0.1) 6px,
+    rgba(240, 166, 60, 0.2) 6px,
+    rgba(240, 166, 60, 0.2) 12px
   );
-  border: 1px dashed rgba(240, 166, 60, 0.5);
+  border: 1px dashed rgba(240, 166, 60, 0.45);
+  box-shadow: inset 3px 0 0 var(--ok);
 }
 .lr-unavail.break.prefer .lr-unavail-s {
   color: var(--warn);
