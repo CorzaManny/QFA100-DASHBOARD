@@ -9,7 +9,7 @@
 import { state } from '../store.js';
 import { saveRoster, deleteRoster } from '../api.js';
 import { problems } from '../autoroster.js';
-import { esc, zulu, zdate, simClock, simLocal, icon, rerender } from '../ui.js';
+import { esc, zulu, zdate, simClock, simLocal, SIM_TZ, icon, rerender } from '../ui.js';
 import {
   rosterable,
   running,
@@ -47,13 +47,38 @@ const cantFlyReason = (userId, sectorId) =>
 // The short form for a block's own label; the full sentence stays in the tooltip.
 const cantFlyShort = (userId, sectorId) => (prefOf(userId, sectorId) === 'unavailable' ? 'Unavailable' : 'No answer');
 
-// One screen's worth of the timeline: one calendar day of the event (UTC),
-// picked from a "Day 1", "Day 2"... list rather than today's date, since the
+// One screen's worth of the timeline: one calendar day of the event, picked
+// from a "Day 1", "Day 2"... list rather than today's date, since the
 // event's own days are what the schedule actually runs on.
 const PX_PER_HOUR = 100;
 const MINUTE = 60000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+
+// Sydney's current offset from UTC, in minutes: a short relay does not cross
+// a daylight-saving change, so one offset for the whole event is accurate
+// enough, and far simpler than redoing it per instant.
+const SIM_TZ_FORMAT = new Intl.DateTimeFormat('en-US', {
+  timeZone: SIM_TZ,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+function simOffsetMinutes(t = Date.now()) {
+  const p = Object.fromEntries(SIM_TZ_FORMAT.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+  return Math.round((asUTC - t) / MINUTE);
+}
+
+// "31 OCT" in Sydney's calendar, to label a day by the date it actually is
+// there - zdate's UTC date would be wrong once the day starts at local
+// midnight, which can fall on the previous UTC date.
+const SIM_DATE_LABEL = new Intl.DateTimeFormat('en-GB', { timeZone: SIM_TZ, day: '2-digit', month: 'short' });
+const localDateLabel = (t) => SIM_DATE_LABEL.format(new Date(t)).toUpperCase().replace(',', '');
 
 // Which event day is picked, by index into eventDays(). null means "whichever
 // day 'now' falls in", worked out fresh each time so it tracks the clock
@@ -65,13 +90,22 @@ let timeMode = 'zulu';
 let editingSectorId = null;
 let error = '';
 
-// Every UTC calendar day the published schedule touches, earliest first.
-// With no sectors yet, today is the only day there is.
+// Midnight on or before t, in whichever clock is selected: UTC midnight for
+// Zulu, Sydney midnight for Local. Shift into that clock's frame, floor to a
+// day, then shift back - so the grid always starts right on midnight,
+// whichever one is showing, instead of UTC midnight relabelled.
+function dayStart(t, offsetMs) {
+  return Math.floor((t + offsetMs) / DAY) * DAY - offsetMs;
+}
+
+// Every calendar day the published schedule touches, earliest first, in
+// whichever clock is selected. With no sectors yet, today is the only day.
 function eventDays() {
-  if (!state.sectors.length) return [Math.floor(Date.now() / DAY) * DAY];
+  const offsetMs = timeMode === 'local' ? simOffsetMinutes() * MINUTE : 0;
+  if (!state.sectors.length) return [dayStart(Date.now(), offsetMs)];
   const times = state.sectors.map((s) => new Date(s.std).getTime());
-  const first = Math.floor(Math.min(...times) / DAY) * DAY;
-  const last = Math.floor(Math.max(...times) / DAY) * DAY;
+  const first = dayStart(Math.min(...times), offsetMs);
+  const last = dayStart(Math.max(...times), offsetMs);
   const days = [];
   for (let t = first; t <= last; t += DAY) days.push(t);
   return days;
@@ -176,9 +210,12 @@ const rangeText = (start, end) =>
 
 function header(start, end) {
   const ticks = hourTicks(start, end);
+  // The window is exactly one day, so there is exactly one midnight to
+  // label: the left edge itself, whichever clock that midnight is in.
+  const dateLabel = timeMode === 'local' ? localDateLabel : zdate;
   const marks = ticks
     .map((t) => {
-      const day = new Date(t).getUTCHours() === 0 ? zdate(t) : '';
+      const day = t === start ? dateLabel(t) : '';
       return `<div class="lr-tick" style="left:${left(t, start)}px">
         ${day ? `<div class="lr-day">${esc(day)}</div>` : ''}
         <div class="lr-hour">${esc(hourText(t))}</div>
@@ -384,8 +421,9 @@ function modal() {
 // "Day 1", "Day 2"... one option per day the schedule runs, so picking a day
 // means picking a leg of the event rather than hunting for a date.
 function daySelect(days, idx) {
+  const dateLabel = timeMode === 'local' ? localDateLabel : zdate;
   const options = days
-    .map((d, i) => `<option value="${i}" ${i === idx ? 'selected' : ''}>Day ${i + 1} · ${esc(zdate(d))}</option>`)
+    .map((d, i) => `<option value="${i}" ${i === idx ? 'selected' : ''}>Day ${i + 1} · ${esc(dateLabel(d))}</option>`)
     .join('');
   return `<select data-change="day" aria-label="Day">${options}</select>`;
 }
