@@ -43,8 +43,9 @@ function windowRange() {
   return { start, end: start + WINDOW_HOURS * HOUR };
 }
 
-// Everyone who could be on a sector, with the duty rows that fall in this
-// window attached, earliest first.
+// Every rosterable person, in the team's own order, with whatever duty rows
+// fall in this window attached. Nobody drops off the list for having nothing
+// on today, and nobody moves row as the window changes or a leg is reassigned.
 function crewRows(start, end) {
   const run = running();
   const bySector = new Map(state.sectors.map((s) => [s.id, s]));
@@ -60,13 +61,10 @@ function crewRows(start, end) {
     if (!byPerson.has(entry.user_id)) byPerson.set(entry.user_id, []);
     byPerson.get(entry.user_id).push(slot);
   }
-  const rows = [];
-  for (const p of rosterable()) {
-    const bars = (byPerson.get(p.id) || []).sort((a, b) => a.from - b.from);
-    if (bars.length) rows.push({ p, bars });
-  }
-  rows.sort((a, b) => a.bars[0].from - b.bars[0].from || a.p.display_name.localeCompare(b.p.display_name));
-  return rows;
+  return rosterable().map((p) => ({
+    p,
+    bars: (byPerson.get(p.id) || []).sort((a, b) => a.from - b.from),
+  }));
 }
 
 const left = (t, start) => Math.max(0, ((t - start) / HOUR) * PX_PER_HOUR);
@@ -206,6 +204,7 @@ export function renderRoster() {
           <button class="icon-btn" type="button" data-act="next" aria-label="Next day">${icon('chevron')}</button>
         </div>
       </div>
+      ${rows.some((r) => r.bars.length) ? '' : '<p class="note" style="margin:0 16px 14px">Nobody has a sector in this window; the full team is listed below.</p>'}
       ${
         rows.length
           ? `<div class="lr-scroll" id="lr-scroll">
