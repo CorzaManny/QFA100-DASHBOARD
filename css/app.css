@@ -2042,6 +2042,30 @@ body.editor .tabs a[data-tab='ops'] {
   color: var(--warn);
   margin-right: 2px;
 }
+/* Rostered, flyable, and they asked for this sector: a quiet green, not a
+   warning. */
+.lr-bar.prefer {
+  background: rgba(46, 194, 126, 0.2);
+  border-color: var(--ok);
+}
+.lr-bar.prefer .lr-bar-s {
+  color: var(--ok);
+}
+/* Both at once: breaks a rule, but they wanted it. Striped in both colours
+   rather than letting orange hide the green. */
+.lr-bar.rule-break.prefer {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(240, 166, 60, 0.26),
+    rgba(240, 166, 60, 0.26) 7px,
+    rgba(46, 194, 126, 0.26) 7px,
+    rgba(46, 194, 126, 0.26) 14px
+  );
+  border-color: var(--warn);
+}
+.lr-bar.rule-break.prefer .lr-bar-s {
+  color: var(--warn);
+}
 .lr-bar-t {
   display: flex;
   align-items: center;
@@ -2118,6 +2142,21 @@ body.editor .tabs a[data-tab='ops'] {
 }
 .lr-unavail.prefer .lr-unavail-s {
   color: var(--ok);
+}
+/* Both at once: would break a rule, but they asked for this sector. Striped
+   in both colours together rather than orange hiding the green. */
+.lr-unavail.break.prefer {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(240, 166, 60, 0.22),
+    rgba(240, 166, 60, 0.22) 7px,
+    rgba(46, 194, 126, 0.22) 7px,
+    rgba(46, 194, 126, 0.22) 14px
+  );
+  border: 1px dashed rgba(240, 166, 60, 0.5);
+}
+.lr-unavail.break.prefer .lr-unavail-s {
+  color: var(--warn);
 }
 .lr-unavail-s {
   font-size: 0.6rem;

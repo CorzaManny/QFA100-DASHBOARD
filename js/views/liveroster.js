@@ -106,9 +106,10 @@ const breakLabel = (reasons) => reasons[0] + (reasons.length > 1 ? ` (+${reasons
 
 // Sectors in the window this person is not already on, but putting them on
 // one says something: red if they can't fly it at all, orange if they could
-// but it would break a duty rule, green if they asked for it. Red beats
-// orange beats green when more than one is true, same priority an
-// already-rostered bar uses between can't-fly and a rule break.
+// but it would break a duty rule, green if they asked for it. Red outranks
+// the other two, but a rule break and "they asked for this" are not
+// exclusive - both show together, striped in both colours, rather than
+// orange hiding that they wanted it.
 function hintBlocks(p, start, end, bars) {
   const busy = new Set(bars.map((b) => b.sector.id));
   const out = [];
@@ -122,11 +123,12 @@ function hintBlocks(p, start, end, bars) {
       continue;
     }
     const breaks = wouldBreak(p.id, s);
-    if (breaks.length) {
+    const prefers = prefOf(p.id, s.id) === 'prefer';
+    if (breaks.length && prefers) {
+      out.push({ p, sector: s, from, to, kind: 'break prefer', reasons: [...breaks, 'Asked for this sector'], label: breakLabel(breaks) });
+    } else if (breaks.length) {
       out.push({ p, sector: s, from, to, kind: 'break', reasons: breaks, label: breakLabel(breaks) });
-      continue;
-    }
-    if (prefOf(p.id, s.id) === 'prefer') {
+    } else if (prefers) {
       out.push({ p, sector: s, from, to, kind: 'prefer', reasons: ['Asked for this sector'], label: 'Prefers this' });
     }
   }
@@ -185,23 +187,27 @@ function barClass(b) {
 function bar(b, start, end) {
   const s = b.sector;
   const ruleBreaks = b.ruleBreaks || [];
-  // Can't-fly (red) outranks a duty-rule break (orange) when a bar is both;
-  // either way the tooltip says what is actually wrong.
-  const flag = b.conflict ? 'conflict' : ruleBreaks.length ? 'rule-break' : '';
+  const prefers = prefOf(b.entry.user_id, s.id) === 'prefer';
+  // Can't-fly (red) outranks everything else. Short of that, a rule break
+  // and "they asked for this" are not exclusive, so both show together
+  // instead of orange hiding that they wanted it.
+  const flags = b.conflict ? ['conflict'] : [...(ruleBreaks.length ? ['rule-break'] : []), ...(prefers ? ['prefer'] : [])];
   const warnings = [
     ...(b.conflict ? [cantFlyReason(b.entry.user_id, s.id)] : []),
     ...ruleBreaks,
+    ...(prefers ? ['Asked for this sector'] : []),
   ];
   const title = `${s.flight} · ${s.dep} → ${s.arr} · ${b.entry.duty}\n${hourText(b.from)}–${hourText(b.to)} · tap to edit crew, drag onto another row to move it${
     warnings.length ? `\n⚠ ${warnings.join('\n⚠ ')}` : ''
   }`;
-  return `<div class="lr-bar ${barClass(b)}${flag ? ` ${flag}` : ''}" style="left:${left(
+  const showIcon = b.conflict || ruleBreaks.length;
+  return `<div class="lr-bar ${barClass(b)}${flags.length ? ` ${flags.join(' ')}` : ''}" style="left:${left(
     Math.max(b.from, start),
     start,
   )}px;width:${widthPx(b.from, b.to, start, end)}px" role="button" tabindex="0" draggable="true" data-act="editSector" data-sector="${esc(
     s.id,
   )}" data-roster="${esc(b.entry.id)}" title="${esc(title)}">
-    <span class="lr-bar-t">${flag ? icon('alert') : ''}${esc(s.flight)} · ${esc(s.dep)}–${esc(s.arr)}</span>
+    <span class="lr-bar-t">${showIcon ? icon('alert') : ''}${esc(s.flight)} · ${esc(s.dep)}–${esc(s.arr)}</span>
     <span class="lr-bar-s">${esc(b.entry.duty)}</span>
   </div>`;
 }
