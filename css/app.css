@@ -826,15 +826,25 @@ button:focus-visible {
   margin: 10px 0 16px;
 }
 .my-stats .kvs {
+  display: flex;
   gap: 12px;
 }
 .my-stats .kv {
+  flex: 1;
   gap: 4px;
   padding: 14px 16px;
 }
 .my-stats .kv strong {
   font-size: 1.25rem;
   margin-top: 2px;
+}
+@media (max-width: 480px) {
+  .my-stats .kvs {
+    flex-wrap: wrap;
+  }
+  .my-stats .kv {
+    flex: 1 1 calc(50% - 6px);
+  }
 }
 
 /* ---- Destination congestion forecast (Briefing) ---- */
