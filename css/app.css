@@ -819,6 +819,24 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+/* My Roster's own stats: roomier than the compact .kvs used elsewhere, with
+   air around them rather than sitting flush against the header and the
+   duty list either side. */
+.my-stats {
+  margin: 10px 0 16px;
+}
+.my-stats .kvs {
+  gap: 12px;
+}
+.my-stats .kv {
+  gap: 4px;
+  padding: 14px 16px;
+}
+.my-stats .kv strong {
+  font-size: 1.25rem;
+  margin-top: 2px;
+}
+
 /* ---- Destination congestion forecast (Briefing) ---- */
 
 .badge.severe {

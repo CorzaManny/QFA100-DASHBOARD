@@ -151,7 +151,7 @@ function myStats(myId, sectors) {
     const sub = requested.length ? `${got.length} of ${requested.length} requested sectors` : 'Nothing asked for yet';
     tiles.push(stat('Preferences', pct === null ? '—' : `${pct}%`, sub, pct === null ? '' : pct === 100 ? 'ok-text' : 'warn-text'));
   }
-  return `<div class="kvs">${tiles.join('')}</div>`;
+  return `<div class="my-stats"><div class="kvs">${tiles.join('')}</div></div>`;
 }
 
 function list() {
