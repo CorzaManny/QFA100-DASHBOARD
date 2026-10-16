@@ -2051,13 +2051,23 @@ body.editor .tabs a[data-tab='ops'] {
 .lr-bar.prefer .lr-bar-s {
   color: var(--ok);
 }
-/* Both at once: breaks a rule, but they wanted it. Still read as the orange
-   rule-break first, with a clean green edge saying they asked for it,
-   rather than a barber-pole of both colours. */
+/* Both at once: breaks a rule, but they wanted it. Reads as the plain
+   orange rule-break, with a small green dot in the corner as the only
+   nod to "they asked for this" - quiet rather than a second colour field. */
 .lr-bar.rule-break.prefer {
-  background: rgba(240, 166, 60, 0.2);
+  background: rgba(240, 166, 60, 0.22);
   border-color: var(--warn);
-  box-shadow: inset 3px 0 0 var(--ok);
+}
+.lr-bar.rule-break.prefer::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 1px rgba(8, 13, 19, 0.65);
 }
 .lr-bar.rule-break.prefer .lr-bar-s {
   color: var(--warn);
@@ -2139,9 +2149,9 @@ body.editor .tabs a[data-tab='ops'] {
 .lr-unavail.prefer .lr-unavail-s {
   color: var(--ok);
 }
-/* Both at once: would break a rule, but they asked for this sector. Still
-   the familiar orange stripe, with a clean green edge added rather than a
-   barber-pole of both colours. */
+/* Both at once: would break a rule, but they asked for this sector. Reads
+   as the plain orange stripe, with a small green dot in the corner as the
+   only nod to "they asked for this". */
 .lr-unavail.break.prefer {
   background: repeating-linear-gradient(
     135deg,
@@ -2151,7 +2161,17 @@ body.editor .tabs a[data-tab='ops'] {
     rgba(240, 166, 60, 0.2) 12px
   );
   border: 1px dashed rgba(240, 166, 60, 0.45);
-  box-shadow: inset 3px 0 0 var(--ok);
+}
+.lr-unavail.break.prefer::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 1px rgba(8, 13, 19, 0.65);
 }
 .lr-unavail.break.prefer .lr-unavail-s {
   color: var(--warn);
