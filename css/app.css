@@ -1183,6 +1183,9 @@ button:focus-visible {
 .cl-item.on .cl-re {
   color: var(--ok);
 }
+.cl-item:disabled {
+  cursor: default;
+}
 .cl-foot {
   display: flex;
   flex-wrap: wrap;

@@ -12,6 +12,11 @@ const done = (cl) => cl.items.filter((_, i) => state.checks[cl.id]?.[cl.progress
 // ticks (see syncCompletion below for what gets shared and when).
 const localComplete = (cl) => (cl.native ? !!state.checks[cl.id]?.branchComplete : done(cl) === cl.items.length);
 const complete = (cl) => localComplete(cl) || !!teamChecklistStatus(cl.id)?.complete;
+// Complete on the other EFB, but not ticked on this device at all - the
+// checklist really was completed, so it should look it: every box ticked
+// and the counter full, not a green badge over a page of empty checkboxes.
+const syncedOnly = (cl) => !localComplete(cl) && !!teamChecklistStatus(cl.id)?.complete;
+const displayDone = (cl) => (syncedOnly(cl) ? cl.items.length : done(cl));
 const trail = [];
 
 // Only the fact a checklist is complete is shared between the two EFB
@@ -124,7 +129,7 @@ function updateNative(cl) {
   const chip = root.querySelector('.chip.on');
   if (chip) {
     chip.classList.toggle('done', complete(cl));
-    chip.querySelector('.chip-n').textContent = `${done(cl)} / ${cl.items.length}`;
+    chip.querySelector('.chip-n').textContent = `${displayDone(cl)} / ${cl.items.length}`;
   }
 }
 
@@ -185,7 +190,7 @@ export function render(args) {
 
   const chip = (c) => `<a class="chip ${c === cl ? 'on' : ''} ${complete(c) ? 'done' : ''}" data-checklist-id="${esc(c.id)}" href="#/checklists/${c.id}" ${c === cl ? 'aria-current="page"' : ''}>
       <span class="chip-t">${esc(c.name)}</span>
-      <span class="chip-n">${done(c)} / ${c.items.length}</span></a>`;
+      <span class="chip-n">${displayDone(c)} / ${c.items.length}</span></a>`;
   const chips = group.map(chip).join('');
   const library = kind === 'non-normal'
     ? `<nav class="qrh-library" aria-label="Non-normal checklists by system">${checklistGroups(group).map(({ label, entries }) => `
@@ -259,12 +264,12 @@ export function render(args) {
   const next = group[idx + 1];
   const isDone = complete(cl);
   const teamStatus = teamChecklistStatus(cl.id);
-  const teamOnly = isDone && !localComplete(cl) && teamStatus?.complete;
+  const teamOnly = syncedOnly(cl);
 
   const items = cl.items
     .map(([challenge, response], i) => {
-      const on = !!state.checks[cl.id]?.[i];
-      return `<button class="cl-item ${on ? 'on' : ''}" data-act="toggle" data-i="${i}" aria-pressed="${on}">
+      const on = teamOnly || !!state.checks[cl.id]?.[i];
+      return `<button class="cl-item ${on ? 'on' : ''}" data-act="toggle" data-i="${i}" aria-pressed="${on}" ${teamOnly ? 'disabled' : ''}>
         <span class="cl-box">${on ? icon('check') : ''}</span>
         <span class="cl-ch">${esc(challenge)}</span>
         <span class="cl-re">${esc(response)}</span>
@@ -277,7 +282,7 @@ export function render(args) {
     <section class="card cl">
       <div class="card-head">
         <h2>${esc(cl.name)} Checklist</h2>
-        <span class="badge ${isDone ? 'ok' : 'mute'}">${done(cl)} / ${cl.items.length}</span>
+        <span class="badge ${isDone ? 'ok' : 'mute'}">${displayDone(cl)} / ${cl.items.length}</span>
       </div>
       <div class="cl-items">${items}</div>
       ${teamOnly ? `<p class="tiny">Completed on the other EFB${teamStatus.completed_by ? ` by ${esc(teamStatus.completed_by)}` : ''}.</p>` : ''}
