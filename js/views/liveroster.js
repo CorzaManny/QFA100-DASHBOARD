@@ -16,6 +16,7 @@ import {
   person,
   crewOf,
   seats,
+  openSeats,
   wouldBreak,
   defaultReport,
   syncTeam,
@@ -127,8 +128,33 @@ function bar(b, start, end) {
   )}px" role="button" tabindex="0" draggable="true" data-act="editSector" data-sector="${esc(s.id)}" data-roster="${esc(
     b.entry.id,
   )}" title="${esc(title)}">
-    <span class="lr-bar-t">${esc(s.flight)}</span>
-    <span class="lr-bar-s">${esc(s.dep)}–${esc(s.arr)}</span>
+    <span class="lr-bar-t">${esc(b.entry.duty)}</span>
+    <span class="lr-bar-s">${esc(s.flight)} · ${esc(s.dep)}–${esc(s.arr)}</span>
+  </div>`;
+}
+
+// An unfilled seat, somewhere in the window: not tied to a roster row at all,
+// just a sector and a duty it still needs. Dragged onto a crew row, it fills
+// it; dropped back here, nothing happens because it was never filled.
+function openSeatChips(start, end) {
+  const list = [];
+  for (const s of state.sectors) {
+    const std = new Date(s.std).getTime();
+    const sta = new Date(s.sta).getTime();
+    if (sta < start || std > end) continue;
+    for (const duty of openSeats(s)) list.push({ sector: s, duty, std });
+  }
+  return list.sort((a, b) => a.std - b.std);
+}
+
+function chip(c) {
+  const s = c.sector;
+  const title = `${s.flight} · ${s.dep} → ${s.arr} needs a ${c.duty}\nDrag onto a crew row to roster them, or tap to pick from a list.`;
+  return `<div class="lr-chip" role="button" tabindex="0" draggable="true" data-act="editSector" data-sector="${esc(
+    s.id,
+  )}" data-open-sector="${esc(s.id)}" data-open-duty="${esc(c.duty)}" title="${esc(title)}">
+    <span class="lr-chip-duty">${esc(c.duty)}</span>
+    <span class="lr-chip-flight">${esc(s.flight)} · ${esc(s.dep)}–${esc(s.arr)} · ${esc(hourText(c.std))}</span>
   </div>`;
 }
 
@@ -182,7 +208,7 @@ function modal() {
         <p class="tiny">${esc(zdate(s.std))} · ${esc(zulu(s.std))}–${esc(zulu(s.sta))}Z</p>
         ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
         <div class="lr-modal-seats">${seatFields}</div>
-        <p class="tiny">Changes save immediately. Dragging a bar onto another row does the same thing.</p>
+        <p class="tiny">Changes save immediately. Dragging a bar onto another row does the same thing, and dragging it into Unrostered clears the seat.</p>
       </div>
     </div>`;
 }
@@ -216,11 +242,31 @@ export function renderRoster() {
                 ${rows.map((r) => row(r, start, end)).join('')}
               </div>
             </div>
-            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, or drag it onto another row to move that duty to them.</p>`
+            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, drag it onto another row to move that duty to them, or drag it down into Unrostered to clear the seat.</p>`
           : `<p class="note">Nobody is rostered in this window.</p>`
       }
     </section>
+    ${unrostered(start, end)}
     ${modal()}`;
+}
+
+// Every empty seat in the window, in one place: drag a chip onto a crew row
+// to fill it, or drag a bar from the timeline back in here to clear it.
+function unrostered(start, end) {
+  const chips = openSeatChips(start, end);
+  return `
+    <section class="card">
+      <div class="card-head"><h2>Unrostered</h2><span class="badge ${chips.length ? 'warn' : 'ok'}">${
+        chips.length ? `${chips.length} OPEN` : 'ALL FILLED'
+      }</span></div>
+      <div class="lr-chips" id="lr-unrostered">
+        ${
+          chips.length
+            ? chips.map(chip).join('')
+            : '<p class="tiny">Every seat in this window is filled. Drag a bar here to take someone off a sector.</p>'
+        }
+      </div>
+    </section>`;
 }
 
 // Put someone in a seat, swap them, or clear it. Rules are not enforced here:
@@ -256,6 +302,40 @@ async function moveDuty(rosterId, targetUserId) {
   error = '';
   try {
     await setSeat(sector, entry.duty, targetUserId);
+    await syncTeam();
+  } catch (err) {
+    error = err.message;
+  }
+  rerender();
+}
+
+// An open seat, dragged from Unrostered onto somebody's row: roster them in it.
+async function fillSeat(sectorId, duty, targetUserId) {
+  const sector = state.sectors.find((s) => s.id === sectorId);
+  if (!sector || !targetUserId) return;
+  const breaks = wouldBreak(targetUserId, sector);
+  if (
+    breaks.length &&
+    !confirm(`Rostering ${person(targetUserId)?.display_name || 'them'} breaks: ${breaks.join(', ')}. Roster them anyway?`)
+  ) {
+    return;
+  }
+  error = '';
+  try {
+    await setSeat(sector, duty, targetUserId);
+    await syncTeam();
+  } catch (err) {
+    error = err.message;
+  }
+  rerender();
+}
+
+// A bar, dragged off the timeline into Unrostered: take them off the sector.
+async function unassign(rosterId) {
+  if (!state.roster.some((r) => r.id === rosterId)) return;
+  error = '';
+  try {
+    await deleteRoster(rosterId);
     await syncTeam();
   } catch (err) {
     error = err.message;
@@ -312,6 +392,26 @@ export const rosterChanges = {
   },
 };
 
+// Drag payloads are plain strings, "entry:<rosterId>" for a bar already on
+// the timeline or "open:<sectorId>:<duty>" for a chip out of Unrostered.
+const dragEntry = (id) => `entry:${id}`;
+const dragOpen = (sectorId, duty) => `open:${sectorId}:${duty}`;
+function parseDrag(raw) {
+  const [kind, a, duty] = raw.split(':');
+  if (kind === 'entry') return { kind, rosterId: a };
+  if (kind === 'open') return { kind, sectorId: a, duty };
+  return null;
+}
+
+function acceptDrop(zone) {
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    zone.classList.add('drop-target');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drop-target'));
+}
+
 // Bring "now" into view, and wire up the drag-and-drop that the click
 // delegation in app.js does not cover.
 export function mountedRoster(root) {
@@ -323,24 +423,39 @@ export function mountedRoster(root) {
   }
   for (const b of root.querySelectorAll('.lr-bar')) {
     b.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/plain', b.dataset.roster);
+      e.dataTransfer.setData('text/plain', dragEntry(b.dataset.roster));
       e.dataTransfer.effectAllowed = 'move';
       b.classList.add('dragging');
     });
     b.addEventListener('dragend', () => b.classList.remove('dragging'));
   }
-  for (const t of root.querySelectorAll('.lr-track')) {
-    t.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      t.classList.add('drop-target');
+  for (const c of root.querySelectorAll('.lr-chip')) {
+    c.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', dragOpen(c.dataset.openSector, c.dataset.openDuty));
+      e.dataTransfer.effectAllowed = 'move';
+      c.classList.add('dragging');
     });
-    t.addEventListener('dragleave', () => t.classList.remove('drop-target'));
+    c.addEventListener('dragend', () => c.classList.remove('dragging'));
+  }
+  for (const t of root.querySelectorAll('.lr-track')) {
+    acceptDrop(t);
     t.addEventListener('drop', (e) => {
       e.preventDefault();
       t.classList.remove('drop-target');
-      const rosterId = e.dataTransfer.getData('text/plain');
-      if (rosterId) moveDuty(rosterId, t.dataset.user);
+      const drag = parseDrag(e.dataTransfer.getData('text/plain') || '');
+      if (!drag) return;
+      if (drag.kind === 'entry') moveDuty(drag.rosterId, t.dataset.user);
+      else fillSeat(drag.sectorId, drag.duty, t.dataset.user);
+    });
+  }
+  const unzone = root.querySelector('#lr-unrostered');
+  if (unzone) {
+    acceptDrop(unzone);
+    unzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      unzone.classList.remove('drop-target');
+      const drag = parseDrag(e.dataTransfer.getData('text/plain') || '');
+      if (drag?.kind === 'entry') unassign(drag.rosterId);
     });
   }
 }
