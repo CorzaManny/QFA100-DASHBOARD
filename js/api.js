@@ -191,7 +191,7 @@ const fromDefect = (d) => ({
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus] =
+  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus, fuelRequests] =
     await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
@@ -208,6 +208,8 @@ export async function loadAll() {
     rest('GET', 'pickups?select=*&order=created_at.asc').catch(() => null),
     // null: supabase/checklist-status.sql has not been run yet.
     rest('GET', 'checklist_status?select=*').catch(() => null),
+    // null: supabase/fuel-requests.sql has not been run yet.
+    rest('GET', 'fuel_requests?select=*').catch(() => null),
   ]);
   return {
     sectors: sectors.map(toSector),
@@ -226,6 +228,7 @@ export async function loadAll() {
     // null: supabase/pickups.sql has not been run, so empty seats cannot be asked for.
     pickups,
     checklistStatus: checklistStatus || [],
+    fuelRequests: fuelRequests || [],
   };
 }
 
@@ -295,6 +298,17 @@ export const saveChecklistStatus = (checklistId, fields) =>
     'POST',
     'checklist_status?on_conflict=checklist_id',
     { checklist_id: checklistId, ...fields, updated_at: new Date().toISOString() },
+    'resolution=merge-duplicates',
+  );
+
+// The pilot's revision of the imported OFP's fuel figures: extra fuel, an
+// adjusted taxi allowance, a reason and a draft/submitted/accepted status.
+// One row per sector, same upsert shape as saveActual/saveBriefing.
+export const saveFuelRequest = (sectorId, fields) =>
+  rest(
+    'POST',
+    'fuel_requests?on_conflict=sector_id',
+    { sector_id: sectorId, ...fields, updated_at: new Date().toISOString() },
     'resolution=merge-duplicates',
   );
 

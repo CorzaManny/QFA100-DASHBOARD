@@ -462,6 +462,34 @@ main {
   border-radius: 99px;
   background: var(--brand);
 }
+.bar div.ok {
+  background: var(--ok);
+}
+.bar div.warn {
+  background: var(--warn);
+}
+.bar div.bad {
+  background: var(--bad);
+}
+
+/* ---- Fuel & Load: a weight against its structural limit ---- */
+
+.weight-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+}
+.weight-row .bar {
+  width: 100%;
+  height: 8px;
+}
+.weight-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.85rem;
+}
 
 .metrics {
   display: grid;
