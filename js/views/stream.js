@@ -148,7 +148,7 @@ function topicsCard(now) {
                 : ''
             }
             <div class="tiny">RIGHT NOW</div>
-            <ul class="topics">${auto.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+            <ul class="topics" data-topics-auto>${auto.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
             <p class="tiny">The second list is worked out from the schedule, the roster, the tech log and the weather, so it keeps up with the flight.</p>`
       }
     </section>`;
@@ -180,6 +180,19 @@ export function render() {
     ${channelCard()}`;
   error = '';
   return out;
+}
+
+// Called instead of a full rerender when the background sync notices team
+// data has changed while this page is open. The Twitch chat iframe lives in
+// the same tree a full render would replace, which reloads it for no reason;
+// patching just the auto-generated topics in place keeps the chat connected.
+// True means "handled, no full render needed"; anything else falls back to one.
+export function liveUpdate() {
+  if (!location.hash.startsWith('#/stream') || editing) return false;
+  const list = document.querySelector('[data-topics-auto]');
+  if (!list) return false;
+  list.innerHTML = suggested(Date.now()).map((t) => `<li>${esc(t)}</li>`).join('');
+  return true;
 }
 
 export const actions = {

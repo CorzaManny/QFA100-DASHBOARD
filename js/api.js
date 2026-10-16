@@ -191,7 +191,7 @@ const fromDefect = (d) => ({
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups] =
+  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus] =
     await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
@@ -206,6 +206,8 @@ export async function loadAll() {
     rest('GET', 'sector_actuals?select=*').catch(() => null),
     rest('GET', 'swaps?select=*&order=created_at.asc').catch(() => null),
     rest('GET', 'pickups?select=*&order=created_at.asc').catch(() => null),
+    // null: supabase/checklist-status.sql has not been run yet.
+    rest('GET', 'checklist_status?select=*').catch(() => null),
   ]);
   return {
     sectors: sectors.map(toSector),
@@ -223,6 +225,7 @@ export async function loadAll() {
     swaps: swaps || [],
     // null: supabase/pickups.sql has not been run, so empty seats cannot be asked for.
     pickups,
+    checklistStatus: checklistStatus || [],
   };
 }
 
@@ -279,6 +282,17 @@ export const saveActual = (sectorId, fields) =>
     'POST',
     'sector_actuals?on_conflict=sector_id',
     { sector_id: sectorId, ...fields, updated_at: new Date().toISOString() },
+    'resolution=merge-duplicates',
+  );
+
+// Broadcasting that a checklist is complete (or no longer is), one row per
+// checklist. Only the completion fact is shared; tick-by-tick progress stays
+// on the device, in state.checks.
+export const saveChecklistStatus = (checklistId, fields) =>
+  rest(
+    'POST',
+    'checklist_status?on_conflict=checklist_id',
+    { checklist_id: checklistId, ...fields, updated_at: new Date().toISOString() },
     'resolution=merge-duplicates',
   );
 

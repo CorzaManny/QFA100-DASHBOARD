@@ -262,7 +262,7 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
+  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, checklistStatus: [], defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 
@@ -337,6 +337,12 @@ export const reportAt = reportAtOf;
 
 // The times stamped for a sector, if any.
 export const actualOf = (sectorId) => (state.actuals || []).find((a) => a.sector_id === sectorId) || null;
+
+// Whether, and by whom, a checklist has been marked complete by either EFB
+// account — from supabase/checklist-status.sql. null until that migration
+// has been run.
+export const teamChecklistStatus = (checklistId) =>
+  (state.checklistStatus || []).find((c) => c.checklist_id === checklistId) || null;
 
 // ---- Live VATSIM tracking ----
 
@@ -1020,6 +1026,13 @@ export async function fetchOfp(id) {
   }
   const num = (v) => (v == null || v === '' || isNaN(v) ? null : Number(v));
   const str = (v) => (typeof v === 'string' ? v : '');
+  // The fixes along the filed route, lat/lon each, so the dashboard map can
+  // draw the actual route rather than a straight dep-arr line. SimBrief gives
+  // one object when there is a single fix and an array otherwise.
+  const fixes = d.navlog?.fix ? (Array.isArray(d.navlog.fix) ? d.navlog.fix : [d.navlog.fix]) : [];
+  const navlog = fixes
+    .map((f) => ({ ident: str(f.ident), lon: num(f.pos_long), lat: num(f.pos_lat) }))
+    .filter((f) => f.lon != null && f.lat != null);
   return {
     fetchedAt: Date.now(),
     generated: num(d.params?.time_generated) ? num(d.params.time_generated) * 1000 : null,
@@ -1031,6 +1044,7 @@ export async function fetchOfp(id) {
     arrRwy: str(d.destination?.plan_rwy),
     altn: str(d.alternate?.icao_code),
     route: str(d.general?.route),
+    navlog,
     cruise: num(d.general?.initial_altitude),
     costIndex: str(d.general?.costindex),
     acft: str(d.aircraft?.icaocode),

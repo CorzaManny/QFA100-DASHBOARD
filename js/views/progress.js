@@ -204,7 +204,7 @@ function mine(now) {
           <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} <span class="badge warn">${esc(duty.toUpperCase())}</span></div>
           <div class="sub">${esc(s.flight)} · ${zdate(s.std)}${a?.off_blocks ? ` · off ${zulu(a.off_blocks)}` : ''}${
             a?.on_blocks ? ` · on ${zulu(a.on_blocks)}` : ''
-          }</div>
+          }${a?.fuel_used != null ? ` · ${Number(a.fuel_used).toLocaleString('en-AU')} fuel used` : ''}</div>
         </div>
         <div class="right"><div class="row-t">${span(blockMs(s))}</div><div class="sub">${nm(legNm(s))} NM</div></div>
       </div>`;

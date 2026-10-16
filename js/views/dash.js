@@ -6,6 +6,7 @@ import { round5 } from '../running.js';
 import { saveActual } from '../api.js';
 import { loadWorld, mapSvg, worldReady } from '../map.js';
 import { installState, install, dismiss, isIos } from '../install.js';
+import { ofpSummary } from './brief.js';
 import {
   briefingOf,
   currentSector,
@@ -98,8 +99,13 @@ function liveMap(t, sector) {
     { lon: arr.lon, lat: arr.lat, label: arr.icao, kind: 'arr' },
   ];
   const plane = t?.online && t.lat != null && t.lon != null ? { lon: t.lon, lat: t.lat, hdg: t.hdg } : null;
+  // Drawing the filed route, fix by fix, rather than a straight dep-arr line,
+  // when the OFP has been imported and SimBrief gave us the navlog.
+  const nav = sector ? briefingOf(sector.id).ofp?.navlog : null;
+  const legs =
+    nav && nav.length > 1 ? nav.slice(1).map((pt, i) => ({ from: nav[i], to: pt, active: true })) : [{ from: dep, to: arr, active: true }];
   return `<div class="map-wrap">${mapSvg({
-    legs: [{ from: dep, to: arr, active: true }],
+    legs,
     marks,
     plane,
     height: 460,
@@ -370,13 +376,70 @@ function crewRow(s, now, label, run) {
     </section>`;
 }
 
+// The sector that has landed but not yet been finished: on blocks is
+// stamped, but nobody has entered the fuel figures and pressed "Finish
+// sector" yet. Its stamped times stay on screen until that happens, rather
+// than being replaced the instant the next sector becomes the one to stamp.
+function awaitingFinish() {
+  const landed = sortedSectors()
+    .map((s) => ({ s, a: actualOf(s.id) }))
+    .filter(({ a }) => a?.on_blocks && !a?.completed_at);
+  return landed.sort((x, y) => new Date(y.s.std) - new Date(x.s.std))[0]?.s || null;
+}
+
+function finishCard(s) {
+  const a = actualOf(s.id) || {};
+  const units = esc(String(briefingOf(s.id).ofp?.units || 'kgs').toUpperCase());
+  return `
+    <section class="card">
+      <div class="card-head"><h2>Finish sector</h2><span class="badge info">${esc(s.flight)} ${esc(s.dep)} → ${esc(s.arr)}</span></div>
+      <p class="note">Landed. The stamped times stay here until this sector is finished.</p>
+      <div class="stamps">
+        <div class="stamp-box done"><span class="tiny">Off blocks</span><strong>${zulu(a.off_blocks)}</strong></div>
+        <div class="stamp-box done"><span class="tiny">On blocks</span><strong>${zulu(a.on_blocks)}</strong></div>
+      </div>
+      <form class="form" data-form="finishSector">
+        <input type="hidden" name="sector" value="${esc(s.id)}">
+        <div class="grid2">
+          <label class="field">Fuel remaining (${units})<input name="fuel_remaining" type="number" inputmode="decimal" min="0" step="1" value="${
+            a.fuel_remaining ?? ''
+          }" required></label>
+          <label class="field">Fuel used (${units})<input name="fuel_used" type="number" inputmode="decimal" min="0" step="1" value="${
+            a.fuel_used ?? ''
+          }" required></label>
+        </div>
+        <div class="btn-row"><button class="btn primary" type="submit">Finish sector</button></div>
+      </form>
+    </section>`;
+}
+
+// The briefing for the sector on the flight deck now: notes, the previous
+// crew's handover, and the OFP, without having to leave the dashboard.
+function briefingCard(s) {
+  if (!s) return '';
+  const b = briefingOf(s.id);
+  const sectors = sortedSectors();
+  const prev = sectors[sectors.findIndex((x) => x.id === s.id) - 1];
+  const handover = prev ? briefingOf(prev.id).handover : '';
+  return `
+    <section class="card">
+      <div class="card-head"><h2>Sector briefing</h2><a class="btn ghost small" href="#/brief/${esc(s.id)}">Open briefing</a></div>
+      ${s.notes ? `<p class="note"><strong>Sector notes:</strong> ${esc(s.notes)}</p>` : ''}
+      ${b.notes ? `<p class="note"><strong>Team notes:</strong> ${esc(b.notes)}</p>` : ''}
+      ${handover ? `<p class="note"><strong>Handover from the crew before:</strong> ${esc(handover)}</p>` : ''}
+      ${b.ofp ? ofpSummary(b.ofp, b) : '<p class="note">Flight plan not imported yet.</p>'}
+    </section>`;
+}
+
 // What a cockpit tablet shows: the aeroplane, who is flying it now, and who
 // takes it next. No personal roster, because the tablet is not a person.
 function flightDeck(now, run) {
   const cur = currentSector(now);
   const next = nextSector(now);
   const stamping = run.airborne || run.next;
+  const finishing = awaitingFinish();
   return `
+    ${finishing ? finishCard(finishing) : ''}
     ${
       stamping
         ? `<section class="card">
@@ -388,6 +451,7 @@ function flightDeck(now, run) {
           </section>`
         : ''
     }
+    ${briefingCard(cur || next)}
     ${cur ? crewRow(cur, now, 'Flying now', run) : ''}
     ${next ? crewRow(next, now, cur ? 'Next crew' : 'Next sector', run) : ''}
     ${
@@ -579,6 +643,24 @@ export const forms = {
       await syncTeam();
     } catch (err) {
       alert(`Could not save that time: ${err.message}`);
+    }
+    rerender();
+  },
+
+  // Closes out a landed sector: fuel figures, and the stamped times stop
+  // being the thing the dashboard shows for it.
+  async finishSector(data, formEl) {
+    formEl.querySelector('[type=submit]').disabled = true;
+    try {
+      await saveActual(data.get('sector'), {
+        fuel_remaining: Number(data.get('fuel_remaining')),
+        fuel_used: Number(data.get('fuel_used')),
+        completed_at: new Date().toISOString(),
+        by_name: me()?.display_name || '',
+      });
+      await syncTeam();
+    } catch (err) {
+      alert(`Could not finish the sector: ${err.message}`);
     }
     rerender();
   },

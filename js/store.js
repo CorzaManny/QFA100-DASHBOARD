@@ -42,6 +42,7 @@ function defaults() {
     taf: {}, // last TAF by ICAO: { text, at }, read through the team database
     stations: {}, // who is controlling an airport on VATSIM: { atis, controllers, at }
     checks: {}, // checklist progress by checklist id
+    checklistStatus: [], // team-wide: which checklists are complete, from the other EFB too
     track: null, // last VATSIM sample for the team aircraft
     delay: {}, // predicted holding/traffic delay by sector id, see estimateArrivalDelay in ops.js
   };

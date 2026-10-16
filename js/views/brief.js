@@ -54,10 +54,10 @@ function sectorFor(args) {
   return sectors.find((s) => s.id === args[0]) || upcomingSector() || currentSector() || sectors.at(-1) || null;
 }
 
-const hhmm = (secs) =>
+export const hhmm = (secs) =>
   secs == null ? '—' : `${String(Math.floor(secs / 3600)).padStart(2, '0')}:${String(Math.floor((secs % 3600) / 60)).padStart(2, '0')}`;
 
-const kv = (label, value) => `<div class="kv"><span>${label}</span><strong>${value}</strong></div>`;
+export const kv = (label, value) => `<div class="kv"><span>${label}</span><strong>${value}</strong></div>`;
 
 // Every card on this page can be folded away, so a pilot who only wants the
 // weather and the OFP is not scrolling past everything else to get there.
@@ -114,7 +114,7 @@ function weatherCard(s) {
     </section>`;
 }
 
-function ofpSummary(o, b) {
+export function ofpSummary(o, b) {
   const u = esc(String(o.units || 'kgs').toUpperCase());
   const w = (v) => (v == null ? '—' : `${Number(v).toLocaleString('en-AU')} ${u}`);
   return `

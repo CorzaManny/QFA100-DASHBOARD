@@ -3,10 +3,29 @@
 import { state, save } from '../store.js';
 import { esc, icon, rerender } from '../ui.js';
 import { CHECKLISTS, CHECKLIST_KINDS } from '../data/checklists.js';
+import { saveChecklistStatus } from '../api.js';
+import { me, syncTeam, teamChecklistStatus } from '../ops.js';
 
 const done = (cl) => cl.items.filter((_, i) => state.checks[cl.id]?.[cl.progressKeys?.[i] ?? i]).length;
-const complete = (cl) => cl.native ? !!state.checks[cl.id]?.branchComplete : done(cl) === cl.items.length;
+// Complete on this device, or completed on the other EFB account and synced
+// down - either way it shows as done, without touching this device's own
+// ticks (see syncCompletion below for what gets shared and when).
+const localComplete = (cl) => (cl.native ? !!state.checks[cl.id]?.branchComplete : done(cl) === cl.items.length);
+const complete = (cl) => localComplete(cl) || !!teamChecklistStatus(cl.id)?.complete;
 const trail = [];
+
+// Only the fact a checklist is complete is shared between the two EFB
+// accounts, not every tick - so broadcast fires once on the transition to
+// complete (and once back, on an explicit reset), never on every toggle.
+function syncCompletion(cl, isComplete) {
+  saveChecklistStatus(cl.id, {
+    complete: isComplete,
+    completed_by: isComplete ? me()?.display_name || '' : '',
+    completed_at: isComplete ? new Date().toISOString() : null,
+  })
+    .then(syncTeam)
+    .catch(() => {});
+}
 
 // Only explicit "Choose one" groups are mutually exclusive. Numbered steps
 // following a decision remain available, including shared jump destinations.
@@ -232,6 +251,8 @@ export function render(args) {
   const idx = group.indexOf(cl);
   const next = group[idx + 1];
   const isDone = complete(cl);
+  const teamStatus = teamChecklistStatus(cl.id);
+  const teamOnly = isDone && !localComplete(cl) && teamStatus?.complete;
 
   const items = cl.items
     .map(([challenge, response], i) => {
@@ -252,6 +273,7 @@ export function render(args) {
         <span class="badge ${isDone ? 'ok' : 'mute'}">${done(cl)} / ${cl.items.length}</span>
       </div>
       <div class="cl-items">${items}</div>
+      ${teamOnly ? `<p class="tiny">Completed on the other EFB${teamStatus.completed_by ? ` by ${esc(teamStatus.completed_by)}` : ''}.</p>` : ''}
       <div class="cl-foot ${isDone ? 'done' : ''}">
         <div class="cl-status">${isDone ? `${esc(cl.name).toUpperCase()} CHECKLIST COMPLETE` : 'Tap each item as it is called'}</div>
         ${
@@ -300,6 +322,7 @@ export const actions = {
   toggle(el) {
     const { cl } = active(location.hash.split('/').slice(2));
     if (!cl || el.disabled) return;
+    const was = localComplete(cl);
     const marks = (state.checks[cl.id] ??= cl.native ? {} : []);
     marks[Number(el.dataset.i)] = !marks[Number(el.dataset.i)];
     if (cl.native) {
@@ -308,6 +331,7 @@ export const actions = {
       if (branch) (marks.choices ??= {})[branch.group] = branch.option;
     }
     save();
+    if (!cl.native && localComplete(cl) !== was) syncCompletion(cl, !was);
     if (cl.native) updateNative(cl);
     else rerender();
   },
@@ -316,12 +340,14 @@ export const actions = {
     if (!cl?.native) return;
     const group = branchGroups(cl).find((item) => item.id === el.dataset.group);
     if (!group?.options.some((option) => option.id === el.dataset.option)) return;
+    const was = localComplete(cl);
     const marks = (state.checks[cl.id] ??= {});
     const choices = (marks.choices ??= {});
     if (choices[group.id] === el.dataset.option) delete choices[group.id];
     else choices[group.id] = el.dataset.option;
     delete marks.branchComplete;
     save();
+    if (was) syncCompletion(cl, false);
     updateNative(cl);
   },
   follow(el) {
@@ -329,10 +355,12 @@ export const actions = {
     const { cl } = active(location.hash.split('/').slice(2));
     const branch = branchState(cl).get(el.dataset.from);
     if (branch) {
+      const was = localComplete(cl);
       const marks = (state.checks[cl.id] ??= {});
       (marks.choices ??= {})[branch.group] = branch.option;
       delete marks.branchComplete;
       save();
+      if (was) syncCompletion(cl, false);
       updateNative(cl);
     }
     if (el.dataset.checklist === cl.id) {
@@ -353,11 +381,14 @@ export const actions = {
     const marks = (state.checks[cl.id] ??= {});
     marks.branchComplete = true;
     save();
+    syncCompletion(cl, true);
     updateNative(cl);
   },
   reset() {
     const { cl } = active(location.hash.split('/').slice(2));
+    const was = cl && localComplete(cl);
     delete state.checks[cl?.id];
+    if (was) syncCompletion(cl, false);
     save();
     if (cl?.native) updateNative(cl);
     else rerender();

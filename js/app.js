@@ -191,9 +191,14 @@ function unsaved() {
   return false;
 }
 
-// Don't redraw underneath someone who is typing or has unsaved changes.
+// Don't redraw underneath someone who is typing or has unsaved changes. A
+// view can offer liveUpdate() to patch itself in place instead of a full
+// render - the Stream page uses it so a background sync does not reload the
+// Twitch chat iframe, which a full root.innerHTML replace would do.
 const quietRender = () => {
-  if (!root.querySelector('form:focus-within, select:focus') && !unsaved()) render();
+  if (root.querySelector('form:focus-within, select:focus') || unsaved()) return;
+  if (route.view.liveUpdate?.()) return;
+  render();
 };
 
 // Everything that comes from the team database, to tell whether a sync changed anything.
