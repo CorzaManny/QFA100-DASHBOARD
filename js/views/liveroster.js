@@ -111,6 +111,32 @@ function eventDays() {
   return days;
 }
 
+// Back-of-clock hours, in sim local time, as absolute spans clipped to
+// [start, end]. The window can straddle the edge of a local day (in Zulu
+// mode especially), so this walks local days one at a time rather than
+// assuming the window holds exactly one BOC stretch.
+function bocBands(start, end) {
+  const r = rules();
+  if (r.bocStart === r.bocEnd) return [];
+  const offsetMs = simOffsetMinutes() * MINUTE;
+  const bands = [];
+  for (let localDay = dayStart(start, offsetMs) - DAY; localDay < end; localDay += DAY) {
+    const segments =
+      r.bocStart <= r.bocEnd
+        ? [[localDay + r.bocStart * HOUR, localDay + r.bocEnd * HOUR]]
+        : [
+            [localDay, localDay + r.bocEnd * HOUR],
+            [localDay + r.bocStart * HOUR, localDay + DAY],
+          ];
+    for (const [a, b] of segments) {
+      const from = Math.max(a, start);
+      const to = Math.min(b, end);
+      if (from < to) bands.push({ from, to });
+    }
+  }
+  return bands;
+}
+
 function currentDayIndex(days) {
   if (dayIndex != null) return Math.min(Math.max(dayIndex, 0), days.length - 1);
   const now = Date.now();
@@ -222,12 +248,19 @@ function header(start, end) {
       </div>`;
     })
     .join('');
+  const r = rules();
+  const bocMarks = bocBands(start, end)
+    .map(
+      (b) =>
+        `<div class="lr-boc" style="left:${left(b.from, start)}px;width:${widthPx(b.from, b.to, start, end)}px" title="Back of clock, sim local ${String(r.bocStart).padStart(2, '0')}00–${String(r.bocEnd).padStart(2, '0')}00"></div>`,
+    )
+    .join('');
   const now = Date.now();
   const nowMark =
     now >= start && now <= end
       ? `<div class="lr-now-line" style="left:${left(now, start)}px"><span>NOW</span></div>`
       : '';
-  return `<div class="lr-head-track" style="width:${trackWidth(start, end)}px">${marks}${nowMark}</div>`;
+  return `<div class="lr-head-track" style="width:${trackWidth(start, end)}px">${bocMarks}${marks}${nowMark}</div>`;
 }
 
 // A single CSS variable, set once on the grid, that every row's track reads

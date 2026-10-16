@@ -1878,6 +1878,17 @@ body.editor .tabs a[data-tab='ops'] {
   height: 46px;
   flex: none;
 }
+/* Back-of-clock hours, shaded across the top so the circadian low part of
+   the day reads at a glance before looking at any one person's row. */
+.lr-boc {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(129, 140, 248, 0.16);
+  border-left: 1px solid rgba(129, 140, 248, 0.4);
+  border-right: 1px solid rgba(129, 140, 248, 0.4);
+  z-index: 0;
+}
 .lr-tick {
   position: absolute;
   top: 0;
