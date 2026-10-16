@@ -137,18 +137,18 @@ function openSeatsCard() {
 const stat = (label, value, sub = '', cls = '') =>
   `<div class="kv"><span>${label}</span><strong class="${cls}">${value}</strong>${sub ? `<span class="tiny">${sub}</span>` : ''}</div>`;
 
-// How much of the flying you've said you can do you have actually answered
-// for, so there is one number to chase toward 100% rather than reading the
-// badges on the Availability page.
-function myStats(myId, upcoming) {
+// Of the sectors you asked for (Prefer, in Availability), how many you
+// actually got - how well your bids did, not how many you answered.
+function myStats(myId, sectors) {
   const load = workload(myId);
-  const answered = upcoming.filter((s) => prefOf(myId, s.id)).length;
-  const pct = upcoming.length ? Math.round((answered / upcoming.length) * 100) : 100;
-  const sub = !upcoming.length ? 'No upcoming sectors' : pct === 100 ? 'All caught up' : `${answered} of ${upcoming.length} answered`;
+  const requested = sectors.filter((s) => prefOf(myId, s.id) === 'prefer');
+  const got = requested.filter((s) => state.roster.some((r) => r.user_id === myId && r.sector_id === s.id));
+  const pct = requested.length ? Math.round((got.length / requested.length) * 100) : null;
+  const sub = requested.length ? `${got.length} of ${requested.length} requested sectors` : 'Nothing asked for yet';
   return `<div class="kvs">
     ${stat('Flight hours', load.hours.toFixed(1))}
     ${stat('Sectors', String(load.total))}
-    ${stat('Preferences', `${pct}%`, sub, pct === 100 ? 'ok-text' : upcoming.length ? 'warn-text' : '')}
+    ${stat('Preferences', pct === null ? '—' : `${pct}%`, sub, pct === null ? '' : pct === 100 ? 'ok-text' : 'warn-text')}
   </div>`;
 }
 
@@ -157,7 +157,6 @@ function list() {
   const sectors = sortedSectors();
   const byId = new Map(sectors.map((s) => [s.id, s]));
   const myId = me()?.id;
-  const upcoming = sectors.filter((s) => new Date(s.std) > now);
 
   const mine = state.roster
     .filter((r) => r.user_id === myId && byId.has(r.sector_id))
@@ -215,7 +214,7 @@ function list() {
         : `<section class="card list">
             <div class="card-head"><div class="tiny">MY ROSTER · ${esc((me()?.display_name || '').toUpperCase())}</div>
               <span class="badge ${isDraft() ? 'warn' : 'ok'}">${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span></div>
-            ${myStats(myId, upcoming)}
+            ${myStats(myId, sectors)}
             ${myRows || '<p class="note">You are not rostered on any sectors yet.</p>'}
           </section>
           ${openSeatsCard()}`
