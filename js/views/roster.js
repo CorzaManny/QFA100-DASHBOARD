@@ -138,18 +138,20 @@ const stat = (label, value, sub = '', cls = '') =>
   `<div class="kv"><span>${label}</span><strong class="${cls}">${value}</strong>${sub ? `<span class="tiny">${sub}</span>` : ''}</div>`;
 
 // Of the sectors you asked for (Prefer, in Availability), how many you
-// actually got - how well your bids did, not how many you answered.
+// actually got - how well your bids did, not how many you answered. Not
+// shown until the roster is published: while it is still a draft, nothing
+// has actually been decided yet for a success rate to mean anything.
 function myStats(myId, sectors) {
   const load = workload(myId);
-  const requested = sectors.filter((s) => prefOf(myId, s.id) === 'prefer');
-  const got = requested.filter((s) => state.roster.some((r) => r.user_id === myId && r.sector_id === s.id));
-  const pct = requested.length ? Math.round((got.length / requested.length) * 100) : null;
-  const sub = requested.length ? `${got.length} of ${requested.length} requested sectors` : 'Nothing asked for yet';
-  return `<div class="kvs">
-    ${stat('Flight hours', load.hours.toFixed(1))}
-    ${stat('Sectors', String(load.total))}
-    ${stat('Preferences', pct === null ? '—' : `${pct}%`, sub, pct === null ? '' : pct === 100 ? 'ok-text' : 'warn-text')}
-  </div>`;
+  const tiles = [stat('Flight hours', load.hours.toFixed(1)), stat('Sectors', String(load.total))];
+  if (!isDraft()) {
+    const requested = sectors.filter((s) => prefOf(myId, s.id) === 'prefer');
+    const got = requested.filter((s) => state.roster.some((r) => r.user_id === myId && r.sector_id === s.id));
+    const pct = requested.length ? Math.round((got.length / requested.length) * 100) : null;
+    const sub = requested.length ? `${got.length} of ${requested.length} requested sectors` : 'Nothing asked for yet';
+    tiles.push(stat('Preferences', pct === null ? '—' : `${pct}%`, sub, pct === null ? '' : pct === 100 ? 'ok-text' : 'warn-text'));
+  }
+  return `<div class="kvs">${tiles.join('')}</div>`;
 }
 
 function list() {
