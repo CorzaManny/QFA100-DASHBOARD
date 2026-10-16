@@ -205,7 +205,7 @@ const quietRender = () => {
 const teamData = () =>
   JSON.stringify([
     state.sectors, state.roster, state.people, state.settings, state.prefs, state.defects, state.history, state.briefings,
-    state.actuals, state.swaps, state.pickups, state.official, state.officialCheck,
+    state.actuals, state.swaps, state.pickups, state.official, state.officialCheck, state.checklistStatus,
   ]);
 
 // Keep this device in step with the team database: other people's changes
