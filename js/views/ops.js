@@ -38,6 +38,7 @@ import {
   defaultReport,
   syncTeam,
 } from '../ops.js';
+import { renderRoster, mountedRoster, rosterActions, rosterChanges } from './liveroster.js';
 
 // How far ahead the board looks. Beyond this it is planning, not operating.
 const AHEAD_HOURS = 24;
@@ -48,6 +49,11 @@ const name = (id) => esc(person(id)?.display_name || 'Unknown');
 // letting it be pressed twice.
 let busy = '';
 let error = '';
+// Which of the board's two views is showing: the status cards, or the Live
+// Roster timeline.
+let view = 'board';
+// Wider main column while the timeline needs the room; app.js reads this.
+export const wide = () => view === 'roster';
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
 
 const upcoming = (now) => sortedSectors().filter((s) => new Date(s.std) > now);
@@ -408,15 +414,10 @@ function official() {
     } · open to review and apply</span>${icon('chevron')}</a>`;
 }
 
-export function render() {
-  if (!canEdit()) {
-    return `<div class="page-head"><h1>Ops board</h1></div>
-      <section class="card"><p class="note">This page is for admins, dispatchers and operations.</p></section>`;
-  }
-  const now = Date.now();
+// The status cards: everything the board showed before the Landscape view
+// timeline joined it as a second view.
+function board(now) {
   return `
-    <div class="page-head"><h1>Ops board</h1>
-      <span class="badge ${isDraft() ? 'warn' : 'ok'}">ROSTER ${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span></div>
     ${
       biddingOn() && biddingOpen(now)
         ? `<p class="note warn">${icon('alert')} Bidding is open until <strong>${when(
@@ -435,6 +436,22 @@ export function render() {
     ${airports(now)}
     ${defects()}
     <p class="tiny center">Everything here looks ${AHEAD_HOURS} hours ahead, except crewing, which looks at the whole schedule.</p>`;
+}
+
+export function render() {
+  if (!canEdit()) {
+    return `<div class="page-head"><h1>Ops board</h1></div>
+      <section class="card"><p class="note">This page is for admins, dispatchers and operations.</p></section>`;
+  }
+  const now = Date.now();
+  return `
+    <div class="page-head"><h1>Ops board</h1>
+      <span class="badge ${isDraft() ? 'warn' : 'ok'}">ROSTER ${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span></div>
+    <nav class="seg ops-toggle" aria-label="Ops board view">
+      <button type="button" class="${view === 'board' ? 'on' : ''}" data-act="viewBoard">Overview</button>
+      <button type="button" class="${view === 'roster' ? 'on' : ''}" data-act="viewRoster">Landscape</button>
+    </nav>
+    ${view === 'roster' ? renderRoster() : board(now)}`;
 }
 
 async function settle(id, work) {
@@ -465,12 +482,28 @@ export const actions = {
     if (why === null) return;
     return settle(id, () => (kind === 'swap' ? decideSwap(id, false, why) : decidePickup(id, false, why)));
   },
+  viewBoard() {
+    view = 'board';
+    rerender();
+  },
+  viewRoster() {
+    view = 'roster';
+    rerender();
+  },
+  ...rosterActions,
 };
 
-// The weather is the only thing this page has to go and get.
-export function mounted() {
+export const changes = { ...rosterChanges };
+
+// The weather is the only thing the Overview has to go and get; the Live
+// Roster needs its own drag-and-drop wired up once it is in the DOM.
+export function mounted(root) {
   if (!canEdit()) return;
   poll();
+  if (view === 'roster') {
+    mountedRoster(root);
+    return;
+  }
   const now = Date.now();
   const codes = [];
   for (const s of soon(now)) {

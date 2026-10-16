@@ -106,6 +106,9 @@ function render() {
   document.getElementById('who-role').textContent = who ? roleName(who.role).toUpperCase() : '';
   document.getElementById('who-admin').hidden = gate || !canEdit();
   route = gate ? { name: 'login', args: [], view: login } : parse();
+  // A page can ask for more room than a normal card column gives it - the
+  // Live Roster timeline, wherever it is showing, is the only one that does.
+  document.body.classList.toggle('wide', !!route.view.wide?.(route.args));
   root.innerHTML = route.view.render(route.args);
   for (const tab of document.querySelectorAll('.tabs a[data-tab]')) {
     tab.classList.toggle('on', tab.dataset.tab === (route.name === 'airports' ? 'brief' : route.name));
