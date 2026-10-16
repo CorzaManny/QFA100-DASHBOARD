@@ -65,7 +65,7 @@ let result = '';
 let gapNote = '';
 let filter = 'all';
 // Which of the Roster tab's two views is showing: the sector list, or the
-// Live Roster timeline.
+// Landscape view timeline.
 let rosterView = 'list';
 // Wider main column while the timeline needs the room; app.js reads this.
 export const wide = (args) => rosterView === 'timeline' && (!args[0] || args[0] === 'auto');
@@ -532,17 +532,22 @@ function swapsCard() {
     </section>`;
 }
 
-// The toggle between the sector-by-sector list and the Live Roster timeline.
+// The toggle between the sector-by-sector list and the Landscape view timeline.
 function rosterToggle() {
   return `<nav class="seg ops-toggle" aria-label="Roster view">
     <button type="button" class="${rosterView === 'list' ? 'on' : ''}" data-act="viewList">List</button>
-    <button type="button" class="${rosterView === 'timeline' ? 'on' : ''}" data-act="viewTimeline">Live Roster</button>
+    <button type="button" class="${rosterView === 'timeline' ? 'on' : ''}" data-act="viewTimeline">Landscape view</button>
   </nav>`;
 }
 
 // The list of sectors to roster. Open one to crew it.
 function rosterEditor() {
-  if (rosterView === 'timeline') return `${tabs('roster')}${rosterToggle()}${renderRoster()}`;
+  if (rosterView === 'timeline') {
+    // Publishing and Auto roster matter just as much from here, so they come
+    // along rather than forcing a trip back to the list for them.
+    const [state_, auto_] = autoPanels();
+    return `${tabs('roster')}${rosterToggle()}${state_}${auto_}${renderRoster()}`;
+  }
 
   const now = Date.now();
   const upcoming = sortedSectors().filter((s) => new Date(s.sta) > now);
@@ -1156,7 +1161,7 @@ export const actions = {
   ...rosterActions,
 };
 
-// The Live Roster timeline needs its drag-and-drop wired up once it is in
+// The Landscape view timeline needs its drag-and-drop wired up once it is in
 // the DOM; nothing else on this page needs a mount step.
 export function mounted(root, args = []) {
   if (rosterView === 'timeline' && (!args[0] || args[0] === 'auto')) mountedRoster(root);

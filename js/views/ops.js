@@ -414,7 +414,7 @@ function official() {
     } · open to review and apply</span>${icon('chevron')}</a>`;
 }
 
-// The status cards: everything the board showed before the Live Roster
+// The status cards: everything the board showed before the Landscape view
 // timeline joined it as a second view.
 function board(now) {
   return `
@@ -449,7 +449,7 @@ export function render() {
       <span class="badge ${isDraft() ? 'warn' : 'ok'}">ROSTER ${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span></div>
     <nav class="seg ops-toggle" aria-label="Ops board view">
       <button type="button" class="${view === 'board' ? 'on' : ''}" data-act="viewBoard">Overview</button>
-      <button type="button" class="${view === 'roster' ? 'on' : ''}" data-act="viewRoster">Live Roster</button>
+      <button type="button" class="${view === 'roster' ? 'on' : ''}" data-act="viewRoster">Landscape view</button>
     </nav>
     ${view === 'roster' ? renderRoster() : board(now)}`;
 }
