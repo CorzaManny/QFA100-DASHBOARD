@@ -208,16 +208,18 @@ function bar(b, start, end) {
 
 // A sector this person is not on, drawn on their row to say what putting
 // them there means: red and they can't fly it, orange and it would break a
-// duty rule, green and they asked for it. Not a roster row, so not draggable.
+// duty rule, green and they asked for it. Not a roster row, so not
+// draggable, but it opens the same quick editor a bar does, for whoever
+// wants to roster them in anyway.
 function hintBlock(u, start, end) {
   const s = u.sector;
-  const title = `${s.flight} · ${s.dep} → ${s.arr}\n${u.reasons.join('\n')}`;
+  const title = `${s.flight} · ${s.dep} → ${s.arr}\n${u.reasons.join('\n')}\nTap to roster someone in this sector.`;
   return `<div class="lr-unavail ${u.kind}" style="left:${left(Math.max(u.from, start), start)}px;width:${widthPx(
     u.from,
     u.to,
     start,
     end,
-  )}px" title="${esc(title)}">
+  )}px" role="button" tabindex="0" data-act="editSector" data-sector="${esc(s.id)}" title="${esc(title)}">
     <span class="lr-unavail-s">${esc(u.label)}</span>
   </div>`;
 }
@@ -381,7 +383,7 @@ export function renderRoster() {
                 ${rows.map((r) => row(r, start, end)).join('')}
               </div>
             </div>
-            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, drag it onto another row to move that duty to them, or drag it up into Unrostered to clear the seat. A striped red space is a sector someone can't fly; striped orange is a sector they could, but it would break a duty rule; solid green is a sector they asked for and nobody has put them on yet.</p>`
+            <p class="tiny">Each bar is a report-to-debrief duty period, and follows the running delay once the day is live. Tap a bar to edit the crew, drag it onto another row to move that duty to them, or drag it up into Unrostered to clear the seat. A striped red space is a sector someone can't fly, orange is one that would break a duty rule, and green is one they asked for and nobody has put them on yet; tap any of them to roster someone in by hand.</p>`
           : `<p class="note">Nobody is rostered in this window.</p>`
       }
     </section>

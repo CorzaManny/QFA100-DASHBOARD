@@ -2058,9 +2058,10 @@ body.editor .tabs a[data-tab='ops'] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* A sector nobody has rostered this person on, drawn to show why not: either
-   they said they can't fly it (red), or they could but it would break a
-   duty rule (orange). Striped rather than solid, and not draggable. */
+/* A sector nobody has rostered this person on, drawn to show why: red and
+   they can't fly it, orange and it would break a duty rule, green and they
+   asked for it. Striped like a hazard marker, not draggable, but tapping it
+   opens the same quick editor a bar does, to roster them in by hand. */
 .lr-unavail {
   position: absolute;
   top: 8px;
@@ -2072,6 +2073,10 @@ body.editor .tabs a[data-tab='ops'] {
   border-radius: var(--r-sm);
   overflow: hidden;
   pointer-events: auto;
+  cursor: pointer;
+}
+.lr-unavail:hover {
+  filter: brightness(1.15);
 }
 .lr-unavail.unavail {
   background: repeating-linear-gradient(
@@ -2099,11 +2104,17 @@ body.editor .tabs a[data-tab='ops'] {
 .lr-unavail.break .lr-unavail-s {
   color: var(--warn);
 }
-/* Green, and solid rather than striped: not a warning, an opportunity -
-   they asked for this sector and nobody has put them on it yet. */
+/* Green, striped the same way as the other two: not a warning so much as an
+   opportunity - they asked for this sector and nobody has put them on it. */
 .lr-unavail.prefer {
-  background: rgba(46, 194, 126, 0.14);
-  border: 1px solid rgba(46, 194, 126, 0.4);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(46, 194, 126, 0.1),
+    rgba(46, 194, 126, 0.1) 6px,
+    rgba(46, 194, 126, 0.2) 6px,
+    rgba(46, 194, 126, 0.2) 12px
+  );
+  border: 1px dashed rgba(46, 194, 126, 0.45);
 }
 .lr-unavail.prefer .lr-unavail-s {
   color: var(--ok);
