@@ -77,6 +77,7 @@ export function problems(sectors, rules) {
   const list = [...sectors].sort(byStd);
   const out = [];
   let duty = [];
+  const dutyBlocks = [];
 
   const endDuty = () => {
     if (!duty.length) return;
@@ -104,6 +105,7 @@ export function problems(sectors, rules) {
         }
       }
     }
+    dutyBlocks.push(duty);
     duty = [];
   };
 
@@ -123,10 +125,14 @@ export function problems(sectors, rules) {
     out.push(`${boc.length} back-of-clock sectors (limit ${rules.maxBoc})`);
   }
   if (rules.bocEveryDays > 1) {
-    boc.forEach((s, i) => {
-      const prev = boc[i - 1];
+    // Every back-of-clock sector in the same duty is the same occurrence -
+    // one duty, one night - so only the gap between separate duties counts
+    // here. Each duty is represented by its first back-of-clock sector.
+    const bocDuties = dutyBlocks.map((d) => d.find((s) => isBoc(s, rules))).filter(Boolean);
+    bocDuties.forEach((s, i) => {
+      const prev = bocDuties[i - 1];
       if (prev && night(s) - night(prev) < rules.bocEveryDays) {
-        out.push(`back-of-clock sectors ${prev.flight} and ${s.flight} are too close (one every ${rules.bocEveryDays} days)`);
+        out.push(`back-of-clock duties from ${prev.flight} and ${s.flight} are too close (one every ${rules.bocEveryDays} days)`);
       }
     });
   }
