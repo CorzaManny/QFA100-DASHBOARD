@@ -536,7 +536,7 @@ function swapsCard() {
 function rosterToggle() {
   return `<nav class="seg ops-toggle" aria-label="Roster view">
     <button type="button" class="${rosterView === 'list' ? 'on' : ''}" data-act="viewList">List</button>
-    <button type="button" class="${rosterView === 'timeline' ? 'on' : ''}" data-act="viewTimeline">Landscape view</button>
+    <button type="button" class="${rosterView === 'timeline' ? 'on' : ''}" data-act="viewTimeline">Landscape</button>
   </nav>`;
 }
 

@@ -449,7 +449,7 @@ export function render() {
       <span class="badge ${isDraft() ? 'warn' : 'ok'}">ROSTER ${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span></div>
     <nav class="seg ops-toggle" aria-label="Ops board view">
       <button type="button" class="${view === 'board' ? 'on' : ''}" data-act="viewBoard">Overview</button>
-      <button type="button" class="${view === 'roster' ? 'on' : ''}" data-act="viewRoster">Landscape view</button>
+      <button type="button" class="${view === 'roster' ? 'on' : ''}" data-act="viewRoster">Landscape</button>
     </nav>
     ${view === 'roster' ? renderRoster() : board(now)}`;
 }
