@@ -7,7 +7,7 @@ import { esc, zulu, zdate, depWindow, simLocal, icon, rerender } from '../ui.js'
 import {
   sortedSectors, crewOf, person, me, canEdit, pilotsShort, pilotsNeeded, needsRelief, isDraft,
   MIN_PILOTS, rules, isEfb, isOps, openSwaps, swapFor, swapSector, swapEntry, wouldBreak, syncTeam,
-  canPickUp, openSeats, pendingPickups,
+  canPickUp, openSeats, pendingPickups, workload, prefOf,
 } from '../ops.js';
 
 let busy = '';
@@ -134,11 +134,29 @@ function openSeatsCard() {
     </section>`;
 }
 
+const stat = (label, value, sub = '') =>
+  `<div class="kv"><span>${label}</span><strong>${value}</strong>${sub ? `<span class="tiny">${sub}</span>` : ''}</div>`;
+
+// How much of the flying you've said you can do you have actually answered
+// for, so there is one number to chase toward 100% rather than reading the
+// badges on the Availability page.
+function myStats(myId, upcoming) {
+  const load = workload(myId);
+  const answered = upcoming.filter((s) => prefOf(myId, s.id)).length;
+  const pct = upcoming.length ? Math.round((answered / upcoming.length) * 100) : 100;
+  return `<div class="kvs">
+    ${stat('Flight hours', load.hours.toFixed(1))}
+    ${stat('Sectors', String(load.total))}
+    ${stat('Preferences answered', `${pct}%`, upcoming.length ? `${answered} of ${upcoming.length} upcoming` : 'no upcoming sectors')}
+  </div>`;
+}
+
 function list() {
   const now = Date.now();
   const sectors = sortedSectors();
   const byId = new Map(sectors.map((s) => [s.id, s]));
   const myId = me()?.id;
+  const upcoming = sectors.filter((s) => new Date(s.std) > now);
 
   const mine = state.roster
     .filter((r) => r.user_id === myId && byId.has(r.sector_id))
@@ -195,7 +213,8 @@ function list() {
         ? ''
         : `<section class="card list">
             <div class="card-head"><div class="tiny">MY ROSTER · ${esc((me()?.display_name || '').toUpperCase())}</div>
-              <span class="badge ${mine.length ? 'info' : 'mute'}">${mine.length} SECTOR${mine.length === 1 ? '' : 'S'}</span></div>
+              <span class="badge ${isDraft() ? 'warn' : 'ok'}">${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span></div>
+            ${myStats(myId, upcoming)}
             ${myRows || '<p class="note">You are not rostered on any sectors yet.</p>'}
           </section>
           ${openSeatsCard()}`

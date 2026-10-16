@@ -370,6 +370,15 @@ function rulesPage() {
         ${num('firstReportLeadMinutes', 'First sector of the event', 'Minutes before departure', 5)}
       </div>
       <label class="check"><input type="checkbox" name="unmarkedAvailable" ${r.unmarkedAvailable ? 'checked' : ''}> Everyone is available unless they say otherwise</label>
+      <h3>Auto roster weights</h3>
+      <p class="note">How Auto roster weighs one eligible pilot against another for an empty seat. These do not need to add to 100 - they are scaled against each other, so moving one is enough. All at 0 just fills seats in schedule order.</p>
+      <div class="grid2">
+        ${num('weightHours', 'Fair hours', 'Below their availability-adjusted share of the flying')}
+        ${num('weightPreference', 'Preference', 'Asked for, or said they are available for, this sector')}
+        ${num('weightDesirability', 'Desirable sectors', 'Had fewer of the sought-after sectors so far')}
+        ${num('weightContinuity', 'Crew continuity', 'Already flying the sector right before or after this one')}
+        ${num('weightVariety', 'Crew variety', 'Flown less often with whoever else is on this sector')}
+      </div>
       <div class="btn-row">
         <button class="btn primary" type="submit">Save rules</button>
         <button class="btn ghost" type="button" data-act="resetRules">Back to defaults</button>

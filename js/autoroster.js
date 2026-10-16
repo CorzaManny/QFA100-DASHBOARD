@@ -28,6 +28,15 @@ export const DEFAULT_RULES = {
   delayNoticeMinutes: 20, // notify when a delay moves a report time by this much; 0 = never
   reportLeadMinutes: 45, // report this long before the departure window opens
   firstReportLeadMinutes: 60, // ...and this long before the first sector of the event
+
+  // How Auto roster weighs one eligible pilot against another for an empty
+  // seat. Need not add to 100; they are normalised when used, so moving one
+  // slider is enough. All 0 falls back to filling seats in schedule order.
+  weightHours: 35, // being further below their availability-adjusted fair share of hours
+  weightPreference: 25, // having asked for or said they are available for this sector
+  weightDesirability: 20, // having had fewer of the sought-after sectors so far
+  weightContinuity: 15, // already flying the sector just before or after this one
+  weightVariety: 5, // having flown less often with whoever else is already on this sector
 };
 
 export const rulesOf = (settings) => ({ ...DEFAULT_RULES, ...(settings?.rules || {}) });
@@ -56,6 +65,12 @@ export function isBoc(sector, rules) {
 // Which night a sector belongs to: midday to midday in sim local time, so a
 // 2300 departure and an 0030 departure a little later are the same night.
 const night = (sector) => simDay(std(sector) - 12 * HOUR);
+
+// How sought-after a sector is, 0 to 1: longer sectors are more sought after
+// up to a point, back-of-clock ones less so. A rough, automatic stand-in for
+// asking everyone to rank every sector by hand.
+const clamp01 = (n) => Math.max(0, Math.min(1, n));
+export const desirability = (sector, rules) => clamp01(blockHours(sector) / 10 - (isBoc(sector, rules) ? 0.35 : 0));
 
 // Everything wrong with one person's set of sectors, as plain sentences.
 export function problems(sectors, rules) {
@@ -122,12 +137,61 @@ export function problems(sectors, rules) {
   return out;
 }
 
+// Each pilot's fair share of the hours still to crew, in proportion to how
+// much of the schedule they have said they can fly. A blank counts as
+// available when the team's rule says it should.
+function fairTargets(pilots, upcoming, rules, choice) {
+  const totalSeatHours = upcoming.reduce((sum, s) => sum + blockHours(s) * seatsFor(s, rules).length, 0);
+  const avail = new Map();
+  let totalAvail = 0;
+  for (const p of pilots) {
+    let h = 0;
+    for (const s of upcoming) {
+      const want = choice.get(`${p.id}|${s.id}`);
+      if (want === 'unavailable' || (!want && !rules.unmarkedAvailable)) continue;
+      h += blockHours(s);
+    }
+    avail.set(p.id, h);
+    totalAvail += h;
+  }
+  const target = new Map();
+  for (const p of pilots) target.set(p.id, totalAvail > 0 ? (avail.get(p.id) / totalAvail) * totalSeatHours : 0);
+  return target;
+}
+
+// The average desirability of the sectors each pilot could fly at all, so
+// "fewer sought-after sectors than usual" is judged against their own
+// opportunities rather than against sectors they were never going to get.
+function eligibleDesirability(pilots, upcoming, rules, choice) {
+  const out = new Map();
+  for (const p of pilots) {
+    const scores = upcoming
+      .filter((s) => {
+        const want = choice.get(`${p.id}|${s.id}`);
+        return want !== 'unavailable' && (want || rules.unmarkedAvailable);
+      })
+      .map((s) => desirability(s, rules));
+    out.set(p.id, scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0.5);
+  }
+  return out;
+}
+
 // Fill the empty Captain and First Officer seats on sectors that have not
 // departed. Anyone already rostered is left exactly where they are.
 //
 // Seats are filled a rank at a time: every Captain seat first, then every
 // First Officer seat, then relief pilots. When there are not enough pilots to
 // go round, that leaves as few sectors as possible with nobody at all.
+//
+// Among everyone eligible for a seat - available, and not breaking a duty
+// rule - the best candidate is the one scoring highest on a weighted mix of
+// how far below their fair share of hours they are, whether they asked for
+// or are available for this sector, whether they have had fewer of the
+// sought-after sectors than they could have, whether they are already
+// flying the sector next to this one, and how little they have already
+// flown with whoever else is on it. The weights are the team's own
+// (Admin → Settings); all candidates score equally if every weight is 0,
+// so the first eligible pilot in schedule order is taken.
 //
 //   sectors, roster, people, prefs: the team's data
 //   reportFor(sector): the Date a newly rostered person should report
@@ -151,15 +215,41 @@ export function planRoster({ sectors, roster, people, prefs, rules, now, reportF
   const added = [];
   const gaps = [];
   const upcoming = sectors.filter((s) => std(s) > now).sort(byStd);
+  const target = fairTargets(pilots, upcoming, rules, choice);
+  const eligibleDesire = eligibleDesirability(pilots, upcoming, rules, choice);
+
+  // How many sectors two pilots have already shared, kept up to date as
+  // seats fill so this run spreads pairings too, not just the roster it
+  // started from.
+  const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const pairs = new Map();
+  const addPair = (a, b) => pairs.set(pairKey(a, b), (pairs.get(pairKey(a, b)) || 0) + 1);
+  for (const s of sectors) {
+    const crew = roster.filter((r) => r.sector_id === s.id && PILOT_DUTIES.includes(r.duty));
+    for (let i = 0; i < crew.length; i++) for (let j = i + 1; j < crew.length; j++) addPair(crew[i].user_id, crew[j].user_id);
+  }
+
+  const wSum = rules.weightHours + rules.weightPreference + rules.weightDesirability + rules.weightContinuity + rules.weightVariety;
+  const w =
+    wSum > 0
+      ? {
+          hours: rules.weightHours / wSum,
+          pref: rules.weightPreference / wSum,
+          desire: rules.weightDesirability / wSum,
+          continuity: rules.weightContinuity / wSum,
+          variety: rules.weightVariety / wSum,
+        }
+      : { hours: 0, pref: 0, desire: 0, continuity: 0, variety: 0 };
 
   for (const seat of PILOT_DUTIES) {
     for (const s of upcoming) {
       if (!seatsFor(s, rules).includes(seat)) continue;
       const crew = [...roster, ...added].filter((r) => r.sector_id === s.id);
       if (crew.some((r) => r.duty === seat)) continue;
+      const partners = crew.map((r) => r.user_id);
 
       let best = null;
-      let bestScore = Infinity;
+      let bestScore = -Infinity;
       for (const p of pilots) {
         if (crew.some((r) => r.user_id === p.id)) continue;
         const want = choice.get(`${p.id}|${s.id}`);
@@ -169,19 +259,34 @@ export function planRoster({ sectors, roster, people, prefs, rules, now, reportF
         const before = problems(mine, rules);
         if (problems([...mine, s], rules).some((text) => !before.includes(text))) continue;
 
-        // Lower is better. Even out the number of sectors first, then the time in
-        // each seat, then the hours flown; honour requests, and keep a crew together
-        // across back-to-back sectors to cut down handovers.
         const hours = mine.reduce((sum, x) => sum + blockHours(x), 0);
+        const myTarget = target.get(p.id) || 0;
+        const hoursScore = myTarget > 0 ? clamp01(1 - hours / myTarget) : hours === 0 ? 1 : 0;
+
+        const prefScore = want === 'prefer' ? 1 : want === 'available' ? 0.6 : rules.unmarkedAvailable ? 0.4 : 0.2;
+
+        const received = mine.length ? mine.reduce((sum, x) => sum + desirability(x, rules), 0) / mine.length : null;
+        const desireScore = received === null ? 0.5 : clamp01(0.5 + ((eligibleDesire.get(p.id) ?? 0.5) - received));
+
         const continues = mine.some((x) => sta(x) <= std(s) && std(s) - sta(x) < rules.restHours * HOUR);
+        const continuityScore = continues ? 1 : 0;
+
+        const sharedBefore = partners.length
+          ? partners.reduce((sum, id) => sum + (pairs.get(pairKey(id, p.id)) || 0), 0) / partners.length
+          : 0;
+        const varietyScore = clamp01(1 - sharedBefore / 3);
+
+        // Everything above is the team's own weighting; this tiny nudge only
+        // ever breaks an otherwise exact tie, to keep Captain and First
+        // Officer time roughly even for someone who flies both.
         const score =
-          mine.length * 3 +
-          count(p.id, seat) * 2 +
-          hours * 0.1 -
-          (want === 'prefer' ? 4 : 0) -
-          (continues ? 2 : 0) +
-          (want ? 0 : 1);
-        if (score < bestScore) {
+          w.hours * hoursScore +
+          w.pref * prefScore +
+          w.desire * desireScore +
+          w.continuity * continuityScore +
+          w.variety * varietyScore -
+          count(p.id, seat) * 0.0001;
+        if (score > bestScore) {
           best = p;
           bestScore = score;
         }
@@ -203,6 +308,7 @@ export function planRoster({ sectors, roster, people, prefs, rules, now, reportF
       crew.push(entry);
       flying.get(best.id).push(s);
       seated.get(best.id)[seat] = count(best.id, seat) + 1;
+      for (const id of partners) addPair(id, best.id);
     }
   }
   gaps.sort((a, b) => byStd(a.sector, b.sector) || PILOT_DUTIES.indexOf(a.seat) - PILOT_DUTIES.indexOf(b.seat));
