@@ -1786,6 +1786,218 @@ body.efb .tabs a[data-tab='stream'],
 body.editor .tabs a[data-tab='stream'] {
   display: flex;
 }
+
+/* The live roster is an ops tool: admins, dispatchers and operations only. */
+.tabs a[data-tab='liveroster'] {
+  display: none;
+}
+body.editor .tabs a[data-tab='liveroster'] {
+  display: flex;
+}
+
+/* Live roster: a Gantt timeline of crew duty periods. A sticky name column
+   and a sticky hour header, both inside one scroller, so the grid scrolls as
+   one piece however far the schedule runs. */
+.lr-card {
+  padding: 0;
+  overflow: hidden;
+}
+.lr-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hair);
+}
+.lr-toolbar .btn-row {
+  flex: none;
+}
+.icon-btn {
+  padding: 0 10px;
+}
+.lr-scroll {
+  overflow: auto;
+  max-height: min(72vh, 680px);
+}
+.lr-grid {
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 100%;
+  position: relative;
+}
+.lr-headrow {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--card2);
+  border-bottom: 1px solid var(--line);
+}
+.lr-corner {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  flex: none;
+  width: 180px;
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  background: var(--card2);
+  border-right: 1px solid var(--line);
+}
+.lr-head-track {
+  position: relative;
+  height: 46px;
+  flex: none;
+}
+.lr-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed var(--hair);
+  padding-left: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  white-space: nowrap;
+}
+.lr-tick .lr-day {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+.lr-tick .lr-hour {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.lr-now-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  z-index: 2;
+}
+.lr-now-line span {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.lr-row {
+  display: flex;
+  border-bottom: 1px solid var(--hair);
+}
+.lr-row:last-child {
+  border-bottom: none;
+}
+.lr-name {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: none;
+  width: 180px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: var(--card);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lr-avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--card2);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+.lr-track {
+  position: relative;
+  flex: none;
+  min-height: 54px;
+}
+.lr-track::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--now-left, -9999px);
+  width: 2px;
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+.lr-bar {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  background: rgba(79, 155, 240, 0.22);
+  border: 1px solid rgba(79, 155, 240, 0.5);
+  color: var(--text);
+  overflow: hidden;
+  text-decoration: none;
+}
+.lr-bar.live {
+  background: rgba(46, 194, 126, 0.24);
+  border-color: var(--ok);
+}
+.lr-bar.done {
+  background: var(--card2);
+  border-color: var(--line);
+  opacity: 0.65;
+}
+.lr-bar-t {
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lr-bar-s {
+  font-size: 0.64rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 519px) {
+  .lr-corner,
+  .lr-name {
+    width: 128px;
+  }
+}
 .chat-card {
   gap: 10px;
 }

@@ -18,8 +18,9 @@ import * as settings from './views/settings.js';
 import * as progress from './views/progress.js';
 import * as opsboard from './views/ops.js';
 import * as stream from './views/stream.js';
+import * as liveroster from './views/liveroster.js';
 
-const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, brief, dispatch: brief, settings, admin, availability, progress, ops: opsboard, stream };
+const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, brief, dispatch: brief, settings, admin, availability, progress, ops: opsboard, stream, liveroster };
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
 const clockSim = document.getElementById('clock-sim');
@@ -164,13 +165,13 @@ function tick() {
 
 setInterval(tick, 1000);
 setInterval(() => {
-  if (['dashboard', 'ops'].includes(route.name) && !locked() && document.visibilityState === 'visible') dash.poll();
+  if (['dashboard', 'ops', 'liveroster'].includes(route.name) && !locked() && document.visibilityState === 'visible') dash.poll();
 }, 15000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   wakeLock();
   sync();
-  if (['dashboard', 'ops'].includes(route.name)) dash.poll();
+  if (['dashboard', 'ops', 'liveroster'].includes(route.name)) dash.poll();
 });
 
 // True when a form on the page holds something that has not been saved.
