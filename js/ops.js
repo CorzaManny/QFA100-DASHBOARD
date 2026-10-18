@@ -1125,10 +1125,17 @@ export async function saveCtwoItems(leg, section, items) {
 // which sections have been marked complete. Kept with the sector's briefing.
 export const ctwoOf = (sectorId, leg) => briefingOf(sectorId).ctwo?.[leg] || {};
 
-export async function saveCtwoProgress(sectorId, leg, legState) {
-  const ctwo = { ...(briefingOf(sectorId).ctwo || {}) };
-  ctwo[leg] = legState;
-  await saveBrief(sectorId, { ctwo });
+// Updates this device's copy straight away - ticking a box should never wait
+// on a round trip - then sends it on to the team database in the background.
+// Other devices pick it up on the next sync a few seconds later, the same as
+// any other change nobody is actively watching for.
+export function saveCtwoProgress(sectorId, leg, legState) {
+  const existing = state.briefings.find((b) => b.sector_id === sectorId);
+  const ctwo = { ...(existing?.ctwo || {}), [leg]: legState };
+  if (existing) existing.ctwo = ctwo;
+  else state.briefings.push({ sector_id: sectorId, ctwo });
+  save();
+  if (configured && getSession()) return saveBriefing(sectorId, { ctwo }).catch(() => {});
 }
 
 // One aeroplane, one callsign, one SimBrief account for the whole team. They

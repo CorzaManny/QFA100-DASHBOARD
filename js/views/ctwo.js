@@ -132,9 +132,10 @@ function renderOverview(s, legKey) {
         <p class="note">All sections reviewed and discussed.</p>
         <div class="ctwo-sections">${rows}</div>
         <div class="btn-row">
-          <button class="btn primary" data-act="save" ${busy ? 'disabled' : ''}>${busy ? 'Saving…' : 'Save briefing'} ${icon('check')}</button>
+          <button class="btn primary" data-act="save">Save briefing ${icon('check')}</button>
           <a class="btn ghost" href="#/brief/${esc(s.id)}">Back to Flight</a>
         </div>
+        <div class="btn-row"><button class="btn danger ctwo-restart" data-act="restart" data-leg="${legKey}">${icon('refresh')} Restart briefing</button></div>
       </section>`;
   }
 
@@ -146,6 +147,7 @@ function renderOverview(s, legKey) {
       <p class="note">Go through each section and discuss the key points.</p>
       <div class="ctwo-sections">${rows}</div>
       <button class="btn primary ctwo-start" data-act="start" data-leg="${legKey}">${done ? 'Continue briefing' : 'Start Briefing'} ${icon('chevron')}</button>
+      ${done ? `<div class="btn-row"><button class="btn danger ctwo-restart" data-act="restart" data-leg="${legKey}">${icon('refresh')} Restart briefing</button></div>` : ''}
     </section>
     <p class="tiny center"><a href="#/ctwo/${esc(s.id)}">${esc(s.dep)} → ${esc(s.arr)}</a></p>`;
 }
@@ -328,6 +330,9 @@ export const actions = {
     const next = CTWO_SECTIONS.find((sec) => !prog[sec.key]?.complete) || CTWO_SECTIONS[0];
     location.hash = `#/ctwo/${encodeURIComponent(s.id)}/${leg}/${next.key}`;
   },
+  // Ticking a point saves to this device at once and rerenders straight away;
+  // the team database catches up in the background (see saveCtwoProgress),
+  // so there is nothing here to wait on.
   toggleItem(el) {
     if (el.disabled) return;
     const s = sectorFor(argsFromHash());
@@ -335,23 +340,39 @@ export const actions = {
     const prog = ctwoOf(s.id, leg);
     const current = prog[section] || { checked: {}, complete: false };
     const next = { ...prog, [section]: { ...current, checked: { ...current.checked, [i]: !current.checked?.[i] } } };
-    run(() => saveCtwoProgress(s.id, leg, next));
+    saveCtwoProgress(s.id, leg, next);
+    rerender();
   },
+  // Marks the section done and moves straight on to the next one that is not
+  // yet complete, so a crew member walks through all five without having to
+  // go back to the list between each. Once every section is done this lands
+  // back on the overview, which then shows the completed summary.
   complete(el) {
     const s = sectorFor(argsFromHash());
     const { leg, section } = el.dataset;
     const items = ctwoItems(leg, section);
     const checked = {};
     items.forEach((_, i) => (checked[i] = true));
-    const prog = ctwoOf(s.id, leg);
-    const next = { ...prog, [section]: { checked, complete: true } };
-    run(async () => {
-      await saveCtwoProgress(s.id, leg, next);
-      location.hash = `#/ctwo/${encodeURIComponent(s.id)}/${leg}`;
-    });
+    const prog = { ...ctwoOf(s.id, leg), [section]: { checked, complete: true } };
+    saveCtwoProgress(s.id, leg, prog);
+    const next = CTWO_SECTIONS.find((sec) => sec.key !== section && !prog[sec.key]?.complete);
+    location.hash = next
+      ? `#/ctwo/${encodeURIComponent(s.id)}/${leg}/${next.key}`
+      : `#/ctwo/${encodeURIComponent(s.id)}/${leg}`;
   },
   save() {
     notice = 'Briefing saved.';
+    rerender();
+  },
+  // Clears every tick and completed section for this leg, so the crew of the
+  // next sector (or a redo) starts from a blank briefing. Only the ticks for
+  // this sector and leg are cleared - the points themselves, and every other
+  // sector's briefing, are untouched.
+  restart(el) {
+    const s = sectorFor(argsFromHash());
+    const leg = el.dataset.leg;
+    if (!confirm(`Restart the ${legOf(leg).label}? Every ticked point and completed section for this sector will be cleared.`)) return;
+    saveCtwoProgress(s.id, leg, {});
     rerender();
   },
   editTemplate(el) {
