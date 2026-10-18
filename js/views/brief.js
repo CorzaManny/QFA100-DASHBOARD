@@ -162,7 +162,6 @@ function ofpCard(s, b) {
       ${
         open
           ? `${b.ofp ? ofpSummary(b.ofp, b) : '<p class="note">Nobody has imported the flight plan for this sector yet.</p>'}
-      ${b.ofp ? `<div class="btn-row"><a class="btn ghost" href="#/fuel/${esc(s.id)}">Adjust fuel ${icon('chevron')}</a></div>` : ''}
       ${
         canReport()
           ? `${

@@ -1,7 +1,7 @@
 // Operational logic: airports, distances, the VATSIM feed, schedule maths.
 
 import { state, save } from './store.js';
-import { configured, getSession, loadAll, saveBriefing, fetchTaf, fetchChecklistStatus, saveFuelRequest } from './api.js';
+import { configured, getSession, loadAll, saveBriefing, fetchTaf, fetchChecklistStatus } from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
 import { running as runningOf, reportAt as reportAtOf } from './running.js';
@@ -262,7 +262,7 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, checklistStatus: [], fuelRequests: [], defects: state.defects.filter((d) => !d.shared), sharedLog: false });
+  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, checklistStatus: [], defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 
@@ -357,10 +357,6 @@ export const actualOf = (sectorId) => (state.actuals || []).find((a) => a.sector
 // has been run.
 export const teamChecklistStatus = (checklistId) =>
   (state.checklistStatus || []).find((c) => c.checklist_id === checklistId) || null;
-
-// The pilot's revision of a sector's fuel plan - from supabase/fuel-requests.sql.
-export const fuelRequestOf = (sectorId) =>
-  (state.fuelRequests || []).find((f) => f.sector_id === sectorId) || null;
 
 // ---- Live VATSIM tracking ----
 
@@ -1100,20 +1096,6 @@ export async function saveBrief(sectorId, fields) {
   const existing = state.briefings.find((b) => b.sector_id === sectorId);
   if (existing) Object.assign(existing, fields);
   else state.briefings.push({ sector_id: sectorId, ...fields });
-  save();
-}
-
-// Saves the pilot's revision of a sector's fuel plan for the whole team (or
-// on this device in preview mode), same shape as saveBrief above.
-export async function saveFuel(sectorId, fields) {
-  if (configured && getSession()) {
-    await saveFuelRequest(sectorId, fields);
-    await syncTeam();
-    return;
-  }
-  const existing = state.fuelRequests.find((f) => f.sector_id === sectorId);
-  if (existing) Object.assign(existing, fields);
-  else state.fuelRequests.push({ sector_id: sectorId, ...fields });
   save();
 }
 

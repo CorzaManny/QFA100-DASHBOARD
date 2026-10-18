@@ -108,7 +108,6 @@ const PATHS = {
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   share: '<path d="M12 3v12M8.5 6.5 12 3l3.5 3.5"/><path d="M7 10H5.5A1.5 1.5 0 0 0 4 11.5v8A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 18.5 10H17"/>',
   plus_square: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/>',
-  fuel: '<rect x="4" y="7" width="10" height="14" rx="1"/><path d="M4 13h10M7 7V4h4v3"/><path d="M14 10h3l3 3v6a1.5 1.5 0 0 1-3 0v-4h-3"/>',
 };
 
 export function icon(name, cls = '') {
