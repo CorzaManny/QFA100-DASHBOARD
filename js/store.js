@@ -29,7 +29,7 @@ function defaults() {
     people: [], // copy of the team's accounts: { id, display_name, role, must_setup }
     defects: [], // tech log: a copy of the team database's, or this device's own in preview mode
     defectSeq: 0,
-    briefings: [], // per sector: { sector_id, notes, wf_url, wf_notes, handover, ofp, ofp_by, ofp_at }
+    briefings: [], // per sector: { sector_id, notes, wf_url, wf_notes, handover, ofp, ofp_by, ofp_at, ctwo }
     actuals: [], // what actually happened: { sector_id, off_blocks, on_blocks, skipped, by_name }
     swaps: [], // sectors offered to the team: { id, roster_id, from_user, claimed_by, state, reason }
     official: [], // the official WorldFlight schedule, as the database last read it

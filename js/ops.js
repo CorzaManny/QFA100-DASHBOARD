@@ -1,9 +1,10 @@
 // Operational logic: airports, distances, the VATSIM feed, schedule maths.
 
 import { state, save } from './store.js';
-import { configured, getSession, loadAll, saveBriefing, fetchTaf, fetchChecklistStatus } from './api.js';
+import { configured, getSession, loadAll, saveBriefing, saveSettings, fetchTaf, fetchChecklistStatus } from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
+import { CTWO_DEFAULTS } from './data/ctwo.js';
 import { running as runningOf, reportAt as reportAtOf } from './running.js';
 
 const VATSIM_FEED = 'https://data.vatsim.net/v3/vatsim-data.json';
@@ -1097,6 +1098,37 @@ export async function saveBrief(sectorId, fields) {
   if (existing) Object.assign(existing, fields);
   else state.briefings.push({ sector_id: sectorId, ...fields });
   save();
+}
+
+// ---- CTWO+ Briefing ----
+
+// A section's points, in the team's own wording if an admin has set any,
+// otherwise the defaults every team starts with.
+export function ctwoItems(leg, section) {
+  const custom = state.settings?.rules?.ctwo?.[leg]?.[section];
+  return Array.isArray(custom) && custom.length ? custom : CTWO_DEFAULTS[leg][section];
+}
+
+// Saves one section's points for the whole team, for every sector's briefing
+// to follow. Only an admin does this - see isAdmin() - so it always goes to
+// the team database; there is nothing useful to keep locally in preview mode.
+export async function saveCtwoItems(leg, section, items) {
+  const rulesNext = { ...(state.settings?.rules || {}) };
+  const ctwo = { ...(rulesNext.ctwo || {}) };
+  ctwo[leg] = { ...(ctwo[leg] || {}), [section]: items };
+  rulesNext.ctwo = ctwo;
+  await saveSettings({ rules: rulesNext });
+  await syncTeam();
+}
+
+// One sector's progress through a leg's briefing: which points are ticked and
+// which sections have been marked complete. Kept with the sector's briefing.
+export const ctwoOf = (sectorId, leg) => briefingOf(sectorId).ctwo?.[leg] || {};
+
+export async function saveCtwoProgress(sectorId, leg, legState) {
+  const ctwo = { ...(briefingOf(sectorId).ctwo || {}) };
+  ctwo[leg] = legState;
+  await saveBrief(sectorId, { ctwo });
 }
 
 // One aeroplane, one callsign, one SimBrief account for the whole team. They

@@ -21,6 +21,12 @@
   --warn: #f0a63c;
   --bad: #ef4444;
   --info: #4f9bf0;
+  /* CTWO+ Briefing section colours: Charts, Terrain, Weather, Operational, Threats. */
+  --ctwo-charts: #4f9bf0;
+  --ctwo-terrain: #2ec2b0;
+  --ctwo-weather: #9b6bf0;
+  --ctwo-operational: #f0803c;
+  --ctwo-threats: #ef4444;
   --top-h: 58px;
   --tabs-h: 62px;
   --nav-w: 228px;
@@ -2587,5 +2593,173 @@ body.efb .chat {
 .qrh-system-list { display: flex; flex-direction: column; gap: 4px; padding: 0 8px 10px; }
 .qrh-library .chip { display: flex; justify-content: space-between; width: 100%; gap: 12px; padding: 12px; border-radius: var(--r-sm); }
 .qrh-library .chip-t { white-space: normal; overflow-wrap: anywhere; }
+
+/* ---- CTWO+ Briefing ---- */
+
+.ctwo-dot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #fff;
+  background: var(--muted);
+}
+.ctwo-dot.lg { width: 48px; height: 48px; font-size: 1.2rem; }
+.ctwo-dot .icon { width: 18px; height: 18px; }
+.ctwo-dot.ctwo-charts { background: var(--ctwo-charts); }
+.ctwo-dot.ctwo-terrain { background: var(--ctwo-terrain); }
+.ctwo-dot.ctwo-weather { background: var(--ctwo-weather); }
+.ctwo-dot.ctwo-operational { background: var(--ctwo-operational); }
+.ctwo-dot.ctwo-threats { background: var(--ctwo-threats); }
+
+.ctwo-legs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ctwo-leg-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--text);
+}
+.ctwo-leg-card:hover {
+  border-color: var(--line);
+}
+.ctwo-leg-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--card2);
+}
+.ctwo-leg-icon .plane {
+  width: 20px;
+  height: 20px;
+}
+.ctwo-leg-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ctwo-leg-t {
+  font-weight: 700;
+}
+.ctwo-leg-card > .icon {
+  color: var(--dim);
+}
+
+.ctwo-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0;
+}
+.ctwo-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--card2);
+  color: var(--text);
+}
+.ctwo-row:hover {
+  border-color: var(--line);
+}
+.ctwo-row-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+.ctwo-row-t {
+  font-weight: 600;
+}
+.ctwo-row > .icon {
+  color: var(--dim);
+}
+.ctwo-start {
+  width: 100%;
+  justify-content: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ctwo-complete {
+  text-align: center;
+}
+.ctwo-complete-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: rgba(46, 194, 126, 0.15);
+  color: var(--ok);
+}
+.ctwo-complete-icon .icon {
+  width: 28px;
+  height: 28px;
+}
+.ctwo-complete .ctwo-sections {
+  text-align: left;
+}
+.ctwo-complete .btn-row {
+  justify-content: center;
+}
+
+.ctwo-section-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.ctwo-section-head h2 {
+  margin-bottom: 2px;
+}
+.ctwo-items .cl-item {
+  border-radius: var(--r-sm);
+  border-top: 1px solid var(--card2);
+}
+.ctwo-items .cl-item:first-child {
+  border-top: 0;
+}
+.ctwo-wx {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hair);
+}
+.ctwo-wx-head {
+  margin-bottom: 4px;
+}
+.ctwo-link {
+  margin-top: 14px;
+}
+.ctwo-edit {
+  margin-top: 12px;
+  padding: 14px;
+}
+
+@media (max-width: 600px) {
+  .ctwo-row-t { font-size: 0.92rem; }
+}
 .qrh-library .chip-n { display: inline; flex-shrink: 0; font-size: 0.75rem; }
 @media (min-width: 900px) { .qrh-library { max-height: 75vh; } }
