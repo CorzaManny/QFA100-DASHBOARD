@@ -35,6 +35,7 @@ import {
   claimedSwaps,
   sortedSectors,
   actualOf,
+  saveBrief,
   isOps,
   pilotsShort,
   biddingOn,
@@ -295,6 +296,8 @@ function runningBanner(run) {
 
 // The stamp box being corrected, as "<sector id>|<field>".
 let picking = '';
+// Whether the Finish sector dialog is open, for the sector awaitingFinish() returns.
+let finishOpen = false;
 
 // Off blocks and on blocks: two boxes. Tap an empty one and it records the
 // time now. Tap a filled one to correct it or clear it.
@@ -400,19 +403,48 @@ function awaitingFinish() {
   return landed.sort((x, y) => new Date(y.s.std) - new Date(x.s.std))[0]?.s || null;
 }
 
+// Landed but not finished: the stamped times, corrected here the same way as
+// on the Times card above, and a button that opens the Finish sector dialog
+// for the fuel figures and the handover note.
 function finishCard(s) {
   const a = actualOf(s.id) || {};
-  const units = esc(String(briefingOf(s.id).ofp?.units || 'kgs').toUpperCase());
+  const box = (field, label, t) => {
+    const key = `${s.id}|${field}`;
+    return picking === key
+      ? timePicker(s, field, label, t)
+      : `<button class="stamp-box done" data-act="pick" data-key="${esc(key)}">
+          <span class="tiny">${label}</span>
+          <strong>${zulu(t)}</strong>
+          <span class="tiny">Tap to change</span>
+        </button>`;
+  };
   return `
     <section class="card">
       <div class="card-head"><h2>Finish sector</h2><span class="badge info">${esc(s.flight)} ${esc(s.dep)} → ${esc(s.arr)}</span></div>
-      <p class="note">Landed. The stamped times stay here until this sector is finished.</p>
+      <p class="note">Landed. The stamped times stay here until this sector is finished - tap either one to correct it, even now.</p>
       <div class="stamps">
-        <div class="stamp-box done"><span class="tiny">Off blocks</span><strong>${zulu(a.off_blocks)}</strong></div>
-        <div class="stamp-box done"><span class="tiny">On blocks</span><strong>${zulu(a.on_blocks)}</strong></div>
+        ${box('off_blocks', 'Off blocks', a.off_blocks)}
+        ${box('on_blocks', 'On blocks', a.on_blocks)}
       </div>
-      <form class="form" data-form="finishSector">
+      <div class="btn-row"><button class="btn primary" type="button" data-act="openFinish">Finish sector</button></div>
+    </section>`;
+}
+
+// The dialog Finish sector opens: fuel figures and the handover note for the
+// next crew, all in one place rather than leaving the Dashboard for Briefing.
+function finishModal(s) {
+  const a = actualOf(s.id) || {};
+  const units = esc(String(briefingOf(s.id).ofp?.units || 'kgs').toUpperCase());
+  const handover = briefingOf(s.id).handover || '';
+  return `
+    <div class="lr-modal-backdrop" data-act="closeFinish">
+      <form class="lr-modal" data-act="none" data-form="finishSector">
         <input type="hidden" name="sector" value="${esc(s.id)}">
+        <div class="card-head">
+          <h2>Finish sector</h2>
+          <button class="btn ghost small" type="button" data-act="closeFinish">${icon('chevron')} Close</button>
+        </div>
+        <p class="tiny">${esc(s.flight)} · ${esc(s.dep)} → ${esc(s.arr)} · on blocks ${zulu(a.on_blocks)}</p>
         <div class="grid2">
           <label class="field">Fuel remaining (${units})<input name="fuel_remaining" type="number" inputmode="decimal" min="0" step="1" value="${
             a.fuel_remaining ?? ''
@@ -421,9 +453,12 @@ function finishCard(s) {
             a.fuel_used ?? ''
           }" required></label>
         </div>
+        <label class="field">Handover to the next crew<textarea name="handover" rows="4" placeholder="e.g. Parked gate 54, APU running, 6.2 t on board">${esc(
+          handover,
+        )}</textarea></label>
         <div class="btn-row"><button class="btn primary" type="submit">Finish sector</button></div>
       </form>
-    </section>`;
+    </div>`;
 }
 
 // The briefing for the sector on the flight deck now: notes, the previous
@@ -453,6 +488,7 @@ function flightDeck(now, run) {
   const finishing = awaitingFinish();
   return `
     ${finishing ? finishCard(finishing) : ''}
+    ${finishing && finishOpen ? finishModal(finishing) : ''}
     ${
       stamping
         ? `<section class="card">
@@ -660,18 +696,22 @@ export const forms = {
     rerender();
   },
 
-  // Closes out a landed sector: fuel figures, and the stamped times stop
-  // being the thing the dashboard shows for it.
+  // Closes out a landed sector: fuel figures and the handover note for the
+  // next crew, and the stamped times stop being the thing the dashboard
+  // shows for it.
   async finishSector(data, formEl) {
     formEl.querySelector('[type=submit]').disabled = true;
+    const sectorId = data.get('sector');
     try {
-      await saveActual(data.get('sector'), {
+      await saveActual(sectorId, {
         fuel_remaining: Number(data.get('fuel_remaining')),
         fuel_used: Number(data.get('fuel_used')),
         completed_at: new Date().toISOString(),
         by_name: me()?.display_name || '',
       });
+      await saveBrief(sectorId, { handover: String(data.get('handover') || '').trim() });
       await syncTeam();
+      finishOpen = false;
     } catch (err) {
       alert(`Could not finish the sector: ${err.message}`);
     }
@@ -721,4 +761,14 @@ export const actions = {
     }
     rerender();
   },
+
+  openFinish() {
+    finishOpen = true;
+    rerender();
+  },
+  closeFinish() {
+    finishOpen = false;
+    rerender();
+  },
+  none() {},
 };
