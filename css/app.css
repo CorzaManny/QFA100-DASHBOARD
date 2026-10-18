@@ -419,14 +419,15 @@ body.efb.chat-open .chat-toggle {
   }
 }
 /* The page itself makes room for the panel rather than letting it sit over
-   the content - everything shifts left, the same as the panel's own slide. */
-@media (min-width: 480px) {
-  body.efb main {
-    transition: padding-right 0.25s ease;
-  }
-  body.efb.chat-open main {
-    padding-right: calc(var(--chat-w) + max(16px, env(safe-area-inset-right)));
-  }
+   the content. main is centred with auto margins either side; pinning just
+   the right margin while the left stays auto moves the whole column over
+   until it stops short of the panel, rather than only squeezing the padding
+   inside a box that was already centred with room to spare either side. */
+body.efb main {
+  transition: margin-right 0.25s ease;
+}
+body.efb.chat-open main {
+  margin-right: calc(var(--chat-w) + max(16px, env(safe-area-inset-right)));
 }
 
 .tabs {
