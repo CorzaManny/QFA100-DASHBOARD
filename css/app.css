@@ -30,6 +30,7 @@
   --top-h: 58px;
   --tabs-h: 62px;
   --nav-w: 228px;
+  --flightbar-h: 68px;
   --r: 10px;
   --r-sm: 6px;
   color-scheme: dark;
@@ -205,6 +206,134 @@ main {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* ---- Flight deck header bar ----
+   A second strip under the top bar, for an EFB tablet only: which flight,
+   which leg, and whether it is running to time - visible wherever the
+   tablet is in the app, not just on the Dashboard. */
+.flightbar {
+  display: none;
+}
+body.efb .flightbar {
+  position: fixed;
+  inset: calc(var(--top-h) + env(safe-area-inset-top)) 0 auto 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: var(--flightbar-h);
+  padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--hair);
+  overflow: hidden;
+}
+body.efb .flightbar:empty {
+  display: none;
+}
+body.efb main {
+  padding-top: calc(var(--top-h) + env(safe-area-inset-top) + var(--flightbar-h) + 16px);
+}
+.fb-left {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.fb-flight {
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.fb-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fb-sub .tiny {
+  color: var(--muted);
+  font-weight: 700;
+}
+.fb-route {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-width: 0;
+}
+.fb-apt {
+  text-align: center;
+}
+.fb-apt .fb-code {
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+.fb-apt .tiny {
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+.fb-arrow-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 80px;
+}
+.fb-arrow-wrap .tiny {
+  color: var(--dim);
+  white-space: nowrap;
+}
+.fb-arrow {
+  width: 100%;
+  height: 16px;
+  color: var(--dim);
+}
+.fb-right {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.fb-time {
+  text-align: center;
+}
+.fb-time .tiny {
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+.fb-time-v {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fb-status {
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .fb-sub .tiny:not(.fb-vatsim),
+  .fb-apt .tiny,
+  .fb-time:nth-last-child(2) {
+    display: none;
+  }
+  .fb-arrow-wrap {
+    min-width: 50px;
+  }
+}
+@media (max-width: 560px) {
+  .fb-time:nth-last-child(3) {
+    display: none;
+  }
+}
+@media (min-width: 900px) {
+  body.efb .tabs {
+    top: calc(var(--top-h) + env(safe-area-inset-top) + var(--flightbar-h));
+  }
 }
 
 .tabs {

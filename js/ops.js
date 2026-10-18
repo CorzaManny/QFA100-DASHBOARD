@@ -1145,6 +1145,14 @@ export function saveCtwoProgress(sectorId, leg, legState) {
 export const teamCallsign = () => (state.settings?.rules?.callsign || 'QFA100').trim().toUpperCase();
 export const teamAircraft = () => (state.settings?.rules?.aircraft || 'B738').trim().toUpperCase();
 export const teamSimbrief = () => (state.settings?.simbrief || '').trim();
+// A reader's name for the team's ICAO aircraft type, for the flight deck
+// header bar. Falls back to the ICAO code itself for anything not listed.
+const AIRCRAFT_NAMES = {
+  B737: '737-700', B738: '737-800', B739: '737-900', B37M: '737 MAX 8',
+  A319: 'A319', A320: 'A320', A321: 'A321', A20N: 'A320neo', A21N: 'A321neo',
+  B77W: '777-300ER', B788: '787-8', B789: '787-9', B78X: '787-10', A388: 'A380',
+};
+export const teamAircraftName = () => AIRCRAFT_NAMES[teamAircraft()] || teamAircraft();
 // Where SimBrief lives. If SimBrief ever moves these, it is a code change.
 const SIMBRIEF_PLAN = 'https://dispatch.simbrief.com/options/custom';
 const SIMBRIEF_FETCH = 'https://www.simbrief.com/api/xml.fetcher.php';

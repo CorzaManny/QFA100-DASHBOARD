@@ -1,9 +1,26 @@
 // App shell: sign-in gate, hash routing, event delegation, clock, screen wake lock.
 
-import { zulu, simClock } from './ui.js';
+import { esc, zulu, simClock, zdate, span } from './ui.js';
 import { state } from './store.js';
 import { configured, getSession, useEmailLink, signOut } from './api.js';
-import { loadAirports, syncTeam, canEdit, isPending, needsSetup, isEfb, isOps, me, clearTeam, roleName } from './ops.js';
+import {
+  loadAirports,
+  syncTeam,
+  canEdit,
+  isPending,
+  needsSetup,
+  isEfb,
+  isOps,
+  me,
+  clearTeam,
+  roleName,
+  currentSector,
+  upcomingSector,
+  running,
+  airport,
+  distNm,
+  teamAircraftName,
+} from './ops.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
 import * as admin from './views/admin.js';
@@ -87,17 +104,63 @@ function parse() {
 const locked = () =>
   login.resetting() || (configured ? !getSession() || isPending() || needsSetup() : !state.preview);
 
+const flightbar = document.getElementById('flightbar');
+
+// The flight deck's own strip under the top bar: which flight, which leg,
+// and whether it is running to time. Shown on every page for an EFB tablet
+// (see the .efb body class), not just the Dashboard, so it stays visible
+// while flicking between the tech log, checklists and briefings in flight.
+function updateFlightBar() {
+  const s = currentSector() || upcomingSector();
+  if (!s) {
+    flightbar.innerHTML = '';
+    return;
+  }
+  const dep = airport(s.dep);
+  const arr = airport(s.arr);
+  const dist = dep && arr ? Math.round(distNm(dep.lat, dep.lon, arr.lat, arr.lon)) : null;
+  const t = state.track;
+  const live = !!t?.online;
+  const run = running();
+  const status = run.trusted && run.late
+    ? { cls: run.late.delay > 0 ? 'warn' : 'info', label: `${span(Math.abs(run.late.delay))} ${run.late.delay > 0 ? 'LATE' : 'EARLY'}` }
+    : { cls: 'ok', label: 'ON SCHEDULE' };
+  flightbar.innerHTML = `
+    <div class="fb-left">
+      <div class="fb-flight">${esc(s.flight)}</div>
+      <div class="fb-sub">
+        <span class="tiny">${esc(teamAircraftName())}</span>
+        <span class="badge ${live ? 'ok' : 'mute'} fb-vatsim">${t?.source === 'SIM' ? 'SIMULATOR' : 'VATSIM'}</span>
+      </div>
+    </div>
+    <div class="fb-route">
+      <div class="fb-apt"><div class="fb-code">${esc(s.dep)}</div><div class="tiny">${esc(dep?.city || '')}</div></div>
+      <div class="fb-arrow-wrap">
+        <span class="tiny">${span(new Date(s.sta) - new Date(s.std))}</span>
+        <svg class="fb-arrow" viewBox="0 0 80 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 8h72M66 2l8 6-8 6"/></svg>
+        <span class="tiny">${dist != null ? `${dist} NM` : ''}</span>
+      </div>
+      <div class="fb-apt"><div class="fb-code">${esc(s.arr)}</div><div class="tiny">${esc(arr?.city || '')}</div></div>
+    </div>
+    <div class="fb-right">
+      <div class="fb-time"><div class="tiny">STD</div><div class="fb-time-v">${simClock(s.std)}</div></div>
+      <div class="fb-time"><div class="tiny">STA</div><div class="fb-time-v">${simClock(s.sta)}</div></div>
+      <div class="fb-time"><div class="tiny">DATE</div><div class="fb-time-v">${zdate(s.std)} ${new Date(s.std).getUTCFullYear()}</div></div>
+      <span class="badge ${status.cls} fb-status">${esc(status.label)}</span>
+    </div>`;
+}
+
 function render() {
   const gate = locked();
   document.body.classList.toggle('locked', gate);
   document.body.classList.toggle('editor', !gate && canEdit());
-  document.body.classList.toggle('efb', !gate && isEfb());
+  const efb = !gate && isEfb();
+  document.body.classList.toggle('efb', efb);
+  if (efb) updateFlightBar();
+  else flightbar.innerHTML = '';
   // A tablet says so, and which of the two it is, so nobody mistakes one for
   // their own device.
-  brand.textContent =
-    !gate && isEfb()
-      ? `FLIGHT DECK · ${(me()?.display_name || 'TABLET').toUpperCase()}`
-      : 'WORLDFLIGHT · 737 OPERATIONS';
+  brand.textContent = efb ? `FLIGHT DECK · ${(me()?.display_name || 'TABLET').toUpperCase()}` : 'WORLDFLIGHT · 737 OPERATIONS';
   // The avatar says who is signed in; the menu holds the two places that are
   // theirs rather than the team's.
   closeMenu();
@@ -166,15 +229,21 @@ function tick() {
   }
 }
 
+// An EFB tablet keeps its flight deck header bar live wherever it is in the
+// app, not just on the Dashboard or Ops Board, so the live track is read on
+// every page for one of those devices.
+function pollTrack() {
+  if (!(['dashboard', 'ops'].includes(route.name) || isEfb()) || locked() || document.visibilityState !== 'visible') return;
+  dash.poll().then(() => isEfb() && updateFlightBar());
+}
+
 setInterval(tick, 1000);
-setInterval(() => {
-  if (['dashboard', 'ops'].includes(route.name) && !locked() && document.visibilityState === 'visible') dash.poll();
-}, 15000);
+setInterval(pollTrack, 15000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   wakeLock();
   sync();
-  if (['dashboard', 'ops'].includes(route.name)) dash.poll();
+  pollTrack();
 });
 
 // True when a form on the page holds something that has not been saved.
