@@ -174,11 +174,15 @@ function liveCard(now) {
         ? 'The simulator report is dated in the future, so it cannot be trusted as live.'
         : `The simulator has not reported since ${zdate(t.at)} ${zulu(t.at)} (${ago(t.at)}).`
       : `${cs} is no longer on VATSIM. Last seen ${ago(t.at)}.`;
+    // 30 minutes with nothing from the network: stop showing the sector it
+    // went quiet on and move the map to what's next, since by then it's more
+    // likely a disconnect than a flight still sitting there.
+    const idle = now - t.at >= 30 * 60000;
     return `
       <section class="card">
         ${head(`<span class="badge warn">POSITION STALE</span>`)}
         ${routeRow(t.dep, t.arr, null)}
-        ${liveMap(t, currentSector(now))}
+        ${liveMap(t, idle ? nextSector(now) || currentSector(now) : currentSector(now))}
         <p class="note warn">${icon('alert')} ${why} Last position ${level(t.alt)}, ${knots(t.gs)}${
           t.remaining != null ? `, ${Math.round(t.remaining)} NM from ${esc(t.arr)}` : ''
         }. This may be a disconnect, not a landing.</p>
