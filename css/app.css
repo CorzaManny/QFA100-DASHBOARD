@@ -32,6 +32,13 @@
   --nav-w: 228px;
   --flightbar-h: 68px;
   --chat-w: 340px;
+  /* How much of the page's own width the open chat panel is holding back for
+     itself - 0 whenever the panel is not open. main's max-width is written
+     in terms of this everywhere it is set, so the centred column simply
+     narrows and re-centres itself in what is left, rather than the panel
+     being bolted on as an overlay on top of an unrelated, still fully wide
+     and centred page. */
+  --chat-reserve: 0px;
   --r: 10px;
   --r-sm: 6px;
   color-scheme: dark;
@@ -200,13 +207,14 @@ h3::after {
 }
 
 main {
-  max-width: 760px;
+  max-width: calc(760px - var(--chat-reserve));
   margin: 0 auto;
   padding: calc(var(--top-h) + env(safe-area-inset-top) + 16px) max(16px, env(safe-area-inset-right))
     calc(var(--tabs-h) + env(safe-area-inset-bottom) + 24px) max(16px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   gap: 14px;
+  transition: max-width 0.25s ease;
 }
 
 /* ---- Flight deck header bar ----
@@ -362,6 +370,9 @@ body.efb .chatpanel {
   transform: translateX(100%);
   transition: transform 0.25s ease;
 }
+body.efb.chat-open {
+  --chat-reserve: calc(var(--chat-w) + 16px);
+}
 body.efb.chat-open .chatpanel {
   transform: translateX(0);
 }
@@ -423,18 +434,6 @@ body.efb.chat-open .chat-toggle {
     bottom: 0;
   }
 }
-/* The page itself makes room for the panel rather than letting it sit over
-   the content. main is centred with auto margins either side; pinning just
-   the right margin while the left stays auto moves the whole column over
-   until it stops short of the panel, rather than only squeezing the padding
-   inside a box that was already centred with room to spare either side. */
-body.efb main {
-  transition: margin-right 0.25s ease;
-}
-body.efb.chat-open main {
-  margin-right: calc(var(--chat-w) + max(16px, env(safe-area-inset-right)));
-}
-
 .tabs {
   position: fixed;
   inset: auto 0 0 0;
@@ -566,7 +565,7 @@ body.efb.chat-open main {
     padding-bottom: 40px;
     padding-left: calc(var(--nav-w) + 28px);
     padding-right: 28px;
-    max-width: calc(var(--nav-w) + 920px);
+    max-width: calc(var(--nav-w) + 920px - var(--chat-reserve));
   }
 }
 
@@ -2064,7 +2063,7 @@ body.editor .tabs a[data-tab='ops'] {
    board alone is let run wider on a screen that has the room. */
 @media (min-width: 900px) {
   body.wide main {
-    max-width: calc(var(--nav-w) + 1600px);
+    max-width: calc(var(--nav-w) + 1600px - var(--chat-reserve));
   }
 }
 
