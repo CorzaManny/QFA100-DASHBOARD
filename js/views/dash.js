@@ -182,7 +182,7 @@ function liveCard(now) {
       <section class="card">
         ${head(`<span class="badge warn">POSITION STALE</span>`)}
         ${routeRow(t.dep, t.arr, null)}
-        ${liveMap(t, idle ? nextSector(now) || currentSector(now) : currentSector(now))}
+        ${idle ? liveMap(null, nextSector(now) || currentSector(now)) : liveMap(t, currentSector(now))}
         <p class="note warn">${icon('alert')} ${why} Last position ${level(t.alt)}, ${knots(t.gs)}${
           t.remaining != null ? `, ${Math.round(t.remaining)} NM from ${esc(t.arr)}` : ''
         }. This may be a disconnect, not a landing.</p>
