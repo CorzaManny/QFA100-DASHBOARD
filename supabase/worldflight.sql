@@ -116,6 +116,10 @@ begin
   -- the departure window beside it.
   foreach chunk in array string_to_array(page, '<tr ')
   loop
+    -- A sector with an alternative (two routes a pilot can choose between)
+    -- lists a second row suffixed ".A"/".B", e.g. "WF2619.B" - left out of the
+    -- character class on purpose, so only the page's own default (unsuffixed)
+    -- choice is read, the same one sector number the team actually flies.
     sector := regexp_match(
       chunk,
       'data-from="([A-Z0-9]{4})" data-to="([A-Z0-9]{4})" data-wf="([A-Za-z0-9]+)" ' ||
@@ -124,7 +128,9 @@ begin
     );
     continue when sector is null;
 
-    window_ := regexp_match(chunk, 'window-tt">([0-9]{2}):([0-9]{2})[^0-9]+([0-9]{2}):([0-9]{2})');
+    -- The window used to sit right after window-tt">; it is now the text of a
+    -- nested span, so it is read from that span's own data-utc attribute instead.
+    window_ := regexp_match(chunk, 'data-kind="window" data-utc="([0-9]{2}):([0-9]{2})[^0-9]+([0-9]{2}):([0-9]{2})"');
     continue when window_ is null;
 
     month_ := array_position(months, initcap(sector[5]));

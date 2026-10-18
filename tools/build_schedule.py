@@ -29,6 +29,10 @@ def minutes(hhmm):
 sectors = []
 prev_std = None
 for row in re.findall(r"<tr class=\"[^\"]*\">(.*?)</tr>", page, re.S):
+    # A sector with an alternative (two routes a pilot can choose between)
+    # lists a second row suffixed ".A"/".B", e.g. "WF2619.B" - left out of the
+    # character class on purpose, so only the page's own default (unsuffixed)
+    # choice is read, the same one sector number the team actually flies.
     btn = re.search(
         r'data-from="(\w{4})" data-to="(\w{4})" data-wf="(\w+)" data-date="([^"]+)" data-dep="(\d\d:\d\d)" data-block="(\d\d:\d\d)"',
         row,
@@ -37,7 +41,9 @@ for row in re.findall(r"<tr class=\"[^\"]*\">(.*?)</tr>", page, re.S):
         continue
     dep, arr, wf, date, dep_time, block = btn.groups()
     day, month = re.search(r"(\d+)\w* (\w{3})", date).groups()
-    start, end = re.search(r'window-tt">(\d\d:\d\d)\D(\d\d:\d\d)', row).groups()
+    # The window used to sit right after window-tt">; it is now the text of a
+    # nested span, read from that span's own data-utc attribute instead.
+    start, end = re.search(r'data-kind="window" data-utc="(\d\d:\d\d)\D(\d\d:\d\d)"', row).groups()
     length = (minutes(end) - minutes(start)) % 1440
 
     # data-date and data-dep describe the middle of the window (the visible Date
