@@ -150,6 +150,52 @@ function updateFlightBar() {
     </div>`;
 }
 
+// ---- Chat panel ----
+// The Twitch chat beside the page for an EFB tablet, open on every screen
+// rather than only the Stream page - see js/views/stream.js, which leaves the
+// chat out of its own card for an EFB account so there is only ever one
+// connection. The iframe is built once per channel and left alone after
+// that: a render() here never touches it, so it is never reconnected just
+// because the crew changed pages.
+const chatpanel = document.getElementById('chatpanel');
+const chatBody = chatpanel.querySelector('.chatpanel-body');
+const chatToggle = document.getElementById('chat-toggle');
+const CHAT_OPEN_KEY = 'qfa100-chat-open';
+let chatOpen = true;
+try {
+  chatOpen = localStorage.getItem(CHAT_OPEN_KEY) !== '0';
+} catch {
+  // storage unavailable; default to open
+}
+let chatChannel = undefined; // the channel the iframe currently points at
+
+function setChatOpen(open) {
+  chatOpen = open;
+  document.body.classList.toggle('chat-open', open);
+  try {
+    localStorage.setItem(CHAT_OPEN_KEY, open ? '1' : '0');
+  } catch {
+    // storage unavailable; the choice just will not be remembered next visit
+  }
+}
+
+function updateChatPanel(efb) {
+  document.body.classList.toggle('chat-open', efb && chatOpen);
+  if (!efb) return;
+  const name = stream.channel();
+  if (name === chatChannel) return;
+  chatChannel = name;
+  chatBody.innerHTML = name
+    ? `<iframe class="chat" title="Twitch chat for ${esc(name)}" src="https://www.twitch.tv/embed/${encodeURIComponent(
+        name,
+      )}/chat?parent=${encodeURIComponent(location.hostname)}&darkpopout"
+        sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals"></iframe>`
+    : '<p class="note">No Twitch channel set yet. Ops staff set it on the Stream page.</p>';
+}
+
+chatToggle.addEventListener('click', () => setChatOpen(true));
+document.getElementById('chat-close').addEventListener('click', () => setChatOpen(false));
+
 function render() {
   const gate = locked();
   document.body.classList.toggle('locked', gate);
@@ -158,6 +204,7 @@ function render() {
   document.body.classList.toggle('efb', efb);
   if (efb) updateFlightBar();
   else flightbar.innerHTML = '';
+  updateChatPanel(efb);
   // A tablet says so, and which of the two it is, so nobody mistakes one for
   // their own device.
   brand.textContent = efb ? `FLIGHT DECK · ${(me()?.display_name || 'TABLET').toUpperCase()}` : 'WORLDFLIGHT · 737 OPERATIONS';

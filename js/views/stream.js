@@ -33,7 +33,9 @@ import {
 let editing = false;
 let error = '';
 
-const channel = () => (state.settings?.twitch_channel || '').trim().replace(/^.*twitch\.tv\//i, '').replace(/[/?#].*$/, '');
+// Also read by app.js, which keeps the chat itself in a panel beside the page
+// for an EFB tablet - see updateChatPanel() there.
+export const channel = () => (state.settings?.twitch_channel || '').trim().replace(/^.*twitch\.tv\//i, '').replace(/[/?#].*$/, '');
 const topics = () =>
   (state.settings?.stream_topics || '')
     .split('\n')
@@ -173,9 +175,16 @@ export function render() {
       <section class="card"><p class="note">The stream page is for the flight deck tablets and ops staff.</p></section>`;
   }
   const now = Date.now();
+  // An EFB tablet already carries the chat in the panel beside the page (see
+  // app.js), open on every screen - embedding it again here would just be a
+  // second Twitch connection fighting the first for the same chat.
   const out = `
     <div class="page-head"><h1>Stream</h1></div>
-    ${chatCard()}
+    ${
+      isEfb()
+        ? `<section class="card"><p class="note">Chat is in the panel on the right. Use its tab to show or hide it.</p></section>`
+        : chatCard()
+    }
     ${topicsCard(now)}
     ${channelCard()}`;
   error = '';
