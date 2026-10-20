@@ -2547,8 +2547,19 @@ body.editor .tabs a[data-tab='ops'] {
   flex-direction: column;
   gap: 12px;
 }
-.chat-card {
+.chat-card,
+.stream-card {
   gap: 10px;
+}
+/* The stream as the audience sees it, on the Stream page. Sixteen by nine,
+   and capped so the topics under it are still on screen. */
+.stream-player {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: min(70vh, 720px);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--bg-deep);
 }
 .chat {
   width: 100%;

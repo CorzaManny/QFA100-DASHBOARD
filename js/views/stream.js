@@ -1,9 +1,10 @@
-// The stream: Twitch chat beside the flight deck, and things worth saying.
+// The stream: what has gone out to the audience, and things worth saying.
 //
-// The chat is Twitch's own embed in an iframe. It needs a parent parameter
+// The preview is Twitch's own player in an iframe. It needs a parent parameter
 // naming the exact host it is embedded on, so that is read off the address bar
 // rather than written down anywhere: the same code then works on the team's
-// domain, on GitHub Pages and on a laptop.
+// domain, on GitHub Pages and on a laptop. Chat is not here - it lives in the
+// panel beside every page on a flight deck tablet, see app.js.
 //
 // The talking points are half worked out from what the app already knows --
 // where the aeroplane is, how far round the world the team has got, what it is
@@ -96,31 +97,33 @@ function suggested(now) {
   return out;
 }
 
-function chatCard() {
+function previewCard() {
   const name = channel();
   if (!name) {
     return `
       <section class="card">
-        <h2>Twitch chat</h2>
+        <h2>The stream</h2>
         <p class="note">No channel set yet.${
-          canEdit() ? ' Put the team’s Twitch name in below and the chat appears here.' : ' Ops staff set it on this page.'
+          canEdit() ? ' Put the team’s Twitch name in below and the stream appears here.' : ' Ops staff set it on this page.'
         }</p>
       </section>`;
   }
   // parent has to be the exact host this page is served from, so it is read
-  // off the address bar. darkpopout is undocumented but keeps the chat dark.
-  const src = `https://www.twitch.tv/embed/${encodeURIComponent(name)}/chat?parent=${encodeURIComponent(
+  // off the address bar. Muted, because a browser will only start a player by
+  // itself when it is silent, and because a cockpit does not need the stream
+  // talking back at it - the player's own controls turn the sound on.
+  const src = `https://player.twitch.tv/?channel=${encodeURIComponent(name)}&parent=${encodeURIComponent(
     location.hostname,
-  )}&darkpopout`;
+  )}&muted=true`;
   return `
-    <section class="card chat-card">
-      <div class="card-head"><h2>Twitch chat</h2>
+    <section class="card stream-card">
+      <div class="card-head"><h2>The stream</h2>
         <a class="btn ghost small" href="https://www.twitch.tv/${esc(name)}" target="_blank" rel="noopener">Open on Twitch ${icon(
           'external',
         )}</a></div>
-      <iframe class="chat" title="Twitch chat for ${esc(name)}" src="${esc(src)}"
-        sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals"></iframe>
-      <p class="tiny">Chat needs a connection; it will not load with the aeroplane offline.</p>
+      <iframe class="stream-player" title="Twitch stream for ${esc(name)}" src="${esc(src)}"
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen></iframe>
+      <p class="tiny">This is what the audience is seeing, muted. It needs a connection; it will not load with the aeroplane offline.</p>
     </section>`;
 }
 
@@ -175,16 +178,12 @@ export function render() {
       <section class="card"><p class="note">The stream page is for the flight deck tablets and ops staff.</p></section>`;
   }
   const now = Date.now();
-  // An EFB tablet already carries the chat in the panel beside the page (see
-  // app.js), open on every screen - embedding it again here would just be a
-  // second Twitch connection fighting the first for the same chat.
+  // Chat is not on this page. An EFB tablet carries it in the panel beside
+  // every screen (see app.js), and ops staff have it on Twitch itself; what
+  // this page is for is seeing what has gone out.
   const out = `
     <div class="page-head"><h1>Stream</h1></div>
-    ${
-      isEfb()
-        ? `<section class="card"><p class="note">Chat is in the panel on the right. Use its tab to show or hide it.</p></section>`
-        : chatCard()
-    }
+    ${previewCard()}
     ${topicsCard(now)}
     ${channelCard()}`;
   error = '';
@@ -192,9 +191,10 @@ export function render() {
 }
 
 // Called instead of a full rerender when the background sync notices team
-// data has changed while this page is open. The Twitch chat iframe lives in
-// the same tree a full render would replace, which reloads it for no reason;
-// patching just the auto-generated topics in place keeps the chat connected.
+// data has changed while this page is open. The Twitch player lives in the
+// same tree a full render would replace, which would restart the stream every
+// ten seconds; patching just the auto-generated topics in place leaves it
+// playing.
 // True means "handled, no full render needed"; anything else falls back to one.
 export function liveUpdate() {
   if (!location.hash.startsWith('#/stream') || editing) return false;
