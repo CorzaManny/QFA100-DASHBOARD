@@ -7,8 +7,9 @@
 --
 -- A notification only goes to somebody who has turned notifications on for a
 -- device (Settings -> Notifications) and has not switched the ops chat off,
--- which public.notify() takes care of. Sending happens on the same one-minute
--- job as everything else, so a message can take up to a minute to arrive.
+-- which public.notify() takes care of. Sending rides the same job as
+-- everything else, which runs every ten seconds, so that is about how long a
+-- message takes to arrive.
 
 -- Who should be answering right now, in the database's own words. This mirrors
 -- opsOnShift() in js/ops.js: somebody who has taken the desk off the roster
@@ -39,14 +40,18 @@ $$;
 revoke all on function public.ops_on_desk() from anon;
 grant execute on function public.ops_on_desk() to authenticated;
 
--- One notification per person per minute, however much is being said: a busy
--- exchange should buzz a phone once, not nine times. The dedupe key is what
--- does it - public.notify() drops anything that repeats one.
+-- At most one notification per person per half minute, however much is being
+-- said: a burst of three should buzz a phone once, not three times, while a
+-- follow-up thirty seconds later - which is usually the one that matters - is
+-- still heard. The dedupe key is what does it: public.notify() drops anything
+-- repeating a key it has already queued, so the window is simply how coarse
+-- that key is.
 create or replace function public.notify_ops_message()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
   sender_role text;
-  stamp       text := to_char(now(), 'YYYYMMDDHH24MI');
+  stamp       text := to_char(now(), 'YYYYMMDDHH24MI')
+                      || case when extract(second from now()) < 30 then 'a' else 'b' end;
   preview     text;
   who         text;
   on_desk     uuid;

@@ -258,7 +258,7 @@ create trigger notify_roster after insert or update or delete on public.roster
   for each row execute function public.notify_roster_change();
 
 -- Report reminders, and a word when a delay moves somebody's report time.
--- Called once a minute by the job at the bottom.
+-- Called every ten seconds by the job at the bottom.
 create or replace function public.notify_due()
 returns integer language plpgsql security definer set search_path = public as $$
 declare
@@ -328,7 +328,10 @@ $$;
 -- ---------- Sending ----------
 
 -- Builds whatever is due, then asks the send-push function to deliver
--- everything waiting. Runs every minute.
+-- everything waiting. Runs every ten seconds (see the job at the bottom).
+--
+-- With nothing waiting it costs about ten milliseconds and never calls out to
+-- anything, which is what makes running it that often reasonable.
 create or replace function public.push_tick()
 returns text language plpgsql security definer set search_path = public, extensions as $$
 declare
@@ -378,8 +381,15 @@ $$;
 revoke all on function public.push_tick(), public.notify_due(), public.sector_running() from public, anon, authenticated;
 grant execute on function public.sector_running() to authenticated;
 
+-- Every ten seconds rather than every minute: a report reminder does not care,
+-- but a question from the flight deck in the ops chat does, and waiting up to
+-- a minute for it made the chat feel broken. pg_cron takes a plain interval
+-- like this from version 1.5, and will not start a run while the last one is
+-- still going, so a slow send cannot pile up behind itself.
+--
+-- On pg_cron 1.4 or older, '10 seconds' is rejected; put '* * * * *' back.
 select cron.unschedule('push-tick') where exists (select 1 from cron.job where jobname = 'push-tick');
-select cron.schedule('push-tick', '* * * * *', $job$ select public.push_tick() $job$);
+select cron.schedule('push-tick', '10 seconds', $job$ select public.push_tick() $job$);
 
 -- Old notifications are no use to anybody after a week.
 select cron.unschedule('push-tidy') where exists (select 1 from cron.job where jobname = 'push-tidy');
