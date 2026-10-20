@@ -509,6 +509,65 @@ body.ops-chat.ops-open main {
   font-weight: 700;
   letter-spacing: 0.1em;
 }
+/* ---- A call ----
+   Sits between who is on shift and the thread, so answering never means
+   hunting for a button. */
+.ops-call-slot:empty {
+  display: none;
+}
+.ops-call {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--hair);
+  background: var(--card2);
+}
+/* An incoming call is the one thing in here that should be impossible to
+   miss, so it pulses until it is answered or it gives up. */
+.ops-call.ringing {
+  background: rgba(228, 0, 43, 0.14);
+  animation: ops-call-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ops-call-pulse {
+  50% {
+    background: rgba(228, 0, 43, 0.3);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ops-call.ringing {
+    animation: none;
+  }
+}
+.ops-call-who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-weight: 700;
+}
+.ops-call-label {
+  flex-basis: 100%;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+}
+.ops-call-timer {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.ops-call-btns {
+  display: flex;
+  gap: 6px;
+}
+.ops-call-btns .btn {
+  padding: 8px 14px;
+  min-height: 40px;
+}
 /* The line across the thread where one sector ended and the next began. */
 .ops-sector {
   align-self: stretch;

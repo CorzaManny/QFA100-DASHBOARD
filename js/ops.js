@@ -138,11 +138,14 @@ export const NOTIFY_KINDS = [
   ['delay', 'A delay moves my report time'],
   ['report', 'A reminder before I report'],
   ['opschat', 'A message in the ops chat from the other side'],
+  ['opscall', 'Somebody calls me in the ops chat'],
 ];
 
-// The ops chat line is only offered to the people who have one, so a pilot is
-// not asked about a thread they cannot read.
-export const myNotifyKinds = () => NOTIFY_KINDS.filter(([key]) => key !== 'opschat' || canOpsChat());
+// The ops chat lines are only offered to the people who have a thread, so a
+// pilot is not asked about one they cannot read.
+const OPS_CHAT_KINDS = ['opschat', 'opscall'];
+export const myNotifyKinds = () =>
+  NOTIFY_KINDS.filter(([key]) => !OPS_CHAT_KINDS.includes(key) || canOpsChat());
 
 export function myNotify() {
   const chosen = me()?.notify || {};
@@ -152,6 +155,7 @@ export function myNotify() {
     delay: chosen.delay !== false,
     report: chosen.report !== false,
     opschat: chosen.opschat !== false,
+    opscall: chosen.opscall !== false,
     reportMinutes: Number.isFinite(chosen.reportMinutes) ? chosen.reportMinutes : r.reportReminderMinutes,
     delayMinutes: Number.isFinite(chosen.delayMinutes) ? chosen.delayMinutes : r.delayNoticeMinutes,
   };
@@ -344,6 +348,24 @@ export async function syncChecklistStatus() {
 // The cockpit tablets and the ops controllers. Everybody else - pilots reading
 // their own roster, observers - never sees the panel.
 export const canOpsChat = () => ['admin', 'dispatcher', 'operations', 'efb'].includes(me()?.role);
+
+// Which side of the radio somebody is on. The controllers are one side and the
+// flight deck the other, and that is the basis for the badges in the thread,
+// for which messages make a sound, and for who a call rings.
+export const OPS_DESK_ROLES = ['admin', 'dispatcher', 'operations'];
+export const sideOf = (userId) => (OPS_DESK_ROLES.includes(person(userId)?.role) ? 'ops' : 'deck');
+
+// Who a call from this account should ring: the controller holding the desk if
+// the flight deck is calling, every controller when nobody holds it so a call
+// is never made to an empty chair, and both tablets when ops calls them.
+export function whoToCall() {
+  const myId = getSession()?.userId;
+  const ids = (list) => list.filter((p) => p.id !== myId).map((p) => p.id);
+  if (sideOf(myId) === 'ops') return ids(state.people.filter((p) => p.role === 'efb'));
+  const on = opsOnShift();
+  if (on?.userId && on.userId !== myId) return [on.userId];
+  return ids(state.people.filter((p) => OPS_DESK_ROLES.includes(p.role)));
+}
 
 // False until supabase/ops-chat.sql has been run, which is how the app knows
 // to leave the whole feature out rather than show an empty panel.

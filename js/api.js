@@ -324,6 +324,10 @@ export const deleteOpsShift = (shiftId) => rest('DELETE', `ops_shifts?id=eq.${id
 export const takeOpsDesk = () => rest('POST', 'rpc/take_ops_desk', {});
 export const releaseOpsDesk = () => rest('POST', 'rpc/release_ops_desk', {});
 
+// The doorbell for a call: a notification to the other side, for a phone with
+// the app shut, which cannot be rung any other way.
+export const ringOps = (callId) => rest('POST', 'rpc/ring_ops', { call_id: callId });
+
 // fields: { flight, dep, arr, std, sta, route, notes }
 export function saveSector(fields, sectorId) {
   return sectorId

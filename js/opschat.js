@@ -18,6 +18,7 @@ import {
   opsOnShift,
   nextOpsShift,
   person,
+  sideOf,
   sectorTimeline,
   syncOpsChat,
   sendToOps,
@@ -25,12 +26,8 @@ import {
   markOpsRead,
 } from './ops.js';
 import { getSession } from './api.js';
-
-// Calling the controller on shift. Nothing is wired up yet on purpose: put the
-// team's call link in here - a Discord voice channel, a Jitsi room, even a
-// tel: number - and the Call button in the panel comes alive, opening it in a
-// new window. Empty, the button is there but plainly switched off.
-const CALL_LINK = '';
+import { ding } from './tone.js';
+import * as opscall from './opscall.js';
 
 const OPEN_KEY = 'qfa100-ops-chat-open';
 
@@ -39,6 +36,7 @@ const toggle = document.getElementById('ops-toggle');
 const unreadDot = document.getElementById('ops-unread');
 const shiftStrip = document.getElementById('ops-shift');
 const log = document.getElementById('ops-log');
+const callCard = document.getElementById('ops-call-card');
 const compose = document.getElementById('ops-compose');
 const text = document.getElementById('ops-text');
 const callBtn = document.getElementById('ops-call');
@@ -63,11 +61,6 @@ const name = (userId) => {
   return p ? p.display_name : 'Unknown';
 };
 
-// Which side of the radio somebody is on. The ops controllers are one side and
-// the flight deck the other, and that is the whole basis for the badges and
-// for which messages make a sound.
-const OPS_ROLES = ['admin', 'dispatcher', 'operations'];
-const sideOf = (userId) => (OPS_ROLES.includes(person(userId)?.role) ? 'ops' : 'deck');
 const mySide = () => sideOf(getSession()?.userId);
 
 // A tablet is "Captain" or "First Officer" in the thread, whatever its account
@@ -168,53 +161,8 @@ function messages() {
 // ---- The ding ----
 // A sound when the other side says something: the flight deck should hear ops,
 // and ops the flight deck. Two controllers talking to each other, or the two
-// tablets, is just conversation and stays silent.
-//
-// Made with an oscillator rather than a sound file, so there is nothing extra
-// to cache and nothing to go missing offline.
-let audio = null;
-
-function openAudio() {
-  audio ??= new (window.AudioContext || window.webkitAudioContext)();
-  if (audio.state === 'suspended') audio.resume();
-  return audio;
-}
-
-function ding() {
-  try {
-    const ctx = openAudio();
-    // Two notes, high and short: it has to carry in a room with a simulator
-    // running in it without being a klaxon.
-    [988, 1319].forEach((hz, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = hz;
-      const start = ctx.currentTime + i * 0.11;
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(0.16, start + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.45);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + 0.5);
-    });
-  } catch {
-    // no audio on this device, or the browser will not allow it yet; the
-    // unread badge still says there is something waiting
-  }
-}
-
-// A phone will not make a sound until the page has been touched once, so the
-// first touch anywhere is what opens the audio.
-const unlock = () => {
-  try {
-    openAudio();
-  } catch {
-    // no audio here; nothing more to try
-  }
-  document.removeEventListener('pointerdown', unlock);
-};
-document.addEventListener('pointerdown', unlock);
+// tablets, is just conversation and stays silent. The sound itself, and the
+// ring a call makes, are in js/tone.js.
 
 // The newest message this device has already dealt with. Nothing that was in
 // the thread before the app opened makes a sound.
@@ -251,9 +199,12 @@ export function paint() {
   // Whoever fetched the new messages - this panel's own poll or the team sync -
   // the sound is decided here, so it happens exactly once either way.
   announce();
+  // A call cannot arrive on a socket that was never connected, so the channel
+  // is joined as soon as this account has a thread - not when Call is pressed.
+  opscall.listen();
   shiftStrip.innerHTML = shiftLine();
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
-  log.innerHTML = `${messages()}${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}`;
+  log.innerHTML = messages();
   // Follow the conversation, unless the reader has scrolled back to look at
   // something earlier.
   if (atBottom) log.scrollTop = log.scrollHeight;
@@ -261,8 +212,12 @@ export function paint() {
   unreadDot.textContent = unread > 9 ? '9+' : String(unread);
   unreadDot.hidden = !unread;
   toggle.classList.toggle('has-unread', !!unread);
-  callBtn.disabled = !CALL_LINK;
-  callBtn.title = CALL_LINK ? 'Call the ops controller' : 'Calling is not connected yet';
+  // The call, when there is one, sits between who is on shift and the thread.
+  callCard.innerHTML = opscall.card();
+  const trouble = error || opscall.problem();
+  if (trouble) log.insertAdjacentHTML('beforeend', `<p class="note warn">${icon('alert')} ${esc(trouble)}</p>`);
+  callBtn.disabled = opscall.busy();
+  callBtn.title = opscall.busy() ? 'Already on a call' : 'Call the other side';
   compose.querySelector('button[type=submit]').disabled = sending;
 }
 
@@ -307,8 +262,22 @@ log.addEventListener('scroll', () => {
 });
 
 callBtn.addEventListener('click', () => {
-  if (CALL_LINK) window.open(CALL_LINK, '_blank', 'noopener');
+  opscall.clearProblem();
+  opscall.startCall();
 });
+
+// Answer, decline, mute and hang up all live on the call card, which is
+// rewritten on every paint, so the panel listens for them rather than the
+// buttons themselves.
+panel.addEventListener('click', (e) => {
+  const act = e.target.closest('[data-call]')?.dataset.call;
+  if (act) opscall.actions[act]?.();
+});
+
+// A repaint whenever the call changes state, and the channel opened as soon as
+// this account has a thread at all - a call cannot arrive on a socket that was
+// never connected.
+opscall.onCallChange(() => paint());
 
 async function send() {
   const body = text.value.trim();
@@ -361,6 +330,9 @@ setInterval(async () => {
 // with the panel already open clears the badge.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !available()) return;
+  // A phone puts a sleeping socket down; without this the tablet would look
+  // connected and never ring.
+  opscall.wake();
   if (open) markOpsRead();
   syncOpsChat().then(paint);
 });
