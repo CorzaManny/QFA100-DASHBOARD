@@ -15,6 +15,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **Airport Briefings** – runways, elevation, live METAR and TAF, who is controlling the airport on VATSIM with their ATIS, your team's own notes, and links to Navigraph Charts and ChartFox for every airport on the schedule (or any ICAO code).
 - **SimBrief** – opens SimBrief with the next sector filled in, then imports your latest OFP (route, fuel, weights, times). The link already carries extra fuel for any holding or traffic the Briefing expects at the destination.
 - **Stream** – on the flight deck tablets and for ops staff: a muted preview of the team's Twitch stream as the audience sees it, and a list of things worth talking about, half typed in by ops and half worked out from the flight itself. Chat sits in its own panel beside every page on a flight deck tablet.
+- **Ops chat** – a panel beside every page, for the flight deck tablets and ops staff: one thread between the cockpit and whichever operations controller is on shift, with that controller's name at the top of it so the crew know who is answering and the controllers know whose turn it is. Who is on comes from a shift roster kept in **Admin → Ops Desk**, which nobody else sees, and a controller stepping in off the roster can take the desk there. A **Call** button sits beside the thread, not connected to anything yet.
 - **Ops board** – for admins, dispatchers and operations: where the aeroplane is and how far behind the day is running, swaps and seat requests with the buttons to settle them, any defect grounding the aircraft, who reports next with live countdowns, which sectors are short of pilots, which still have no flight plan, and the weather at the airports coming up.
 - **Logbook** – the whole route around the world on one map, how far the team has got, and who has flown what, in hours, sectors and miles.
 
@@ -67,10 +68,11 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 9. In another query, paste in [`supabase/bidding.sql`](supabase/bidding.sql) and press **Run**. This lets an admin set a deadline for everyone's availability. It is optional; without it availability stays open and the roster can be published whenever you like.
 10. In another query, paste in [`supabase/weather.sql`](supabase/weather.sql) and press **Run**. This lets the airport pages show TAFs. It is optional; without it they show the METAR and the VATSIM ATIS only.
 11. In another query, paste in [`supabase/worldflight.sql`](supabase/worldflight.sql) and press **Run**. This sets up the six-hourly check of the official schedule (see below). It is optional; everything else works without it.
-12. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-13. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
-14. Push the change to GitHub.
-15. Open the app and **create your own account first**. The first account becomes the admin.
+12. In another query, paste in [`supabase/ops-chat.sql`](supabase/ops-chat.sql) and press **Run**. This adds the ops desk: the controllers' shift roster and the chat thread the flight deck tablets message them on. It is optional; without it there is no ops chat panel.
+13. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+14. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
+15. Push the change to GitHub.
+16. Open the app and **create your own account first**. The first account becomes the admin.
 
 Nobody signs themselves up. An admin makes each account in **Admin → People
 and roles → Add a team member**: a name, a role, and a password to pass on. The

@@ -61,6 +61,32 @@
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-5l-3 3-3-3H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 9h8M8 12.5h5"/></svg>
   </button>
 
+  <!-- The flight deck's line to the ops controller on shift. Built in
+       js/opschat.js; shown only to the cockpit tablets and ops staff. -->
+  <aside id="opspanel" class="opspanel" aria-label="Ops chat">
+    <div class="chatpanel-head">
+      <span class="tiny">OPS CHAT</span>
+      <span class="ops-head-btns">
+        <button type="button" id="ops-call" class="icon-btn" aria-label="Call the ops controller">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>
+        </button>
+        <button type="button" id="ops-close" class="icon-btn" aria-label="Hide ops chat">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </span>
+    </div>
+    <div id="ops-shift" class="ops-shift"></div>
+    <div id="ops-log" class="ops-log" aria-live="polite"></div>
+    <form id="ops-compose" class="ops-compose">
+      <textarea id="ops-text" rows="2" maxlength="2000" placeholder="Message the ops desk" aria-label="Message the ops desk"></textarea>
+      <button class="btn primary small" type="submit">Send</button>
+    </form>
+  </aside>
+  <button type="button" id="ops-toggle" class="ops-toggle" aria-label="Show ops chat">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+    <span id="ops-unread" class="ops-unread" hidden></span>
+  </button>
+
   <main id="view"></main>
 
   <nav class="tabs" aria-label="Main">

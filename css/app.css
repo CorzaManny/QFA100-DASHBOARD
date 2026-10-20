@@ -404,7 +404,8 @@ body.efb .chatpanel-body .chat {
 .chatpanel-body .note {
   margin: 14px;
 }
-.chat-toggle {
+.chat-toggle,
+.ops-toggle {
   display: none;
   position: fixed;
   z-index: 11;
@@ -428,6 +429,167 @@ body.efb.chat-open .chat-toggle {
 }
 @media (min-width: 900px) {
   body.efb .chatpanel {
+    bottom: 0;
+  }
+}
+
+/* ---- Ops chat panel ----
+   The flight deck's line to the ops controller on shift: the same dock over
+   the right edge as the Twitch chat, for the cockpit tablets and ops staff
+   (body.ops-chat, set in js/opschat.js). Only one of the two panels is ever
+   out at a time, so they can share the edge and the padding main gives up
+   for them. */
+.opspanel {
+  display: none;
+}
+body.ops-chat .opspanel {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  z-index: 11;
+  top: calc(var(--top-h) + env(safe-area-inset-top));
+  right: 0;
+  bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom));
+  width: min(var(--chat-w), 100vw);
+  max-width: 92vw;
+  background: var(--bg-deep);
+  border-left: 1px solid var(--hair);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+/* A tablet has the flight deck strip above it to clear. */
+body.efb.ops-chat .opspanel {
+  top: calc(var(--top-h) + env(safe-area-inset-top) + var(--flightbar-h));
+}
+body.ops-chat.ops-open .opspanel {
+  transform: translateX(0);
+}
+body.ops-chat.ops-open main {
+  max-width: none;
+  padding-right: calc(var(--chat-w) + max(16px, env(safe-area-inset-right)));
+}
+.ops-head-btns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ops-shift {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hair);
+  background: var(--card);
+}
+.ops-who {
+  font-weight: 700;
+}
+.ops-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ops-log .note {
+  margin: 0;
+}
+.ops-day {
+  align-self: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--card2);
+  color: var(--dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.ops-msg {
+  max-width: 92%;
+  align-self: flex-start;
+  padding: 8px 11px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--card);
+}
+/* What this device said sits on the other side, as it does in every chat. */
+.ops-msg.mine {
+  align-self: flex-end;
+  background: var(--card2);
+  border-color: var(--line);
+}
+.ops-msg-who {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 3px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.ops-msg.mine .ops-msg-who {
+  color: var(--dim);
+}
+.ops-msg-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.ops-compose {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--hair);
+  background: var(--card);
+}
+.ops-compose textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+}
+body.ops-chat .ops-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* No flight deck strip to clear on an ops controller's own screen. */
+  top: calc(var(--top-h) + env(safe-area-inset-top) + 14px);
+}
+/* On a tablet it sits under the Twitch chat's tab rather than on top of it. */
+body.efb.ops-chat .ops-toggle {
+  top: calc(var(--top-h) + env(safe-area-inset-top) + var(--flightbar-h) + 72px);
+}
+body.ops-chat.ops-open .ops-toggle {
+  display: none;
+}
+.ops-toggle.has-unread {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ops-unread {
+  position: absolute;
+  top: 4px;
+  right: 3px;
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg-deep);
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+@media (min-width: 900px) {
+  body.ops-chat .opspanel {
     bottom: 0;
   }
 }
@@ -873,6 +1035,11 @@ body.efb.chat-open .chat-toggle {
 }
 .icon-btn.spin .icon {
   animation: spin 1s linear infinite;
+}
+.icon-btn:disabled {
+  color: var(--dim);
+  opacity: 0.45;
+  cursor: default;
 }
 @keyframes spin {
   to {

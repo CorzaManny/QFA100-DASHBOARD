@@ -248,10 +248,15 @@ const fromDefect = (d) => ({
   updated_at: new Date().toISOString(),
 });
 
+// The ops thread is read newest-first and turned back the right way round, so
+// a long WorldFlight week does not drag the whole history down the wire every
+// ten seconds.
+const OPS_CHAT = 'ops_messages?select=*&order=sent_at.desc&limit=200';
+
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus] =
+  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus, opsShifts, opsDesk, opsChat] =
     await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
@@ -268,6 +273,11 @@ export async function loadAll() {
     rest('GET', 'pickups?select=*&order=created_at.asc').catch(() => null),
     // null: supabase/checklist-status.sql has not been run yet.
     rest('GET', 'checklist_status?select=*').catch(() => null),
+    // null for these three: supabase/ops-chat.sql has not been run, so there
+    // is no ops desk and no thread, and the app simply leaves the panel out.
+    rest('GET', 'ops_shifts?select=*&order=starts_at.asc').catch(() => null),
+    rest('GET', 'ops_desk?select=*&id=eq.1').catch(() => null),
+    rest('GET', OPS_CHAT).catch(() => null),
   ]);
   return {
     sectors: sectors.map(toSector),
@@ -286,8 +296,33 @@ export async function loadAll() {
     // null: supabase/pickups.sql has not been run, so empty seats cannot be asked for.
     pickups,
     checklistStatus: checklistStatus || [],
+    // null means no ops desk in this database; [] would mean an empty one, and
+    // the difference is what decides whether the chat panel exists at all.
+    opsShifts,
+    opsDesk: opsDesk === null ? null : opsDesk[0] || null,
+    opsChat: opsChat && [...opsChat].reverse(),
   };
 }
+
+// ---- The ops desk ----
+
+export const fetchOpsChat = () => rest('GET', OPS_CHAT).then((rows) => [...rows].reverse());
+
+// Who sent it, and when, are stamped by the database (see ops-chat.sql), so
+// only the words go up.
+export const sendOpsMessage = (body) => rest('POST', 'ops_messages', { body });
+
+export const deleteOpsMessage = (messageId) => rest('DELETE', `ops_messages?id=eq.${id(messageId)}`);
+
+// The shift roster, kept in Admin. fields: { user_id, starts_at, ends_at, notes }
+export const saveOpsShift = (fields, shiftId) =>
+  shiftId ? rest('PATCH', `ops_shifts?id=eq.${id(shiftId)}`, fields) : rest('POST', 'ops_shifts', fields);
+
+export const deleteOpsShift = (shiftId) => rest('DELETE', `ops_shifts?id=eq.${id(shiftId)}`);
+
+// Stepping in off the roster, and handing the desk back to it.
+export const takeOpsDesk = () => rest('POST', 'rpc/take_ops_desk', {});
+export const releaseOpsDesk = () => rest('POST', 'rpc/release_ops_desk', {});
 
 // fields: { flight, dep, arr, std, sta, route, notes }
 export function saveSector(fields, sectorId) {

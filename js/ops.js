@@ -1,7 +1,17 @@
 // Operational logic: airports, distances, the VATSIM feed, schedule maths.
 
 import { state, save } from './store.js';
-import { configured, getSession, loadAll, saveBriefing, saveSettings, fetchTaf, fetchChecklistStatus } from './api.js';
+import {
+  configured,
+  getSession,
+  loadAll,
+  saveBriefing,
+  saveSettings,
+  fetchTaf,
+  fetchChecklistStatus,
+  fetchOpsChat,
+  sendOpsMessage,
+} from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
 import { CTWO_DEFAULTS } from './data/ctwo.js';
@@ -263,7 +273,7 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, checklistStatus: [], defects: state.defects.filter((d) => !d.shared), sharedLog: false });
+  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, checklistStatus: [], opsShifts: null, opsDesk: null, opsChat: [], chatSeen: 0, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 
@@ -284,9 +294,12 @@ const withShortName = (p) => ({ ...p, full_name: p.display_name, display_name: p
 export async function syncTeam() {
   if (!configured || !getSession()) return false;
   try {
-    const { defects, official, ...team } = await loadAll();
+    const { defects, official, opsChat, ...team } = await loadAll();
     Object.assign(state, team);
     state.people = (state.people || []).map(withShortName);
+    // opsShifts and opsDesk stay null when this database has no ops desk, so
+    // the panel knows to leave itself out; the thread is a list either way.
+    state.opsChat = opsChat || [];
     // null means the database has no official schedule table; keep the copy
     // the app ships with rather than blanking it.
     state.official = official || [];
@@ -316,6 +329,86 @@ export async function syncChecklistStatus() {
   } catch {
     return false;
   }
+}
+
+// ---- The ops desk ----
+// Who the flight deck should be talking to, and the thread they talk in. The
+// shift roster itself is built in Admin; see supabase/ops-chat.sql.
+
+// The cockpit tablets and the ops controllers. Everybody else - pilots reading
+// their own roster, observers - never sees the panel.
+export const canOpsChat = () => ['admin', 'dispatcher', 'operations', 'efb'].includes(me()?.role);
+
+// False until supabase/ops-chat.sql has been run, which is how the app knows
+// to leave the whole feature out rather than show an empty panel.
+export const opsDeskReady = () => configured && !!getSession() && state.opsShifts !== null;
+
+const shiftsByStart = () =>
+  [...(state.opsShifts || [])].sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+
+// Who should be answering right now, as { userId, since, until, taken }, or
+// null if nobody is on. Somebody who has taken the desk off the roster holds
+// it until they hand it back - or until the next rostered shift begins, which
+// is the moment the roster is worth more than a note from hours ago.
+export function opsOnShift(now = Date.now()) {
+  const shifts = shiftsByStart();
+  const rostered = shifts.find((s) => new Date(s.starts_at) <= now && now < new Date(s.ends_at)) || null;
+  const desk = state.opsDesk;
+  if (desk?.user_id && desk.taken_at) {
+    const took = new Date(desk.taken_at).getTime();
+    const handedOver = shifts.some((s) => {
+      const starts = new Date(s.starts_at).getTime();
+      return starts > took && starts <= now;
+    });
+    if (!handedOver) return { userId: desk.user_id, since: took, until: null, taken: true };
+  }
+  if (!rostered) return null;
+  return {
+    userId: rostered.user_id,
+    since: new Date(rostered.starts_at).getTime(),
+    until: new Date(rostered.ends_at).getTime(),
+    taken: false,
+  };
+}
+
+// The next shift due to start, so the desk can say who is coming and when.
+export const nextOpsShift = (now = Date.now()) =>
+  shiftsByStart().find((s) => new Date(s.starts_at) > now) || null;
+
+export const onOpsDeskNow = () => opsOnShift()?.userId === getSession()?.userId;
+
+// Messages this device has not seen, not counting its own. The marker is kept
+// per device rather than in the database: each tablet has its own idea of what
+// it has read, and nobody needs a read receipt.
+export const unreadOps = () => {
+  const seen = state.chatSeen || 0;
+  const mine = getSession()?.userId;
+  return state.opsChat.filter((m) => new Date(m.sent_at).getTime() > seen && m.user_id !== mine).length;
+};
+
+// Everything up to the newest message counts as read.
+export function markOpsRead() {
+  const newest = state.opsChat.at(-1);
+  state.chatSeen = newest ? new Date(newest.sent_at).getTime() : Date.now();
+  save();
+}
+
+// A narrow poll of just the thread, for while the panel is open: the ten-second
+// team sync is too slow for a conversation.
+export async function syncOpsChat() {
+  if (!opsDeskReady()) return false;
+  try {
+    state.opsChat = await fetchOpsChat();
+    save();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function sendToOps(body) {
+  await sendOpsMessage(body.trim());
+  await syncOpsChat();
 }
 
 // The sector being flown now: the one the live aircraft has filed if we can

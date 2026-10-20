@@ -15,6 +15,10 @@ import {
   decideSwap,
   clearActuals,
   decidePickup,
+  saveOpsShift,
+  deleteOpsShift,
+  takeOpsDesk,
+  releaseOpsDesk,
 } from '../api.js';
 import { DEFAULT_RULES, planRoster, problems, isBoc } from '../autoroster.js';
 import { esc, zulu, zdate, depWindow, simLocal, span, isoDate, isoTime, icon, rerender } from '../ui.js';
@@ -57,6 +61,9 @@ import {
   PILOT_DUTIES,
   syncTeam,
   pendingPeople,
+  opsDeskReady,
+  opsOnShift,
+  nextOpsShift,
 } from '../ops.js';
 import { renderRoster, mountedRoster, rosterActions, rosterChanges } from './liveroster.js';
 
@@ -100,6 +107,7 @@ function tabs(active) {
     <nav class="seg on-card tabs5">
       ${tab('roster', '#/admin', 'Roster')}
       ${tab('balance', '#/admin/balance', 'Balance')}
+      ${tab('opsdesk', '#/admin/opsdesk', 'Ops Desk')}
       ${canSetSimbrief() ? tab('simbrief', '#/admin/simbrief', 'SimBrief') : ''}
       ${isAdmin() ? tab('rules', '#/admin/rules', 'Settings') : ''}
       ${isAdmin() ? tab('people', '#/admin/people', `People${waiting ? ` (${waiting})` : ''}`) : ''}
@@ -254,6 +262,122 @@ function resetTimesCard() {
       <p class="note">Clears every off and on block time stamped so far, so every sector goes back to its published times. Use it after testing the stamp buttons. The schedule itself is not changed.</p>
       <div class="btn-row"><button class="btn danger" data-act="clearAllTimes" ${stamped ? '' : 'disabled'}>Clear all stamped times</button></div>
     </section>`;
+}
+
+// ---- Ops Desk ----
+// The ops controllers' own roster: who is answering the flight deck, and when.
+// It lives in here rather than on a page of its own because it is nobody's
+// business but the three people who take the shifts - the crew only ever see
+// the result, as a name at the top of the ops chat panel.
+
+// Who can hold the desk: the people who could answer, which is the same set
+// the chat is open to apart from the tablets.
+const controllers = () => state.people.filter((p) => ['admin', 'dispatcher', 'operations'].includes(p.role));
+
+function deskNowCard() {
+  const on = opsOnShift();
+  const next = nextOpsShift();
+  const mine = on?.userId === me()?.id;
+  return `
+    <section class="card">
+      <div class="card-head"><h2>On the desk now</h2>
+        <span class="badge ${on ? 'ok' : 'warn'}">${on ? (mine ? 'YOU' : 'COVERED') : 'NOBODY'}</span></div>
+      ${
+        on
+          ? `<p class="big">${name(on.userId)}</p>
+             <p class="note">${
+               on.taken
+                 ? `Took the desk at ${when(on.since)}, off the roster. It stays theirs until it is handed back, or until the next rostered shift begins.`
+                 : `Rostered ${when(on.since)} to ${when(on.until)}.`
+             }</p>`
+          : `<p class="note">Nobody is on the desk, so a message from the flight deck has nobody's name on it. ${
+              next ? `The next shift is ${name(next.user_id)} at ${when(next.starts_at)}.` : 'Roster a shift below.'
+            }</p>`
+      }
+      <div class="btn-row">
+        ${mine && on?.taken ? '' : `<button class="btn primary" data-act="takeDesk">Take the desk now</button>`}
+        ${
+          state.opsDesk?.user_id
+            ? `<button class="btn ghost" data-act="releaseDesk">Hand back to the roster</button>`
+            : ''
+        }
+      </div>
+      <p class="tiny">Taking the desk is for stepping in off the roster - covering someone who is asleep, or swapping without rewriting the shifts.</p>
+    </section>`;
+}
+
+function shiftRows() {
+  const shifts = [...(state.opsShifts || [])].sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+  if (!shifts.length) return '<p class="note">No shifts rostered yet.</p>';
+  const now = Date.now();
+  return `<div class="list">${shifts
+    .map((s) => {
+      const starts = new Date(s.starts_at).getTime();
+      const ends = new Date(s.ends_at).getTime();
+      const [cls, label] = ends < now ? ['mute', 'DONE'] : starts <= now ? ['ok', 'ON NOW'] : ['info', 'ROSTERED'];
+      return `
+        <div class="row">
+          <div class="row-main">
+            <div class="row-t">${name(s.user_id)} <span class="badge ${cls}">${label}</span></div>
+            <div class="tiny">${when(s.starts_at)} → ${when(s.ends_at)}${
+              s.notes ? ` · ${esc(s.notes)}` : ''
+            }</div>
+          </div>
+          <button class="btn ghost small" data-act="delShift" data-id="${esc(s.id)}">Remove</button>
+        </div>`;
+    })
+    .join('')}</div>`;
+}
+
+function opsDeskPage() {
+  if (!opsDeskReady()) {
+    return `
+      ${tabs('opsdesk')}
+      <section class="card">
+        <h2>Ops Desk</h2>
+        <p class="note">The ops desk needs one more file run in Supabase: <strong>supabase/ops-chat.sql</strong>, after schema.sql and operations-role.sql. It adds the controllers' shift roster and the chat thread the flight deck tablets message you on. Until then there is nothing to show here and no chat panel in the app.</p>
+      </section>`;
+  }
+  // A shift starts now and runs eight hours by default: three controllers,
+  // round the clock, is how the week actually goes.
+  const ends = new Date(Date.now() + 8 * 3600000);
+  return `
+    ${tabs('opsdesk')}
+    ${deskNowCard()}
+    <section class="card">
+      <div class="card-head"><h2>Shift roster</h2><span class="badge mute">${plural(
+        (state.opsShifts || []).length,
+        'shift',
+      )}</span></div>
+      <p class="note">Who is answering the flight deck, and when. The crew see the name at the top of their ops chat; they never see this page.</p>
+      ${shiftRows()}
+    </section>
+    <form class="card form" data-form="opsShift">
+      <h2>Add a shift</h2>
+      <label class="field">Controller<select name="user" required>
+        <option value="">Choose…</option>
+        ${controllers()
+          .map((p) => `<option value="${esc(p.id)}">${esc(p.full_name || p.display_name)}</option>`)
+          .join('')}
+      </select></label>
+      <div class="grid2">
+        <label class="field">Starts, date (UTC)<input type="date" name="startDate" required value="${isoDate(
+          Date.now(),
+        )}"></label>
+        <label class="field">Starts, time (UTC)<input type="time" name="startTime" required value="${isoTime(
+          Date.now(),
+        )}"></label>
+        <label class="field">Ends, date (UTC)<input type="date" name="endDate" required value="${isoDate(
+          ends,
+        )}"></label>
+        <label class="field">Ends, time (UTC)<input type="time" name="endTime" required value="${isoTime(
+          ends,
+        )}"></label>
+      </div>
+      <label class="field">Note (optional)<input name="notes" maxlength="120" placeholder="e.g. covering the Pacific legs"></label>
+      <p class="form-error" hidden></p>
+      <div class="btn-row"><button class="btn primary" type="submit">Add the shift</button></div>
+    </form>`;
 }
 
 // The aeroplane, the team's SimBrief account and the addresses the app talks
@@ -890,6 +1014,7 @@ export function render(args) {
   } else if (args[0] === 'people') out = people();
   else if (args[0] === 'auto') out = rosterEditor();
   else if (args[0] === 'balance') out = balancePage();
+  else if (args[0] === 'opsdesk') out = opsDeskPage();
   else if (args[0] === 'rules') out = rulesPage();
   else if (args[0] === 'simbrief') out = simbriefPage();
   else if (args[0] === 'sector') out = sectorCrew(args[1]);
@@ -949,6 +1074,35 @@ export const changes = {
 };
 
 export const forms = {
+  // A shift on the ops desk. Overlapping shifts are allowed on purpose - two
+  // controllers covering the same hours is a real thing, and whoever started
+  // first holds the desk until the other's shift begins.
+  opsShift(data, formEl) {
+    const problem = formEl.querySelector('.form-error');
+    const at = (date, time) => new Date(`${data.get(date)}T${data.get(time)}:00Z`);
+    const starts = at('startDate', 'startTime');
+    const ends = at('endDate', 'endTime');
+    const user = String(data.get('user') || '');
+    const say = (msg) => {
+      problem.textContent = msg;
+      problem.hidden = false;
+    };
+    if (!user) return say('Choose who is on the shift.');
+    if (isNaN(starts) || isNaN(ends)) return say('Give the date and time the shift starts and ends.');
+    if (ends <= starts) return say('The shift has to end after it starts.');
+    problem.hidden = true;
+    formEl.querySelector('[type=submit]').disabled = true;
+    return change(async () => {
+      await saveOpsShift({
+        user_id: user,
+        starts_at: starts.toISOString(),
+        ends_at: ends.toISOString(),
+        notes: String(data.get('notes') || '').trim(),
+      });
+      result = 'Shift added.';
+    });
+  },
+
   bidding(data, formEl) {
     const enabled = data.get('enabled') === 'on';
     const date = data.get('closeDate');
@@ -1026,6 +1180,27 @@ export const forms = {
 };
 
 export const actions = {
+  // ---- Ops Desk ----
+  takeDesk(el) {
+    el.disabled = true;
+    return change(async () => {
+      await takeOpsDesk();
+      result = 'You have the ops desk. The flight deck sees your name on their chat.';
+    });
+  },
+  releaseDesk(el) {
+    if (!confirm('Hand the desk back to the roster?')) return;
+    el.disabled = true;
+    return change(async () => {
+      await releaseOpsDesk();
+      result = 'Handed back. Whoever the roster says is on now has it.';
+    });
+  },
+  delShift(el) {
+    if (!confirm('Remove this shift?')) return;
+    el.disabled = true;
+    return change(() => deleteOpsShift(el.dataset.id));
+  },
   pickupYes(el) {
     const p = pendingPickups().find((x) => x.id === el.dataset.id);
     const s = p && state.sectors.find((x) => x.id === p.sector_id);

@@ -21,6 +21,7 @@ import {
   distNm,
   teamAircraftName,
 } from './ops.js';
+import * as opschat from './opschat.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
 import * as admin from './views/admin.js';
@@ -177,7 +178,14 @@ function setChatOpen(open) {
   } catch {
     // storage unavailable; the choice just will not be remembered next visit
   }
+  // The two panels share the right edge, so opening this one puts the ops
+  // chat away - see js/opschat.js, which answers the same event.
+  if (open) window.dispatchEvent(new CustomEvent('app:panel', { detail: 'chat' }));
 }
+
+window.addEventListener('app:panel', (e) => {
+  if (e.detail !== 'chat' && chatOpen) setChatOpen(false);
+});
 
 function updateChatPanel(efb) {
   document.body.classList.toggle('chat-open', efb && chatOpen);
@@ -205,6 +213,9 @@ function render() {
   if (efb) updateFlightBar();
   else flightbar.innerHTML = '';
   updateChatPanel(efb);
+  // The ops chat lives outside the page a render replaces, so it only needs
+  // telling that who is signed in, or who is on shift, may have changed.
+  opschat.paint();
   // A tablet says so, and which of the two it is, so nobody mistakes one for
   // their own device.
   brand.textContent = efb ? `FLIGHT DECK · ${(me()?.display_name || 'TABLET').toUpperCase()}` : 'WORLDFLIGHT · 737 OPERATIONS';
@@ -323,6 +334,10 @@ const teamData = () =>
   JSON.stringify([
     state.sectors, state.roster, state.people, state.settings, state.prefs, state.defects, state.history, state.briefings,
     state.actuals, state.swaps, state.pickups, state.official, state.officialCheck, state.checklistStatus,
+    // The ops shift roster and who has the desk, but not the thread itself:
+    // the chat panel repaints on its own, and a new message is no reason to
+    // redraw the page underneath it.
+    state.opsShifts, state.opsDesk,
   ]);
 
 // Keep this device in step with the team database: other people's changes

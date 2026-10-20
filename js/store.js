@@ -41,6 +41,13 @@ function defaults() {
     metar: {}, // last METAR by ICAO: { text, at }
     taf: {}, // last TAF by ICAO: { text, at }, read through the team database
     stations: {}, // who is controlling an airport on VATSIM: { atis, controllers, at }
+    // The ops desk: the controllers' shift roster, who has actually taken the
+    // desk, and the thread between the flight deck and whoever that is.
+    // null for the first two means this database has no ops desk yet.
+    opsShifts: null, // { id, user_id, starts_at, ends_at, notes }
+    opsDesk: null, // { user_id, taken_at } when somebody has stepped in off the roster
+    opsChat: [], // { id, sent_at, user_id, sender, body }
+    chatSeen: 0, // when this device last had the thread open, for the unread count
     checks: {}, // checklist progress by checklist id
     checklistStatus: [], // team-wide: which checklists are complete, from the other EFB too
     track: null, // last VATSIM sample for the team aircraft
