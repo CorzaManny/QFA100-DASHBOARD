@@ -137,7 +137,12 @@ export const NOTIFY_KINDS = [
   ['roster', 'The roster is published, or my sectors change'],
   ['delay', 'A delay moves my report time'],
   ['report', 'A reminder before I report'],
+  ['opschat', 'A message in the ops chat from the other side'],
 ];
+
+// The ops chat line is only offered to the people who have one, so a pilot is
+// not asked about a thread they cannot read.
+export const myNotifyKinds = () => NOTIFY_KINDS.filter(([key]) => key !== 'opschat' || canOpsChat());
 
 export function myNotify() {
   const chosen = me()?.notify || {};
@@ -146,6 +151,7 @@ export function myNotify() {
     roster: chosen.roster !== false,
     delay: chosen.delay !== false,
     report: chosen.report !== false,
+    opschat: chosen.opschat !== false,
     reportMinutes: Number.isFinite(chosen.reportMinutes) ? chosen.reportMinutes : r.reportReminderMinutes,
     delayMinutes: Number.isFinite(chosen.delayMinutes) ? chosen.delayMinutes : r.delayNoticeMinutes,
   };

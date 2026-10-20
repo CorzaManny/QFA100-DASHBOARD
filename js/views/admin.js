@@ -66,6 +66,7 @@ import {
   nextOpsShift,
 } from '../ops.js';
 import { renderRoster, mountedRoster, rosterActions, rosterChanges } from './liveroster.js';
+import { pushEnabled, pushProblem } from '../push.js';
 
 let error = '';
 let result = '';
@@ -294,6 +295,7 @@ function deskNowCard() {
               next ? `The next shift is ${name(next.user_id)} at ${when(next.starts_at)}.` : 'Roster a shift below.'
             }</p>`
       }
+      <p class="note warn" id="desk-push" hidden></p>
       <div class="btn-row">
         ${mine && on?.taken ? '' : `<button class="btn primary" data-act="takeDesk">Take the desk now</button>`}
         ${
@@ -1349,6 +1351,33 @@ export const actions = {
 
 // The Landscape view timeline needs its drag-and-drop wired up once it is in
 // the DOM; nothing else on this page needs a mount step.
+// Whether this device will actually be woken by a message from the flight
+// deck. Filled in after the page is drawn, because the browser only answers
+// about notifications asynchronously - and worth saying plainly here, since a
+// controller on shift with notifications off is the one person who must not
+// miss anything.
+function deskPushNote(root) {
+  const el = root.querySelector('#desk-push');
+  if (!el) return;
+  const show = (html) => {
+    el.innerHTML = html;
+    el.hidden = false;
+  };
+  const problem = pushProblem();
+  if (problem) {
+    return show(`${icon('alert')} ${esc(problem)} A message from the flight deck will not reach this device.`);
+  }
+  pushEnabled().then((on) => {
+    if (on) return;
+    show(
+      `${icon(
+        'alert',
+      )} Notifications are off on this device, so a message from the flight deck will not reach you here. Turn them on in <a href="#/settings">Settings</a>.`,
+    );
+  });
+}
+
 export function mounted(root, args = []) {
   if (rosterView === 'timeline' && (!args[0] || args[0] === 'auto')) mountedRoster(root);
+  if (args[0] === 'opsdesk') deskPushNote(root);
 }

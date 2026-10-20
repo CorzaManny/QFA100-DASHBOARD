@@ -284,6 +284,16 @@ export function setOpen(next) {
   // up over the conversation the moment the panel opens.
 }
 
+// A notification tapped on a lock screen comes back to #/opschat, which is no
+// page of its own: the address goes back to the Dashboard and the panel opens
+// itself, so a reload hours later does not keep reopening it. The open waits a
+// tick for js/app.js to finish starting up, so the Twitch chat is put away
+// properly rather than being left behind this panel.
+if (location.hash.startsWith('#/opschat')) {
+  history.replaceState(null, '', `${location.pathname}#/dashboard`);
+  setTimeout(() => setOpen(true), 0);
+}
+
 toggle.addEventListener('click', () => setOpen(true));
 document.getElementById('ops-close').addEventListener('click', () => setOpen(false));
 window.addEventListener('app:panel', (e) => {

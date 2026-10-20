@@ -3,7 +3,7 @@
 import { state, save, exportData, importData, resetAll } from '../store.js';
 import { configured, getSession, signOut, updateProfile } from '../api.js';
 import { esc, icon, rerender } from '../ui.js';
-import { me, isAdmin, canEdit, roleName, syncTeam, clearTeam, myNotify, NOTIFY_KINDS } from '../ops.js';
+import { me, isAdmin, canEdit, roleName, syncTeam, clearTeam, myNotify, myNotifyKinds } from '../ops.js';
 import { pushProblem, pushEnabled, enablePush, disablePush, deviceLabel, testNotification } from '../push.js';
 
 let message = '';
@@ -68,7 +68,7 @@ function notificationChoices() {
   return `
     <form class="card form" data-form="notify">
       <h2>Notification settings</h2>
-      ${NOTIFY_KINDS.map(([key, label]) => box(key, label)).join('')}
+      ${myNotifyKinds().map(([key, label]) => box(key, label)).join('')}
       <div class="grid2">
         <label class="field">Remind me this long before I report (minutes)
           <input type="number" name="reportMinutes" min="0" max="1440" step="5" required value="${esc(n.reportMinutes)}">
@@ -162,17 +162,15 @@ async function attempt(work, done) {
 export const forms = {
   notify(data) {
     const minutes = (name) => Math.max(0, Math.min(1440, Math.round(Number(data.get(name)) || 0)));
+    // Only the boxes this person was shown are read back, so a kind that is
+    // not theirs to choose keeps whatever it was rather than being switched
+    // off by a form that never offered it.
+    const next = { ...(me().notify || {}) };
+    for (const [key] of myNotifyKinds()) next[key] = data.get(key) === 'on';
+    next.reportMinutes = minutes('reportMinutes');
+    next.delayMinutes = minutes('delayMinutes');
     return attempt(
-      () =>
-        updateProfile(me().id, {
-          notify: {
-            roster: data.get('roster') === 'on',
-            delay: data.get('delay') === 'on',
-            report: data.get('report') === 'on',
-            reportMinutes: minutes('reportMinutes'),
-            delayMinutes: minutes('delayMinutes'),
-          },
-        }),
+      () => updateProfile(me().id, { notify: next }),
       'Saved. This applies on every device you are signed in on.',
     );
   },
