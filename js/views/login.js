@@ -11,7 +11,24 @@ let mode = 'signin'; // signin, forgot (ask for a reset email) or newpass (arriv
 let error = '';
 let notice = '';
 let busy = false;
+// The name or address last signed in with, so the field is already filled in
+// and a tablet in the cockpit only needs its password. The password itself is
+// left to the browser's own keychain, which is where it belongs.
+const LOGIN_KEY = 'qfa100-ops.login';
 let email = '';
+try {
+  email = localStorage.getItem(LOGIN_KEY) || '';
+} catch {
+  // storage unavailable; the field simply starts empty
+}
+
+function remember(value) {
+  try {
+    localStorage.setItem(LOGIN_KEY, value);
+  } catch {
+    // storage unavailable; nothing to do
+  }
+}
 
 function notConnected() {
   return `
@@ -176,6 +193,8 @@ export const forms = {
     try {
       await finishSetup(addr, password);
       await signIn(addr, password);
+      remember(addr);
+      email = addr;
       await syncTeam();
     } catch (err) {
       error = err.message;
@@ -194,6 +213,7 @@ export const forms = {
     rerender();
     try {
       await signIn(signInAs(email), password);
+      remember(email);
       await syncTeam();
       // Whoever uses this page next starts from Sign in.
       mode = 'signin';

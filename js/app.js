@@ -2,7 +2,7 @@
 
 import { esc, zulu, simClock, zdate, span } from './ui.js';
 import { state } from './store.js';
-import { configured, getSession, useEmailLink, signOut } from './api.js';
+import { configured, getSession, keepSignedIn, useEmailLink, signOut } from './api.js';
 import {
   loadAirports,
   syncTeam,
@@ -331,6 +331,9 @@ let syncing = false;
 async function sync() {
   if (syncing || document.visibilityState !== 'visible' || !navigator.onLine) return;
   syncing = true;
+  // Renew the sign-in before asking for data, so coming back to the app after
+  // days away does not meet a login page.
+  await keepSignedIn();
   const before = locked();
   const data = teamData();
   await syncTeam();

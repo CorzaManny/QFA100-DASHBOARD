@@ -9,12 +9,24 @@ const SESSION_KEY = 'qfa100-ops.session';
 // False until config.js has been filled in; the app then runs in preview mode.
 export const configured = !!(BASE && SUPABASE_ANON_KEY.trim());
 
-let session = null;
-try {
-  session = JSON.parse(localStorage.getItem(SESSION_KEY));
-} catch {
-  // no usable saved session
+// The saved sign-in. Read back from storage rather than kept only in memory,
+// so closing the app - or leaving it closed for a fortnight - does not end it.
+function stored() {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_KEY));
+  } catch {
+    // no usable saved session
+    return null;
+  }
 }
+
+let session = stored();
+
+// Ask the browser not to throw this away when it is short of room. Granted
+// silently for an installed app; a plain tab may be refused, and on iOS Safari
+// a site that is not on the home screen loses its storage after a week idle,
+// which is the one case no amount of caching here can survive.
+if (session && navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 
 export const getSession = () => session;
 
@@ -33,8 +45,9 @@ function keep(data) {
     access: data.access_token,
     refresh: data.refresh_token,
     expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
-    userId: data.user.id,
-    email: data.user.email,
+    // A refresh reply without the account on it leaves who it is as it was.
+    userId: data.user?.id ?? session?.userId,
+    email: data.user?.email ?? session?.email,
   });
 }
 
@@ -90,7 +103,7 @@ export async function useEmailLink(params) {
 
 export async function setPassword(password) {
   if (!session) throw new Error('The reset link has expired. Ask for a new one.');
-  if (session.expiresAt - Date.now() < 60000) await refresh();
+  if (!fresh()) await refresh();
   await account('PUT', session.access, { password });
 }
 
@@ -100,23 +113,70 @@ export async function signOut() {
   if (token) await auth('logout', {}, token).catch(() => {});
 }
 
+// Keeping the sign-in alive. The access token lasts an hour; the refresh token
+// behind it does not run out, so a sign-in only ends when somebody signs out,
+// an admin removes the account, or the device loses its storage.
+//
+// Supabase hands back a new refresh token every time one is used and retires
+// the old one shortly after, so this has to be careful: the session is thrown
+// away only when the server says the token itself is finished. A rate limit, a
+// server error or a captive-portal page is not the end of a sign-in, and used
+// to be treated as one - which is why the app asked for a password again after
+// sitting unopened.
+const spent = (err) =>
+  [400, 401, 403].includes(err.status) && /refresh.?token|invalid.?grant|revoked/i.test(err.message || '');
+
+const EARLY = 5 * 60 * 1000; // renew this far ahead of the hour running out
+
+// True while the access token on hand is good enough to send.
+const fresh = () => !!session && session.expiresAt - Date.now() > 60000;
+
+async function renew() {
+  // Another copy of the app, in another tab, may have rotated the token since
+  // this one read it; what is in storage is always the newer of the two.
+  const saved = stored();
+  if (saved?.refresh && saved.refresh !== session?.refresh) {
+    session = saved;
+    // That tab has just renewed, so there is no need to spend a token here too.
+    if (fresh()) return;
+  }
+  if (!session?.refresh) {
+    setSession(null);
+    throw new Error('Not signed in');
+  }
+  try {
+    keep(await auth('token?grant_type=refresh_token', { refresh_token: session.refresh }));
+  } catch (err) {
+    // "Already used": another tab beat us to it and has stored the session it
+    // was given, so carry on with that one.
+    const now = stored();
+    if (now?.refresh && now.refresh !== session.refresh) {
+      session = now;
+      return;
+    }
+    if (spent(err)) setSession(null);
+    throw err;
+  }
+}
+
 let refreshing = null;
 function refresh() {
-  refreshing ??= auth('token?grant_type=refresh_token', { refresh_token: session.refresh })
-    .then(keep)
-    .catch((err) => {
-      // A rejected refresh token means the sign-in has ended; a network
-      // failure does not, so keep the session and try again later.
-      if (err.status) setSession(null);
-      throw err;
-    })
-    .finally(() => (refreshing = null));
+  refreshing ??= renew().finally(() => (refreshing = null));
   return refreshing;
+}
+
+// Called when the app starts, comes back to the front and comes back online:
+// the token is renewed before anything asks for data, rather than fifteen
+// requests all discovering at once that it has run out. Failure here is quiet
+// on purpose - the sign-in is kept and the next attempt tries again.
+export async function keepSignedIn() {
+  if (!session || session.expiresAt - Date.now() > EARLY) return;
+  await refresh().catch(() => {});
 }
 
 async function rest(method, path, body, prefer) {
   if (!session) throw new Error('Not signed in');
-  if (session.expiresAt - Date.now() < 60000) await refresh();
+  if (!fresh()) await refresh();
   const send = () =>
     fetch(`${BASE}/rest/v1/${path}`, {
       method,
