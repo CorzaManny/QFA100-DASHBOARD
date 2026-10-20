@@ -509,6 +509,32 @@ body.ops-chat.ops-open main {
   font-weight: 700;
   letter-spacing: 0.1em;
 }
+/* The line across the thread where one sector ended and the next began. */
+.ops-sector {
+  align-self: stretch;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 6px 0 2px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--card2);
+}
+.ops-sector-flight {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.ops-sector-route {
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.ops-sector .tiny {
+  margin-left: auto;
+}
 .ops-msg {
   max-width: 92%;
   align-self: flex-start;
@@ -526,16 +552,35 @@ body.ops-chat.ops-open main {
 .ops-msg-who {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 7px;
   margin-bottom: 3px;
   font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+/* Ops controllers wear a green badge and sign in white; the flight deck signs
+   in the aeroplane's own red. Which is which matters more in here than
+   anywhere else in the app, so it is the first thing the eye gets. */
+.ops-tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--ok);
+  color: var(--bg-deep);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+}
+.ops-msg.ops .ops-msg-name {
+  color: var(--text);
+}
+.ops-msg.deck .ops-msg-name {
   color: var(--accent);
 }
-.ops-msg.mine .ops-msg-who {
-  color: var(--dim);
+.ops-msg-who .tiny {
+  margin-left: auto;
+  font-weight: 600;
+  letter-spacing: 0.06em;
 }
 .ops-msg-body {
   white-space: pre-wrap;
@@ -591,6 +636,31 @@ body.ops-chat.ops-open .ops-toggle {
 @media (min-width: 900px) {
   body.ops-chat .opspanel {
     bottom: 0;
+  }
+}
+/* On a phone it takes the whole screen. A 340px column beside a 390px page is
+   no use to anybody, and a conversation is what you are doing while it is
+   open - the page underneath can wait. */
+@media (max-width: 600px) {
+  /* The tablet selector is listed too: it is more specific than the plain one
+     and a media query adds no specificity of its own, so without it a tablet
+     held in portrait would keep the flight deck strip's offset. */
+  body.ops-chat .opspanel,
+  body.efb.ops-chat .opspanel {
+    top: 0;
+    bottom: 0;
+    z-index: 20; /* over the top bar and the bottom tabs, which are both 10 */
+    width: 100vw;
+    max-width: 100vw;
+    border-left: 0;
+    padding-top: env(safe-area-inset-top);
+  }
+  /* Nothing to make room for: the panel is over the top of it. */
+  body.ops-chat.ops-open main {
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+  .ops-msg {
+    max-width: 85%;
   }
 }
 .tabs {

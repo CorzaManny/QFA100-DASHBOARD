@@ -18,6 +18,7 @@ import {
   opsOnShift,
   nextOpsShift,
   person,
+  sectorTimeline,
   syncOpsChat,
   sendToOps,
   unreadOps,
@@ -62,10 +63,30 @@ const name = (userId) => {
   return p ? p.display_name : 'Unknown';
 };
 
-// "CAPTAIN", "COREY M" - who said it, in the flight deck's own shorthand. The
-// name the database stamped on the message is the fallback, for a message from
-// somebody who has since left the team.
-const said = (m) => (m.user_id && person(m.user_id)?.display_name) || m.sender || 'Unknown';
+// Which side of the radio somebody is on. The ops controllers are one side and
+// the flight deck the other, and that is the whole basis for the badges and
+// for which messages make a sound.
+const OPS_ROLES = ['admin', 'dispatcher', 'operations'];
+const sideOf = (userId) => (OPS_ROLES.includes(person(userId)?.role) ? 'ops' : 'deck');
+const mySide = () => sideOf(getSession()?.userId);
+
+// A tablet is "Captain" or "First Officer" in the thread, whatever its account
+// happens to be called - qfa100_captain, CAPTAIN, Captain Tablet all read the
+// same on the flight deck.
+function deckName(raw) {
+  const key = String(raw || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (/first[_]?officer/.test(key)) return 'First Officer';
+  if (/captain/.test(key)) return 'Captain';
+  return raw;
+}
+
+// Who said it. The name the database stamped on the message is the fallback,
+// for a message from somebody who has since left the team.
+function said(m) {
+  const p = m.user_id ? person(m.user_id) : null;
+  const raw = p?.display_name || m.sender || 'Unknown';
+  return p?.role === 'efb' || !p ? deckName(raw) : raw;
+}
 
 function shiftLine() {
   const on = opsOnShift();
@@ -86,25 +107,138 @@ function shiftLine() {
     }</span>`;
 }
 
+// Where one sector ended and the next began, written across the thread so a
+// message read hours later still has a leg attached to it.
+const sectorRule = ({ sector, began }) => `
+  <div class="ops-sector">
+    <div class="ops-sector-flight">${esc(sector.flight)}</div>
+    <div class="ops-sector-route">${esc(sector.dep)} → ${esc(sector.arr)}</div>
+    <div class="tiny">${zdate(began)} ${zulu(began)}</div>
+  </div>`;
+
+const bubble = (m, mine) => {
+  const at = new Date(m.sent_at).getTime();
+  const side = sideOf(m.user_id);
+  return `
+    <div class="ops-msg ${side}${m.user_id === mine ? ' mine' : ''}">
+      <div class="ops-msg-who">
+        ${side === 'ops' ? '<span class="ops-tag">OPS</span>' : ''}
+        <span class="ops-msg-name">${esc(said(m))}</span>
+        <span class="tiny">${zulu(at)}</span>
+      </div>
+      <div class="ops-msg-body">${esc(m.body)}</div>
+    </div>`;
+};
+
 function messages() {
   if (!state.opsChat.length) {
     return `<p class="note">Nothing said yet. Whatever is typed here reaches whoever is on the ops desk, and stays in the thread for the controller who takes over.</p>`;
   }
   const mine = getSession()?.userId;
+  // The thread and the schedule are both in time order, so one walk along the
+  // sectors keeps up with the messages without looking anything up twice.
+  const legs = sectorTimeline();
+  let next = 0; // the next sector that had not got under way yet
+  let leg = null; // the sector under way at the message being written
+  let shown = null; // the sector whose line is already in the thread
   let day = '';
-  return state.opsChat
-    .map((m) => {
-      const at = new Date(m.sent_at).getTime();
-      const stamp = zdate(at);
-      const rule = stamp === day ? '' : `<div class="ops-day">${esc(stamp)}</div>`;
-      day = stamp;
-      return `${rule}
-        <div class="ops-msg${m.user_id === mine ? ' mine' : ''}">
-          <div class="ops-msg-who"><span>${esc(said(m))}</span><span class="tiny">${zulu(at)}</span></div>
-          <div class="ops-msg-body">${esc(m.body)}</div>
-        </div>`;
-    })
-    .join('');
+  const out = [];
+  for (const m of state.opsChat) {
+    const at = new Date(m.sent_at).getTime();
+    while (next < legs.length && legs[next].began <= at) leg = legs[next++];
+    if (leg && leg.sector.id !== shown) {
+      out.push(sectorRule(leg));
+      shown = leg.sector.id;
+    } else if (!leg && zdate(at) !== day) {
+      // A sector line carries its own date, so the day pill is only for a
+      // thread running with no schedule under it yet.
+      out.push(`<div class="ops-day">${esc(zdate(at))}</div>`);
+    }
+    day = zdate(at);
+    out.push(bubble(m, mine));
+  }
+  // A sector that has begun since the last thing anybody said gets its line
+  // straight away, rather than waiting for somebody to speak.
+  const now = Date.now();
+  while (next < legs.length && legs[next].began <= now) leg = legs[next++];
+  if (leg && leg.sector.id !== shown) out.push(sectorRule(leg));
+  return out.join('');
+}
+
+// ---- The ding ----
+// A sound when the other side says something: the flight deck should hear ops,
+// and ops the flight deck. Two controllers talking to each other, or the two
+// tablets, is just conversation and stays silent.
+//
+// Made with an oscillator rather than a sound file, so there is nothing extra
+// to cache and nothing to go missing offline.
+let audio = null;
+
+function openAudio() {
+  audio ??= new (window.AudioContext || window.webkitAudioContext)();
+  if (audio.state === 'suspended') audio.resume();
+  return audio;
+}
+
+function ding() {
+  try {
+    const ctx = openAudio();
+    // Two notes, high and short: it has to carry in a room with a simulator
+    // running in it without being a klaxon.
+    [988, 1319].forEach((hz, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = hz;
+      const start = ctx.currentTime + i * 0.11;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.16, start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.45);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.5);
+    });
+  } catch {
+    // no audio on this device, or the browser will not allow it yet; the
+    // unread badge still says there is something waiting
+  }
+}
+
+// A phone will not make a sound until the page has been touched once, so the
+// first touch anywhere is what opens the audio.
+const unlock = () => {
+  try {
+    openAudio();
+  } catch {
+    // no audio here; nothing more to try
+  }
+  document.removeEventListener('pointerdown', unlock);
+};
+document.addEventListener('pointerdown', unlock);
+
+// The newest message this device has already dealt with. Nothing that was in
+// the thread before the app opened makes a sound.
+let heard = 0;
+let primed = false;
+
+function announce() {
+  const newest = state.opsChat.length ? new Date(state.opsChat.at(-1).sent_at).getTime() : 0;
+  if (!primed) {
+    primed = true;
+    heard = newest;
+    // Nothing is "missed" from before this device had the app open, so a first
+    // sign-in does not start life behind on a week of messages.
+    if (!state.chatSeen) markOpsRead();
+    return;
+  }
+  if (newest <= heard) return;
+  const me = getSession()?.userId;
+  const side = mySide();
+  const crossed = state.opsChat.some(
+    (m) => new Date(m.sent_at).getTime() > heard && m.user_id !== me && sideOf(m.user_id) !== side,
+  );
+  heard = newest;
+  if (crossed) ding();
 }
 
 // Rewrites the panel's contents. The box being typed in is never touched, so
@@ -114,6 +248,9 @@ export function paint() {
   document.body.classList.toggle('ops-chat', can);
   document.body.classList.toggle('ops-open', can && open);
   if (!can) return;
+  // Whoever fetched the new messages - this panel's own poll or the team sync -
+  // the sound is decided here, so it happens exactly once either way.
+  announce();
   shiftStrip.innerHTML = shiftLine();
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
   log.innerHTML = `${messages()}${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}`;
@@ -143,7 +280,8 @@ export function setOpen(next) {
     syncOpsChat().then(paint);
   }
   paint();
-  if (next) text.focus();
+  // The box is deliberately not focused: on a phone that throws the keyboard
+  // up over the conversation the moment the panel opens.
 }
 
 toggle.addEventListener('click', () => setOpen(true));

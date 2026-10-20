@@ -393,6 +393,20 @@ export function markOpsRead() {
   save();
 }
 
+// When a sector got under way: the time it actually left the blocks if that
+// was stamped, and its published departure until then.
+const sectorBegan = (sector) => new Date(actualOf(sector.id)?.off_blocks || sector.std).getTime();
+
+// The sectors in the order they actually got under way, each with the moment
+// it did. One walk along this says which leg any moment in the past belongs
+// to - the ops thread uses it to show where one sector ended and the next
+// began, so a question read hours later still has a leg attached to it.
+export const sectorTimeline = () =>
+  sortedSectors()
+    .filter((s) => !actualOf(s.id)?.skipped)
+    .map((sector) => ({ sector, began: sectorBegan(sector) }))
+    .sort((a, b) => a.began - b.began);
+
 // A narrow poll of just the thread, for while the panel is open: the ten-second
 // team sync is too slow for a conversation.
 export async function syncOpsChat() {
