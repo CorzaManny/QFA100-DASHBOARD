@@ -352,6 +352,18 @@ export async function syncChecklistStatus() {
 // their own roster, observers - never sees the panel.
 export const canOpsChat = () => ['admin', 'dispatcher', 'operations', 'efb'].includes(me()?.role);
 
+// ---- vPilot ----
+// Who may watch the radio and drive it. The same people who may report a
+// defect - the flight deck tablets, the pilots and ops - and deliberately its
+// own list rather than canOpsChat(), so changing who answers the ops desk
+// never quietly changes who can transmit on VATSIM. Observers are left out:
+// the jumpseat does not work the radio.
+//
+// This mirrors can_use_vpilot() in supabase/vpilot.sql exactly. The database
+// is what actually enforces it; this is so the app can leave the panel out
+// rather than show a radio that answers every press with "not allowed".
+export const canUseVpilot = () => ['admin', 'dispatcher', 'operations', 'pilot', 'efb'].includes(me()?.role);
+
 // Which side of the radio somebody is on. The controllers are one side and the
 // flight deck the other, and that is the basis for the badges in the thread,
 // for which messages make a sound, and for who a call rings.
@@ -1384,6 +1396,17 @@ const SIMBRIEF_FETCH = 'https://www.simbrief.com/api/xml.fetcher.php';
 // layout and registration. SimBrief takes the airframe's internal id in place
 // of the aircraft type, so one or the other goes in the same field.
 export const teamAirframe = () => (state.settings?.rules?.airframe || '').trim();
+
+// The one VATSIM account the team flies the whole event on, and the SELCAL
+// vPilot connects with. Kept here beside the callsign because they are the
+// same kind of thing - the aeroplane's identity, not a person's - and set in
+// Admin -> Settings.
+//
+// The CID is here to be checked against, not used to log in: vPilot holds the
+// VATSIM credentials in its own settings and nothing in the EFB can change
+// them. The password is never stored anywhere in this app.
+export const teamVatsimCid = () => String(state.settings?.rules?.vatsimCid || '').trim();
+export const teamSelcal = () => String(state.settings?.rules?.selcal || '').trim().toUpperCase();
 // The aeroplane and the SimBrief account are the team's identity, so they are
 // an admin's or operations' to set, not everyday roster work.
 export const canSetSimbrief = () => ['admin', 'operations'].includes(me()?.role);

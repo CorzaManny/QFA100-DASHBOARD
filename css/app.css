@@ -3353,3 +3353,412 @@ body.efb .chat {
 }
 .qrh-library .chip-n { display: inline; flex-shrink: 0; font-size: 0.75rem; }
 @media (min-width: 900px) { .qrh-library { max-height: 75vh; } }
+
+/* ---- vPilot ----
+   The radio on the sim PC, drawn the way vPilot draws it: buttons and the
+   radio stack along the top, who is in range down the left, the message
+   window with its tabs on the right. Somebody who knows vPilot should not
+   have to learn this page, so the layout is deliberately a copy rather than
+   the card-and-row shapes the rest of the app uses. The colours are the
+   app's own, not vPilot's: a cockpit tablet at 3am should not suddenly go
+   bright grey. */
+
+/* The radio is the flight deck's, so its tab is hidden from everybody else.
+   body.vpilot is the roles the radio is open to (canUseVpilot in js/ops.js);
+   body.efb is a cockpit tablet. The page and the database both check again. */
+.tabs a[data-tab='vpilot'] {
+  display: none;
+}
+body.efb.vpilot .tabs a[data-tab='vpilot'] {
+  display: flex;
+}
+
+.vp {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ---- The top strip ---- */
+
+.vp-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-deep);
+}
+
+.vp-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vp-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.vp-btn:hover:not(:disabled) {
+  border-color: var(--dim);
+}
+/* Mode C and Ident are latched: they report what the transponder is doing,
+   not just what the button would do. */
+.vp-btn.on {
+  border-color: var(--ok);
+  background: rgba(46, 194, 126, 0.16);
+  color: var(--ok);
+}
+.vp-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.vp-btn .icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.vp-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-inline: auto;
+}
+.vp-callsign,
+.vp-squawk {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.vp-squawk {
+  color: var(--muted);
+}
+
+/* The radio stack. Both rows are always drawn, empty when vPilot has not
+   said: a missing COM row reads as "no radio", which is worse than
+   "unknown". */
+.vp-stack {
+  display: grid;
+  gap: 4px;
+}
+.vp-com {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vp-com-name {
+  width: 42px;
+  color: var(--dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.vp-com-freq {
+  min-width: 78px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: right;
+}
+.vp-com-freq.off {
+  color: var(--dim);
+}
+
+/* TX and RX: outlined when the radio is set that way, filled while it is
+   actually passing something. Without vPilot's radio-activity extra the
+   flicker never arrives and the lamp simply never fills. */
+.vp-lamp {
+  min-width: 30px;
+  padding: 2px 6px;
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  color: var(--dim);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+.vp-lamp.armed {
+  border-color: var(--dim);
+  color: var(--muted);
+}
+.vp-lamp.live {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: #06210f;
+}
+
+.vp-alert {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--warn);
+  font-size: 0.85rem;
+}
+.vp-alert .icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+/* ---- Who is in range, and the message window ---- */
+
+.vp-body {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  min-height: 420px;
+}
+
+.vp-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+}
+.vp-side-head {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.vp-controllers {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 52vh;
+  padding: 6px 0 10px;
+}
+.vp-group {
+  padding: 10px 12px 4px;
+  color: var(--dim);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+/* Every controller is a button: tapping one opens a private chat, which is
+   the only way to reach a controller from the cockpit without a keyboard. */
+.vp-ctl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 8px;
+  width: 100%;
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  font: inherit;
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-ctl:hover {
+  background: var(--hair);
+}
+.vp-ctl-callsign {
+  font-weight: 650;
+}
+.vp-ctl-freq {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.vp-ctl-name {
+  grid-column: 1 / -1;
+  color: var(--dim);
+}
+
+.vp-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vp-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-deep);
+}
+.vp-tab {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--hair);
+  border-bottom: 0;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  background: transparent;
+}
+.vp-tab button {
+  padding: 7px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.vp-tab.on {
+  border-color: var(--line);
+  background: var(--card);
+}
+.vp-tab.on button {
+  color: var(--text);
+}
+.vp-tab button.vp-tab-x {
+  padding: 7px 8px 7px 0;
+  color: var(--dim);
+  font-size: 1rem;
+  line-height: 1;
+}
+.vp-tab button.vp-tab-x:hover {
+  color: var(--bad);
+}
+
+/* The message window. Fixed width characters, because a METAR that wraps
+   differently every time it is read is a METAR nobody reads. */
+.vp-log {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 260px;
+  max-height: 52vh;
+  padding: 10px 12px;
+  background: var(--bg-deep);
+  font: 0.85rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.vp-line {
+  margin: 0 0 2px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.vp-at {
+  color: var(--dim);
+}
+.vp-freq {
+  color: var(--dim);
+}
+.vp-who {
+  font-weight: 700;
+}
+.vp-pre {
+  display: block;
+  white-space: pre-wrap;
+}
+
+/* vPilot tells the kinds apart by colour and so does this, with the app's
+   own: what the crew said, what was said to them, and what is weather. */
+.vp-line.radio {
+  color: var(--text);
+}
+.vp-line.radio-sent,
+.vp-line.private-sent {
+  color: var(--muted);
+}
+.vp-line.private {
+  color: var(--ok);
+}
+.vp-line.selcal,
+.vp-line.broadcast {
+  color: var(--warn);
+}
+.vp-line.metar,
+.vp-line.atis {
+  color: var(--info);
+}
+.vp-line.server {
+  color: var(--dim);
+}
+.vp-line.notice.info {
+  color: var(--muted);
+}
+.vp-line.notice.warning {
+  color: var(--warn);
+}
+.vp-line.notice.error {
+  color: var(--bad);
+}
+
+.vp-empty {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+.vp-compose {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+.vp-compose input {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-deep);
+  color: var(--text);
+  font: inherit;
+}
+.vp-compose input:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.vp-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--bad);
+  font-size: 0.86rem;
+}
+.vp-error .icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.vp-hint {
+  margin: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--hair);
+}
+
+/* On a phone, and on a tablet held upright, the controller list goes above
+   the message window rather than squeezing it. */
+@media (max-width: 760px) {
+  .vp-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vp-side {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .vp-controllers {
+    max-height: 30vh;
+  }
+  .vp-identity {
+    margin-inline: 0;
+  }
+}

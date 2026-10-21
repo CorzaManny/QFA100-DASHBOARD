@@ -21,6 +21,14 @@ import {
   releaseOpsDesk,
 } from '../api.js';
 import { DEFAULT_RULES, planRoster, problems, isBoc } from '../autoroster.js';
+import {
+  forgetVpilotPlugin,
+  syncVpilot,
+  vpilotCidMismatch,
+  vpilotKnown,
+  vpilotOnline,
+  vpilotPicture,
+} from '../vpilot.js';
 import { esc, zulu, zdate, depWindow, simLocal, span, isoDate, isoTime, icon, rerender } from '../ui.js';
 import {
   sortedSectors,
@@ -52,6 +60,8 @@ import {
   teamSimbrief,
   canSetSimbrief,
   teamAirframe,
+  teamVatsimCid,
+  teamSelcal,
   simbriefPlanUrl,
   isDraft,
   biddingOn,
@@ -265,6 +275,75 @@ function resetTimesCard() {
     </section>`;
 }
 
+// ---- vPilot ----
+// The team's VATSIM account, and the state of the plugin that mirrors vPilot
+// into the EFB (supabase/vpilot.sql, and the plugin's own repository).
+//
+// The CID here is not a login: vPilot keeps the VATSIM credentials in its own
+// settings on the sim PC and nothing in the EFB can change them. It is kept so
+// the EFB can say when the sim is connected as somebody's personal account
+// instead of the team's, which is easy to do by accident and quietly wrong for
+// the whole sector. No VATSIM password is ever stored here.
+
+function vpilotCard() {
+  const link = vpilotPicture().link;
+  const online = vpilotOnline();
+  const wrongCid = vpilotCidMismatch();
+  const team = teamVatsimCid();
+
+  // No vpilot.sql in this database: say so rather than showing a dead panel.
+  const missing = vpilotKnown() && !link;
+  const badge = missing
+    ? '<span class="badge mute">NOT SET UP</span>'
+    : online
+      ? `<span class="badge ok">CONNECTED</span>`
+      : '<span class="badge warn">NOT CONNECTED</span>';
+
+  const status = missing
+    ? '<p class="note">The database has no vPilot tables yet. Run <strong>supabase/vpilot.sql</strong> in the Supabase SQL Editor, then deploy the <strong>vpilot-plugin</strong> function.</p>'
+    : online
+      ? `<p class="note ok">${icon('check')} vPilot ${esc(link.plugin_version || '')} is talking to the EFB${
+          link.connected ? `, connected to VATSIM as ${esc(link.callsign || '')}${link.cid ? ` (CID ${esc(link.cid)})` : ''}` : ', not connected to VATSIM'
+        }.</p>`
+      : `<p class="note">Nothing has been heard from the plugin${
+          link?.last_seen_at ? ` since ${when(link.last_seen_at)}` : ' yet'
+        }. Install it on the computer running vPilot and start vPilot.</p>`;
+
+  return `
+    <form class="card form" data-form="vpilot">
+      <div class="card-head"><h2>vPilot</h2>${badge}</div>
+      ${status}
+      ${
+        wrongCid
+          ? `<p class="note warn">${icon('alert')} vPilot is signed in as CID ${esc(wrongCid)}, not the team's ${esc(
+              team,
+            )}. The sector will be flown on a personal account. Sign vPilot in as the team account on the sim PC.</p>`
+          : ''
+      }
+      <div class="grid2">
+        <label class="field">Team VATSIM CID<input name="cid" inputmode="numeric" autocomplete="off" maxlength="10" value="${esc(
+          team,
+        )}" placeholder="Not set yet">
+          <span class="tiny">The one account the team flies the event on. Checked against vPilot, never used to log in - vPilot holds the password on the sim PC.</span></label>
+        <label class="field">SELCAL<input name="selcal" autocapitalize="characters" maxlength="5" value="${esc(
+          teamSelcal(),
+        )}" placeholder="e.g. AB-CD">
+          <span class="tiny">Used when the EFB connects vPilot. Leave empty if the team does not use one.</span></label>
+      </div>
+      <p class="form-error" hidden></p>
+      <div class="btn-row">
+        <button class="btn primary" type="submit">Save</button>
+        <button class="btn" type="button" data-act="refreshVpilot">Refresh</button>
+        ${
+          link
+            ? `<button class="btn danger" type="button" data-act="forgetVpilot">Forget this plugin</button>`
+            : ''
+        }
+      </div>
+      <p class="tiny">The EFB belongs to the first plugin that connects. Forgetting it lets another computer's vPilot claim the EFB instead - do that when the sim PC changes.</p>
+    </form>`;
+}
+
 // ---- Ops Desk ----
 // The ops controllers' own roster: who is answering the flight deck, and when.
 // It lives in here rather than on a page of its own because it is nobody's
@@ -432,6 +511,7 @@ function rulesPage() {
   return `
     ${tabs('rules')}
     ${resetTimesCard()}
+    ${vpilotCard()}
     <form class="card form" data-form="bidding">
       <div class="card-head"><h2>Bidding</h2><span class="badge ${
         biddingOn() ? (biddingOpen() ? 'warn' : 'ok') : 'mute'
@@ -1152,6 +1232,26 @@ export const forms = {
       result = 'Saved. Everyone sees this.';
     });
   },
+  // The team's VATSIM account and SELCAL, beside the callsign in rules.
+  // The CID is digits: a mistyped one would quietly stop the mismatch warning
+  // ever firing, which is the one job it has.
+  vpilot(data, formEl) {
+    const problem = formEl.querySelector('.form-error');
+    const cid = String(data.get('cid') || '').trim();
+    const selcal = String(data.get('selcal') || '').trim().toUpperCase();
+    if (cid && !/^[0-9]{6,10}$/.test(cid)) {
+      problem.textContent = 'A VATSIM CID is six to ten digits.';
+      problem.hidden = false;
+      return;
+    }
+    if (problem) problem.hidden = true;
+    return change(async () => {
+      await saveSettings({
+        rules: { ...(state.settings?.rules || {}), vatsimCid: cid, selcal },
+      });
+      result = 'Saved. The EFB will say so if vPilot is signed in as anybody else.';
+    });
+  },
   account(data, formEl) {
     const who = String(data.get('name')).trim();
     formEl.querySelector('[type=submit]').disabled = true;
@@ -1182,6 +1282,29 @@ export const forms = {
 };
 
 export const actions = {
+  // ---- vPilot ----
+  refreshVpilot(el) {
+    el.disabled = true;
+    return change(async () => {
+      await syncVpilot();
+    });
+  },
+  forgetVpilot(el) {
+    if (
+      !confirm(
+        'Forget the vPilot plugin that has the EFB?\n\nThe next computer whose vPilot starts up claims it instead, and what this one reported is cleared.',
+      )
+    ) {
+      return;
+    }
+    el.disabled = true;
+    return change(async () => {
+      const { ok, error: why } = await forgetVpilotPlugin();
+      if (!ok) throw new Error(why || 'The plugin could not be forgotten.');
+      result = 'Forgotten. Start vPilot on the computer that should have the EFB.';
+    });
+  },
+
   // ---- Ops Desk ----
   takeDesk(el) {
     el.disabled = true;
@@ -1380,4 +1503,11 @@ function deskPushNote(root) {
 export function mounted(root, args = []) {
   if (rosterView === 'timeline' && (!args[0] || args[0] === 'auto')) mountedRoster(root);
   if (args[0] === 'opsdesk') deskPushNote(root);
+  // Read vPilot once on the way in and draw again. Not a watcher: app.js has
+  // no hook for leaving a page, so a poll started here would outlive it.
+  if (args[0] === 'rules' && isAdmin() && !vpilotKnown()) {
+    syncVpilot().then(() => {
+      if (location.hash.startsWith('#/admin')) rerender();
+    });
+  }
 }

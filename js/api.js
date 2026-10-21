@@ -480,3 +480,39 @@ export const saveDefect = (defect, defectId) =>
   defectId ? rest('PATCH', `techlog?id=eq.${id(defectId)}`, fromDefect(defect)) : rest('POST', 'techlog', fromDefect(defect));
 
 export const deleteDefect = (defectId) => rest('DELETE', `techlog?id=eq.${id(defectId)}`);
+
+// ---- vPilot ----
+// The radio on the pilot's PC, mirrored by a plugin inside vPilot (see
+// supabase/vpilot.sql). Read on its own rather than in loadAll: it is live
+// while a flight is on and of no interest at all the rest of the time.
+
+// Read newest-first and turned back the right way round, like the ops thread.
+const VPILOT_WINDOW = 'vpilot_messages?select=*&order=at.desc&limit=200';
+
+// null for link means supabase/vpilot.sql has not been run, so the app leaves
+// vPilot out altogether.
+export async function fetchVpilot() {
+  const [link, messages, controllers] = await Promise.all([
+    rest('GET', 'vpilot_link?select=*&id=eq.1').catch(() => null),
+    rest('GET', VPILOT_WINDOW).catch(() => null),
+    rest('GET', 'vpilot_controllers?select=*&order=callsign.asc').catch(() => null),
+  ]);
+  return {
+    link: link === null ? null : link[0] || null,
+    messages: messages ? [...messages].reverse() : [],
+    controllers: controllers || [],
+  };
+}
+
+// Queues one command for vPilot and hands back its id. vPilot's own answer
+// lands on that row a moment later - see fetchVpilotResult.
+export const vpilotCommand = (kind, args = {}) => rest('POST', 'rpc/vpilot_command', { kind, args });
+
+export const fetchVpilotResult = (seq) =>
+  rest('GET', `vpilot_commands?select=ok,error,result_at&seq=eq.${id(seq)}`).then((rows) => rows?.[0] || null);
+
+// Makes the plugin resend everything it knows.
+export const vpilotResync = () => rest('POST', 'rpc/vpilot_resync', {});
+
+// Lets a different vPilot install claim the EFB (admin only).
+export const vpilotForgetPlugin = () => rest('POST', 'rpc/vpilot_forget_plugin', {});

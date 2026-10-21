@@ -6,7 +6,7 @@
 // Bump CACHE with every release: a changed sw.js is how open copies of the
 // app learn there is an update, and they then reload themselves (js/app.js).
 
-const CACHE = 'qfa100-ops-v89';
+const CACHE = 'qfa100-ops-v90';
 const SHELL = [
   './',
   'index.html',
@@ -27,6 +27,7 @@ const SHELL = [
   'js/opschat.js',
   'js/opscall.js',
   'js/realtime.js',
+  'js/vpilot.js',
   'js/tone.js',
   'js/data/checklists.js',
   'js/data/non-normal.js',
@@ -48,6 +49,7 @@ const SHELL = [
   'js/views/progress.js',
   'js/views/ops.js',
   'js/views/stream.js',
+  'js/views/vpilot.js',
   'icons/qfa100-logo.png',
   'icons/icon-192.png',
   'icons/icon-512.png',
