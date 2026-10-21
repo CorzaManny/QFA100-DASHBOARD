@@ -695,7 +695,10 @@ async function parseSimTrack(d) {
     gs: num(p.groundSpeedKt),
     hdg: num(p.headingDeg),
     vs,
-    ias: num(p.indicatedAirspeedKt),
+    // Suppress wind-induced IAS while stationary on the ground.
+    ias: p.onGround === true && num(p.groundSpeedKt) != null && Math.abs(p.groundSpeedKt) < 1
+      ? 0
+      : num(p.indicatedAirspeedKt),
     mach: num(p.mach),
     fuelKg: num(d.fuel?.onBoardKg),
     dep,
