@@ -1734,6 +1734,65 @@ button:focus-visible {
   letter-spacing: 0.05em;
 }
 
+/* Editing the normal checklists. Admin only, and kept below the crew's own
+   buttons and behind a rule, so it reads as a separate job from flying the
+   checklist. */
+.cl-admin {
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+}
+.cl-edit-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cl-edit-head,
+.cl-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 142px;
+  align-items: center;
+  gap: 8px;
+}
+.cl-edit-head {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cl-edit-tools {
+  display: flex;
+  gap: 6px;
+}
+.cl-edit-tool {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+}
+/* Three columns need more width than a phone has; each item becomes its own
+   little card instead, so it is still clear which response goes with which
+   challenge. */
+@media (max-width: 760px) {
+  .cl-edit-head {
+    display: none;
+  }
+  .cl-edit-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--card2);
+  }
+  .cl-edit-tools {
+    justify-content: flex-end;
+  }
+  .cl-edit-tool {
+    flex: none;
+    width: 64px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .icon-btn.spin .icon {
     animation: none;

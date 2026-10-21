@@ -6,7 +6,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 
 - **Login** – everyone signs in with their own account. The first page is the login page.
 - **Dashboard** – a map of the sector being flown with the aeroplane on it, and shows where the aircraft is, its altitude, ground speed, distance to go and estimated arrival, read from the simulator's status API or from VATSIM. Shows your next rostered sector with your duty, report time and a countdown, and warns when a late arrival will push back the following departure.
-- **737 Checklists** – tap-through checklists in three groups: **Normal** from Preflight to Secure, plus **Non-normal** and **Memory items** to fill in. Each group lists its checklists down the side with how far through each one is, and there is a "CHECKLIST COMPLETE" footer and a Next button. Works with no connection and keeps the screen awake.
+- **737 Checklists** – tap-through checklists in two groups: **Normal** from Preflight to Secure, and **Non-normal**, the extracted QRH. Each group lists its checklists down the side with how far through each one is, and there is a "CHECKLIST COMPLETE" footer and a Next button. Works with no connection and keeps the screen awake. An **admin** can reword the normal checklists in the app and add their own – see below.
 - **Schedule** – the official WorldFlight 2026 schedule. Each sector shows when its departure window opens (UTC), the window, block time and validated route. Tapping a sector opens its briefing; admins and dispatchers can add, edit or delete sectors.
 - **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with short-crewed sectors flagged. The cockpit tablets sign in to their own accounts and show the whole team's roster instead.
 - **Admin** (shield icon, top right) – where the roster is built: pick a Captain and First Officer for each sector from a dropdown and it saves straight away. Admins also set each person's role here.
@@ -71,10 +71,11 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 12. In another query, paste in [`supabase/ops-chat.sql`](supabase/ops-chat.sql) and press **Run**. This adds the ops desk: the controllers' shift roster and the chat thread the flight deck tablets message them on. It is optional; without it there is no ops chat panel.
 13. In another query, paste in [`supabase/ops-chat-notify.sql`](supabase/ops-chat-notify.sql) and press **Run**. This notifies the controller on shift when the flight deck messages them, and the tablets when ops answers. It needs both the file above and notifications.sql, and is optional: without it the chat still dings and badges inside the app.
 14. In another query, paste in [`supabase/ops-call.sql`](supabase/ops-call.sql) and press **Run**. This lets the flight deck and the ops desk call each other in the app: it says who may join the channel that carries the handshake, and sends the notification that tells somebody their app is ringing. Optional, and calling does nothing until it has been run.
-15. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-16. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
-17. Push the change to GitHub.
-18. Open the app and **create your own account first**. The first account becomes the admin.
+15. In another query, paste in [`supabase/normal-checklists.sql`](supabase/normal-checklists.sql) and press **Run**. This lets an admin reword the normal checklists, reorder them and add their own, from the Checklists page in the app. It is optional; without it the whole team flies the checklists the app ships with and there is nothing to edit.
+16. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+17. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
+18. Push the change to GitHub.
+19. Open the app and **create your own account first**. The first account becomes the admin.
 
 Nobody signs themselves up. An admin makes each account in **Admin → People
 and roles → Add a team member**: a name, a role, and a password to pass on. The
@@ -362,6 +363,36 @@ Each entry keeps a history of who reported, deferred, edited and rectified it; t
 
 It is for flight simulation only. Repair categories: A as stated in the item, B 3 days, C 10 days, D 120 days.
 
+## Checklists, and editing the normal ones
+
+The **Normal** checklists are the team's own. Out of the box every device flies
+the set in [`js/data/checklists.js`](js/data/checklists.js), Preflight to Secure.
+Once `supabase/normal-checklists.sql` has been run, an **admin** gets two extra
+buttons at the bottom of a normal checklist: **Edit this checklist** and
+**Add a checklist**. Nobody else does, and the database enforces it as well as
+the app: the whole list is written through one function, `set_normal_checklists`,
+which refuses anyone who is not an admin. A dispatcher builds the roster, but the
+checklists the crew reads out are the team's procedures.
+
+The editor takes a challenge and a response per item — the call and the read-back
+— and rows can be added, removed and moved. **Runs after** decides where the
+checklist sits in the run, which is also what the **Next** button follows, so a
+new **Taxi** checklist can go between Before Taxi and Before Takeoff rather than
+on the end. A checklist can be deleted as long as one is left.
+
+Two things happen on save, on purpose. The first save writes the whole list, so
+from then on the team's list is what everyone flies and `js/data/checklists.js`
+is only the set a fresh team starts from. And because ticks are kept by item
+position on each device, changing a checklist's wording clears that checklist's
+ticks everywhere and marks it not complete — once the wording has moved, a page
+of ticks against the old wording would be a lie, and so would telling the other
+EFB it is done.
+
+**Non-normal** checklists are not editable, by anyone. They are the extracted
+QRH, with their own numbering, branches and jumps between procedures, and are
+rebuilt from the source PDF with `tools/build_qrh.py` rather than reworded in
+the app.
+
 ## Airport notes
 
 These are still saved on each person's own device, not in the database. To share them, use **Settings → Export**, send the file to the team, and they use **Import**.
@@ -370,7 +401,9 @@ These are still saved on each person's own device, not in the database. To share
 
 | To change | Edit |
 |---|---|
-| Checklist items and wording | `js/data/checklists.js` (`kind: 'normal'` or `'non-normal'` puts one in a group) |
+| Normal checklist wording, order, and adding a checklist | in the app: **Checklists → Normal → Edit** (admins only; needs `supabase/normal-checklists.sql`) |
+| The normal checklists a fresh team starts from | `js/data/checklists.js` |
+| Non-normal checklists | rebuild `js/data/non-normal.js` with `tools/build_qrh.py`; they are the QRH and are not editable in the app |
 | Colours and layout | `css/app.css` |
 | Callsign, aircraft type, custom airframe and team SimBrief | in the app: **Admin → SimBrief** |
 | Duty rules and report times | in the app: **Admin → Settings** (starting values are in `js/autoroster.js`) |

@@ -1,18 +1,21 @@
 import { NON_NORMAL_QRH } from './non-normal.js';
 
 // Boeing 737NG normal checklists, challenge → response.
-// FOR FLIGHT SIMULATION USE ONLY. Edit this file to match your team's
-// add-on and SOPs: each item is ['Challenge', 'Response'].
+// FOR FLIGHT SIMULATION USE ONLY. Each item is ['Challenge', 'Response'].
 
 // Checklists are grouped: the normal ones you run every sector and the
-// non-normal ones for a failure. Add to the second by giving a checklist
-// kind: 'non-normal'.
+// non-normal ones for a failure.
 export const CHECKLIST_KINDS = [
   ['normal', 'Normal'],
   ['non-normal', 'Non-normal'],
 ];
 
-export const CHECKLISTS = [
+// Where the normal checklists start. An admin reworded them, reordered them
+// or added their own, those are what the team flies instead and these are
+// never read - see normalChecklists() in ops.js. Editing this file still
+// works for a team with no database connected, or as the set a fresh team
+// starts from.
+export const DEFAULT_NORMAL_CHECKLISTS = [
   {
     id: 'preflight',
     name: 'Preflight',
@@ -138,6 +141,7 @@ export const CHECKLISTS = [
 ];
 
 // Native non-normal actions retain source numbering and explicit navigation.
+// The extracted QRH, not a team's wording, so these are read-only in the app.
 export const NON_NORMAL_CHECKLISTS = NON_NORMAL_QRH.procedures.map((procedure) => ({
   ...procedure,
   id: `qrh-${procedure.id}`,
@@ -147,5 +151,4 @@ export const NON_NORMAL_CHECKLISTS = NON_NORMAL_QRH.procedures.map((procedure) =
   progressKeys: procedure.blocks.filter((block) => block.type === 'action').map((block) => block.check_index),
   items: procedure.blocks.filter((block) => block.type === 'action').map((block) => [block.text, '']),
 }));
-CHECKLISTS.push(...NON_NORMAL_CHECKLISTS);
 export { NON_NORMAL_QRH };

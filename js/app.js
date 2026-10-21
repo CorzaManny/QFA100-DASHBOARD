@@ -334,6 +334,9 @@ const teamData = () =>
   JSON.stringify([
     state.sectors, state.roster, state.people, state.settings, state.prefs, state.defects, state.history, state.briefings,
     state.actuals, state.swaps, state.pickups, state.official, state.officialCheck, state.checklistStatus,
+    // An admin rewording a checklist reaches the flight deck the same way
+    // anything else does, within a few seconds and without a reload.
+    state.normalChecklists,
     // The ops shift roster and who has the desk, but not the thread itself:
     // the chat panel repaints on its own, and a new message is no reason to
     // redraw the page underneath it.

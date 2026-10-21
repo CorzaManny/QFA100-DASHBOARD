@@ -9,12 +9,14 @@ import {
   saveSettings,
   fetchTaf,
   fetchChecklistStatus,
+  putNormalChecklists,
   fetchOpsChat,
   sendOpsMessage,
 } from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
 import { CTWO_DEFAULTS } from './data/ctwo.js';
+import { DEFAULT_NORMAL_CHECKLISTS } from './data/checklists.js';
 import { running as runningOf, reportAt as reportAtOf } from './running.js';
 
 const VATSIM_FEED = 'https://data.vatsim.net/v3/vatsim-data.json';
@@ -283,7 +285,7 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, checklistStatus: [], opsShifts: null, opsDesk: null, opsChat: [], chatSeen: 0, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
+  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, checklistStatus: [], normalChecklists: null, checkRev: {}, opsShifts: null, opsDesk: null, opsChat: [], chatSeen: 0, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 
@@ -320,6 +322,7 @@ export async function syncTeam() {
       state.defects = defects;
     }
     state.sharedLog = !!defects;
+    dropStaleChecklistTicks();
     save();
     return true;
   } catch {
@@ -493,6 +496,91 @@ export const actualOf = (sectorId) => (state.actuals || []).find((a) => a.sector
 // has been run.
 export const teamChecklistStatus = (checklistId) =>
   (state.checklistStatus || []).find((c) => c.checklist_id === checklistId) || null;
+
+// ---- The normal checklists ----
+
+// The normal checklists the flight deck taps through, Preflight to Secure,
+// in the order they are flown: the team's own set once an admin has edited
+// them, otherwise the ones the app ships with. rev is when the team last
+// changed one, which is how a device knows its ticks are out of date (see
+// dropStaleChecklistTicks below).
+//
+// Non-normal checklists are not here. They are the extracted QRH, with their
+// own numbering and branches, and the app does not let anyone reword them.
+//
+// Rebuilt only when the team's list actually changes - a sync replaces the
+// array, so comparing it is enough. The Checklists page asks for this a dozen
+// times in a render, and handing back the same array each time keeps the
+// checklists it holds comparable by identity as well as by id.
+let normalCache = { from: null, list: null };
+
+export function normalChecklists() {
+  const team = state.normalChecklists;
+  if (!Array.isArray(team) || !team.length) return DEFAULT_NORMAL_CHECKLISTS;
+  if (normalCache.from === team) return normalCache.list;
+  normalCache = { from: team, list: builtFrom(team) };
+  return normalCache.list;
+}
+
+function builtFrom(team) {
+  return team.map((row) => ({
+    id: row.id,
+    name: row.name,
+    kind: 'normal',
+    rev: row.updated_at || '',
+    items: (Array.isArray(row.items) ? row.items : []).map((item) => [String(item?.[0] ?? ''), String(item?.[1] ?? '')]),
+  }));
+}
+
+// Rewording the checklists the crew reads out is an admin's job, not a
+// dispatcher's - the database enforces it too, in set_normal_checklists.
+// Without a database there is no team to save them for, so the editor stays
+// out of the way rather than offering to change one device's copy.
+export const canEditChecklists = () => configured && !!getSession() && isAdmin();
+
+// Whether this database has the table at all. Until the migration is run the
+// whole team flies the bundled checklists and there is nothing to edit.
+export const checklistsEditable = () => canEditChecklists() && Array.isArray(state.normalChecklists);
+
+// Saves the whole list, in the order given: position comes from the order, so
+// moving a checklist is the same save as renaming one. The team database is
+// the only copy, so this waits on it and then pulls the list back.
+export async function saveNormalChecklists(list) {
+  await putNormalChecklists(
+    list.map((cl) => ({
+      id: cl.id,
+      name: String(cl.name || '').trim(),
+      items: (cl.items || []).map(([challenge, response]) => [String(challenge ?? '').trim(), String(response ?? '').trim()]),
+    })),
+  );
+  await syncTeam();
+}
+
+// Ticks are kept by item position, on each device. Once an admin changes a
+// checklist those positions mean something else, so a page of ticks against
+// the old wording - or worse, a full counter over items nobody has read -
+// would be a lie. Each device drops its own progress for a checklist the
+// first time it sees a newer version of it. Deleted checklists go the same
+// way, so their ticks do not sit in storage forever.
+function dropStaleChecklistTicks() {
+  if (!Array.isArray(state.normalChecklists)) return;
+  const revs = (state.checkRev ??= {});
+  const live = new Map(state.normalChecklists.map((row) => [row.id, row.updated_at || '']));
+  for (const id of Object.keys(revs)) {
+    if (!live.has(id)) {
+      delete revs[id];
+      delete state.checks[id];
+    }
+  }
+  for (const [id, rev] of live) {
+    if (revs[id] === rev) continue;
+    // Nothing ticked against a version this device has not seen before: note
+    // the version and leave the ticks be, so a first sync after signing in
+    // does not wipe a checklist somebody is halfway through.
+    if (revs[id] !== undefined) delete state.checks[id];
+    revs[id] = rev;
+  }
+}
 
 // ---- Live VATSIM tracking ----
 

@@ -2,9 +2,16 @@
 
 import { state, save } from '../store.js';
 import { esc, icon, rerender } from '../ui.js';
-import { CHECKLISTS, CHECKLIST_KINDS } from '../data/checklists.js';
+import { CHECKLIST_KINDS, NON_NORMAL_CHECKLISTS } from '../data/checklists.js';
 import { saveChecklistStatus } from '../api.js';
-import { me, syncChecklistStatus, teamChecklistStatus } from '../ops.js';
+import {
+  me,
+  syncChecklistStatus,
+  teamChecklistStatus,
+  normalChecklists,
+  checklistsEditable,
+  saveNormalChecklists,
+} from '../ops.js';
 
 const done = (cl) => cl.items.filter((_, i) => state.checks[cl.id]?.[cl.progressKeys?.[i] ?? i]).length;
 // Complete on this device, or completed on the other EFB account and synced
@@ -18,6 +25,127 @@ const complete = (cl) => localComplete(cl) || !!teamChecklistStatus(cl.id)?.comp
 const syncedOnly = (cl) => !localComplete(cl) && !!teamChecklistStatus(cl.id)?.complete;
 const displayDone = (cl) => (syncedOnly(cl) ? cl.items.length : done(cl));
 const trail = [];
+
+// ---- Editing the normal checklists, admin only ----
+// What an admin has open in the editor, as its own copy of the checklist:
+// { id, name, items, after, isNew }. Nothing reaches the team until Save, so
+// Cancel really does leave the checklist as it was. Non-normal checklists are
+// the extracted QRH and never open here.
+let draft = null;
+let editBusy = false;
+let editError = '';
+let editNotice = '';
+// Where to put the cursor after a redraw: { i, what }, what being 'challenge'
+// for a row just added, or 'up'/'down' for the button that just moved one.
+let focusAfter = null;
+
+// A new checklist's id. It keys that checklist's progress on every device and
+// its completion in the team database, so it is made once from the name and
+// then left alone - renaming a checklist never changes it.
+function newChecklistId(name, taken) {
+  const base = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'checklist';
+  let id = base;
+  for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+  return id;
+}
+
+// Reads whatever is typed in the editor back into the draft. Adding, removing
+// and moving a row all redraw the page, which replaces every input, so this
+// runs first and no unsaved typing is lost.
+function captureDraft() {
+  const form = document.getElementById('view')?.querySelector('[data-form="saveChecklist"]');
+  if (!draft || !form) return;
+  draft.name = form.querySelector('[name="name"]').value;
+  draft.after = form.querySelector('[name="after"]')?.value ?? draft.after;
+  draft.items = [...form.querySelectorAll('[data-item]')].map((row) => [
+    row.querySelector('[name="challenge"]').value,
+    row.querySelector('[name="response"]').value,
+  ]);
+}
+
+// Saving goes to the team database and nowhere else - there is no local copy
+// worth keeping - so the editor waits on it and says what happened. The draft
+// has already been captured, so a redraw mid-save shows the typing back.
+async function runEdit(work) {
+  if (editBusy) return;
+  editBusy = true;
+  editError = '';
+  rerender();
+  try {
+    await work();
+  } catch (err) {
+    editError = `Could not save: ${err.message}`;
+  }
+  editBusy = false;
+  if (location.hash.startsWith('#/checklists')) rerender();
+}
+
+function editorCard(list) {
+  const rows = draft.items
+    .map(([challenge, response], i) => `
+      <div class="cl-edit-row" data-item data-i="${i}">
+        <input name="challenge" value="${esc(challenge)}" placeholder="Oxygen" aria-label="Item ${i + 1} challenge" maxlength="80">
+        <input name="response" value="${esc(response)}" placeholder="Tested, 100%" aria-label="Item ${i + 1} response" maxlength="80">
+        <div class="cl-edit-tools">
+          <button class="btn ghost cl-edit-tool" type="button" data-act="moveItem" data-i="${i}" data-dir="-1" aria-label="Move item ${i + 1} up" ${i === 0 ? 'disabled' : ''}>${icon('up')}</button>
+          <button class="btn ghost cl-edit-tool" type="button" data-act="moveItem" data-i="${i}" data-dir="1" aria-label="Move item ${i + 1} down" ${i === draft.items.length - 1 ? 'disabled' : ''}>${icon('down')}</button>
+          <button class="btn ghost cl-edit-tool" type="button" data-act="removeItem" data-i="${i}" aria-label="Remove item ${i + 1}">${icon('trash')}</button>
+        </div>
+      </div>`)
+    .join('');
+  // Somewhere to put it in the run. The checklist being edited is left out:
+  // it cannot follow itself.
+  const others = list.filter((cl) => cl.id !== draft.id);
+  return `
+    <form class="card form cl-edit" data-form="saveChecklist">
+      <div class="card-head">
+        <h2>${draft.isNew ? 'New checklist' : `Edit ${esc(draft.name || 'checklist')}`}</h2>
+        <span class="badge warn">ADMIN</span>
+      </div>
+      <p class="note">The challenge one pilot calls, and the response the other reads back. This is the whole team's checklist: it changes on every device, for everyone.</p>
+      <div class="grid2">
+        <label class="field">Name<input name="name" value="${esc(draft.name)}" placeholder="Before Taxi" maxlength="40" required></label>
+        <label class="field">Runs after
+          <select name="after">
+            <option value="" ${draft.after ? '' : 'selected'}>First, before everything</option>
+            ${others.map((cl) => `<option value="${esc(cl.id)}" ${draft.after === cl.id ? 'selected' : ''}>${esc(cl.name)}</option>`).join('')}
+          </select>
+          <span class="tiny">Where it sits in the run, and what the Next button reaches.</span>
+        </label>
+      </div>
+      <div class="cl-edit-items">
+        <div class="cl-edit-head"><span>Challenge</span><span>Response</span><span></span></div>
+        ${rows || '<p class="note">No items yet. Add the first one below.</p>'}
+      </div>
+      <div class="btn-row">
+        <button class="btn ghost" type="button" data-act="addItem">${icon('plus')} Add an item</button>
+      </div>
+      <p class="form-error" ${editError ? '' : 'hidden'}>${esc(editError)}</p>
+      <p class="tiny">Saving clears this checklist's ticks everywhere and marks it not complete: once the wording changes, nobody has read out this version of it yet.</p>
+      <div class="btn-row">
+        <button class="btn primary" type="submit" ${editBusy ? 'disabled' : ''}>${draft.isNew ? 'Add checklist' : 'Save checklist'}</button>
+        <button class="btn ghost" type="button" data-act="cancelEdit" ${editBusy ? 'disabled' : ''}>Cancel</button>
+      </div>
+      ${
+        draft.isNew || list.length < 2
+          ? ''
+          : `<div class="btn-row"><button class="btn danger" type="button" data-act="deleteChecklist" ${editBusy ? 'disabled' : ''}>${icon('trash')} Delete this checklist</button></div>`
+      }
+    </form>`;
+}
+
+// The admin's own row of buttons under a normal checklist. Deliberately
+// below the crew's buttons and plainly labelled, so nobody flying a sector
+// reaches for it by accident.
+function editBar(cl) {
+  if (!checklistsEditable()) return '';
+  return `
+    <div class="btn-row cl-admin">
+      <button class="btn ghost" data-act="editChecklist">${icon('pencil')} Edit ${esc(cl.name)}</button>
+      <button class="btn ghost" data-act="addChecklist">${icon('plus')} Add a checklist</button>
+    </div>
+    <p class="tiny center">You are an admin: these change the normal checklists for the whole team.</p>`;
+}
 
 // Only the fact a checklist is complete is shared between the two EFB
 // accounts, not every tick - so broadcast fires once on the transition to
@@ -138,7 +266,10 @@ function focusBlock(id) {
   target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   target?.focus({ preventScroll: true });
 }
-const ofKind = (kind) => CHECKLISTS.filter((cl) => (cl.kind || 'normal') === kind);
+// The normal ones are the team's own, so they are asked for rather than read
+// from a fixed list; the non-normal ones are the extracted QRH and never change.
+const ofKind = (kind) => (kind === 'non-normal' ? NON_NORMAL_CHECKLISTS : normalChecklists());
+const allChecklists = () => [...normalChecklists(), ...NON_NORMAL_CHECKLISTS];
 
 function systemLabel(cl) {
   const labels = {
@@ -174,13 +305,20 @@ function active(args) {
     const kind = args[1] || 'normal';
     return { kind, cl: ofKind(kind)[0] || null };
   }
-  const cl = CHECKLISTS.find((c) => c.id === args[0]) || nextIncomplete() || CHECKLISTS[0];
+  const cl = allChecklists().find((c) => c.id === args[0]) || nextIncomplete() || normalChecklists()[0];
   return { kind: cl?.kind || 'normal', cl: cl || null };
 }
 
 export function render(args) {
   const { kind, cl } = active(args);
   const group = ofKind(kind);
+  // A draft belongs to the checklist it was opened from. Walking away - to
+  // another checklist, or to the non-normal tab - closes the editor rather
+  // than carrying it somewhere it does not belong.
+  if (draft && (kind !== 'normal' || (!draft.isNew && draft.id !== cl?.id))) draft = null;
+  // Shown once, on the render that follows a save.
+  const saved = editNotice;
+  editNotice = '';
 
   const kinds = CHECKLIST_KINDS.map(([key, label]) => {
     const first = ofKind(key)[0];
@@ -188,7 +326,7 @@ export function render(args) {
     return `<a class="${key === kind ? 'on' : ''}" href="${href}">${esc(label)}</a>`;
   }).join('');
 
-  const chip = (c) => `<a class="chip ${c === cl ? 'on' : ''} ${complete(c) ? 'done' : ''}" data-checklist-id="${esc(c.id)}" href="#/checklists/${c.id}" ${c === cl ? 'aria-current="page"' : ''}>
+  const chip = (c) => `<a class="chip ${c.id === cl?.id ? 'on' : ''} ${complete(c) ? 'done' : ''}" data-checklist-id="${esc(c.id)}" href="#/checklists/${c.id}" ${c.id === cl?.id ? 'aria-current="page"' : ''}>
       <span class="chip-t">${esc(c.name)}</span>
       <span class="chip-n">${displayDone(c)} / ${c.items.length}</span></a>`;
   const chips = group.map(chip).join('');
@@ -202,6 +340,7 @@ export function render(args) {
 
   const shell = (body) => `
     <nav class="seg tabs4 on-card" aria-label="Kind of checklist">${kinds}</nav>
+    ${saved ? `<p class="note ok">${esc(saved)}</p>` : ''}
     ${kind === 'non-normal' ? `<label class="qrh-search">Find a non-normal checklist
       <input type="search" data-qrh-search placeholder="Search title, system or condition…" autocomplete="off">
       <span class="tiny" data-qrh-count>${group.length} checklists</span>
@@ -210,6 +349,13 @@ export function render(args) {
       ${chips ? library : ''}
       <div class="cl-main">${body}</div>
     </div>`;
+
+  // The editor takes over the main column, with the list still beside it so
+  // an admin can see where the checklist being edited sits in the run.
+  if (draft && checklistsEditable()) {
+    return `${shell(editorCard(group))}
+    <p class="tiny center">Boeing 737NG checklists. For flight simulation use only.</p>`;
+  }
 
   if (!cl) {
     return `${shell(`<section class="card">
@@ -260,7 +406,7 @@ export function render(args) {
     </section>`);
   }
 
-  const idx = group.indexOf(cl);
+  const idx = group.findIndex((c) => c.id === cl.id);
   const next = group[idx + 1];
   const isDone = complete(cl);
   const teamStatus = teamChecklistStatus(cl.id);
@@ -298,7 +444,8 @@ export function render(args) {
     <div class="btn-row">
       <button class="btn ghost" data-act="reset">Reset this checklist</button>
       <button class="btn ghost" data-act="resetAll">New flight: reset all</button>
-    </div>`)}
+    </div>
+    ${editBar(cl)}`)}
     <p class="tiny center">Boeing 737NG checklists. For flight simulation use only.</p>`;
 }
 
@@ -326,6 +473,17 @@ function pollStatus() {
 
 export function mounted(root, args = []) {
   if (!statusPoll) statusPoll = setInterval(pollStatus, 2000);
+  // A redraw replaces every input, so the editor puts the cursor back where
+  // the admin was working: in the row just added, or on the button that just
+  // moved one, so it can be pressed again straight away.
+  if (focusAfter) {
+    const { i, what } = focusAfter;
+    focusAfter = null;
+    const row = root.querySelector(`[data-item][data-i="${i}"]`);
+    const button = row?.querySelector(`[data-act="moveItem"][data-dir="${what === 'up' ? -1 : 1}"]`);
+    const target = what === 'challenge' || !button || button.disabled ? row?.querySelector('[name="challenge"]') : button;
+    target?.focus();
+  }
   const block = args[1];
   if (block) requestAnimationFrame(() => requestAnimationFrame(() => focusBlock(block)));
   const library = root.querySelector('.qrh-library');
@@ -353,7 +511,123 @@ export function mounted(root, args = []) {
   });
 }
 
+// Admins only, and normal checklists only. The database refuses anyone else
+// (see set_normal_checklists), so these guards are about not offering what
+// will not work rather than about keeping anyone out.
+export const forms = {
+  saveChecklist() {
+    if (!draft || !checklistsEditable()) return;
+    captureDraft();
+    const name = draft.name.trim();
+    // A row left completely blank is one the admin added and did not use, so
+    // it is dropped rather than complained about.
+    const items = draft.items
+      .map(([challenge, response]) => [challenge.trim(), response.trim()])
+      .filter(([challenge, response]) => challenge || response);
+    const fail = (message) => {
+      editError = message;
+      rerender();
+    };
+    if (!name) return fail('Give the checklist a name.');
+    if (!items.length) return fail('Give the checklist at least one item.');
+    if (items.some(([challenge]) => !challenge)) {
+      return fail('Every item needs a challenge. A response can be left blank if there is nothing to read back.');
+    }
+
+    const list = normalChecklists();
+    const id = draft.isNew ? newChecklistId(name, new Set(allChecklists().map((cl) => cl.id))) : draft.id;
+    const others = list.filter((cl) => cl.id !== id);
+    // "Runs after" names the checklist it follows; nothing means it goes first.
+    const after = draft.after ? others.findIndex((cl) => cl.id === draft.after) : -1;
+    const at = draft.after ? (after < 0 ? others.length : after + 1) : 0;
+    const next = [...others.slice(0, at), { id, name, items }, ...others.slice(at)];
+    const wasNew = draft.isNew;
+
+    return runEdit(async () => {
+      await saveNormalChecklists(next);
+      // Ticks are kept by item position, so once the wording moves they no
+      // longer mean anything: the sync above drops this device's own (see
+      // dropStaleChecklistTicks), and this clears the team's completion so
+      // the other EFB is not told a checklist nobody has read is complete.
+      if (!wasNew) syncCompletion({ id }, false);
+      draft = null;
+      editNotice = wasNew ? `${name} added for the whole team.` : `${name} saved for the whole team.`;
+      location.hash = `#/checklists/${id}`;
+    });
+  },
+};
+
 export const actions = {
+  editChecklist() {
+    const { kind, cl } = active(location.hash.split('/').slice(2));
+    if (!cl || kind !== 'normal' || !checklistsEditable()) return;
+    const list = normalChecklists();
+    const at = list.findIndex((c) => c.id === cl.id);
+    draft = {
+      id: cl.id,
+      name: cl.name,
+      items: cl.items.map(([challenge, response]) => [challenge, response]),
+      after: at > 0 ? list[at - 1].id : '',
+      isNew: false,
+    };
+    editError = '';
+    rerender();
+  },
+  addChecklist() {
+    if (!checklistsEditable()) return;
+    // A new one starts at the end of the run, which is where most additions
+    // belong; "Runs after" moves it if not.
+    draft = { id: '', name: '', items: [['', '']], after: normalChecklists().at(-1)?.id || '', isNew: true };
+    editError = '';
+    focusAfter = null;
+    rerender();
+  },
+  addItem() {
+    if (!draft) return;
+    captureDraft();
+    draft.items.push(['', '']);
+    focusAfter = { i: draft.items.length - 1, what: 'challenge' };
+    rerender();
+  },
+  removeItem(el) {
+    if (!draft) return;
+    captureDraft();
+    draft.items.splice(Number(el.dataset.i), 1);
+    rerender();
+  },
+  moveItem(el) {
+    if (!draft) return;
+    captureDraft();
+    const from = Number(el.dataset.i);
+    const to = from + Number(el.dataset.dir);
+    if (to < 0 || to >= draft.items.length) return;
+    [draft.items[from], draft.items[to]] = [draft.items[to], draft.items[from]];
+    focusAfter = { i: to, what: Number(el.dataset.dir) < 0 ? 'up' : 'down' };
+    rerender();
+  },
+  cancelEdit() {
+    draft = null;
+    editError = '';
+    rerender();
+  },
+  deleteChecklist() {
+    const list = normalChecklists();
+    if (!draft || draft.isNew || !checklistsEditable() || list.length < 2) return;
+    if (!confirm(`Delete the ${draft.name} checklist for the whole team?`)) return;
+    const gone = draft.id;
+    const next = list.filter((cl) => cl.id !== gone);
+    return runEdit(async () => {
+      await saveNormalChecklists(next);
+      // Its completion would otherwise sit in the team database forever,
+      // and come back if an admin ever adds a checklist by the same name.
+      syncCompletion({ id: gone }, false);
+      delete state.checks[gone];
+      save();
+      draft = null;
+      editNotice = 'Checklist deleted.';
+      location.hash = `#/checklists/${next[0].id}`;
+    });
+  },
   toggle(el) {
     const { cl } = active(location.hash.split('/').slice(2));
     if (!cl || el.disabled) return;
@@ -433,13 +707,13 @@ export const actions = {
     // Clears the shared completion too - otherwise any checklist the other
     // EFB had finished (or this one, before this device last synced) kept
     // showing as done, since complete() also reads the cached team status.
-    for (const cl of CHECKLISTS) {
+    for (const cl of allChecklists()) {
       if (complete(cl)) syncCompletion(cl, false);
     }
     state.checks = {};
     trail.length = 0;
     save();
-    location.hash = `#/checklists/${CHECKLISTS[0].id}`;
+    location.hash = `#/checklists/${normalChecklists()[0].id}`;
     rerender();
   },
 };

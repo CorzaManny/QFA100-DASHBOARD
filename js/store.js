@@ -49,7 +49,12 @@ function defaults() {
     opsChat: [], // { id, sent_at, user_id, sender, body }
     chatSeen: 0, // when this device last had the thread open, for the unread count
     checks: {}, // checklist progress by checklist id
+    checkRev: {}, // which version of a checklist the ticks above were made against
     checklistStatus: [], // team-wide: which checklists are complete, from the other EFB too
+    // team-wide: the normal checklists an admin has edited, in the order they
+    // are flown. Empty means nobody has and null means this database cannot
+    // hold them; either way the bundled ones are used.
+    normalChecklists: null,
     track: null, // last VATSIM sample for the team aircraft
     delay: {}, // predicted holding/traffic delay by sector id, see estimateArrivalDelay in ops.js
   };

@@ -256,7 +256,7 @@ const OPS_CHAT = 'ops_messages?select=*&order=sent_at.desc&limit=200';
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus, opsShifts, opsDesk, opsChat] =
+  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus, normalChecklists, opsShifts, opsDesk, opsChat] =
     await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
@@ -273,6 +273,9 @@ export async function loadAll() {
     rest('GET', 'pickups?select=*&order=created_at.asc').catch(() => null),
     // null: supabase/checklist-status.sql has not been run yet.
     rest('GET', 'checklist_status?select=*').catch(() => null),
+    // null: supabase/normal-checklists.sql has not been run, so the team
+    // cannot edit its checklists and everyone flies the bundled ones.
+    rest('GET', 'normal_checklists?select=*&order=position.asc').catch(() => null),
     // null for these three: supabase/ops-chat.sql has not been run, so there
     // is no ops desk and no thread, and the app simply leaves the panel out.
     rest('GET', 'ops_shifts?select=*&order=starts_at.asc').catch(() => null),
@@ -296,6 +299,11 @@ export async function loadAll() {
     // null: supabase/pickups.sql has not been run, so empty seats cannot be asked for.
     pickups,
     checklistStatus: checklistStatus || [],
+    // null means this database has no table for them, so there is nothing to
+    // edit; [] means the team simply has not changed anything yet. Both fly
+    // the bundled checklists, but only the second can be edited, so the
+    // difference is kept rather than flattened.
+    normalChecklists,
     // null means no ops desk in this database; [] would mean an empty one, and
     // the difference is what decides whether the chat panel exists at all.
     opsShifts,
@@ -396,6 +404,15 @@ export const saveChecklistStatus = (checklistId, fields) =>
     { checklist_id: checklistId, ...fields, updated_at: new Date().toISOString() },
     'resolution=merge-duplicates',
   );
+
+// The normal checklists the team has made its own, in the order they are
+// flown. An empty list means nobody has changed them and every device uses
+// the ones the app ships with. See supabase/normal-checklists.sql.
+export const fetchNormalChecklists = () => rest('GET', 'normal_checklists?select=*&order=position.asc');
+
+// The whole list goes in one call, so a reorder or a deletion cannot
+// half-apply. The database refuses anyone who is not an admin.
+export const putNormalChecklists = (list) => rest('POST', 'rpc/set_normal_checklists', { payload: list });
 
 // Rostering someone twice on a sector updates their existing entry.
 export const saveRoster = (entry) =>
