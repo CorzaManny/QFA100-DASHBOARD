@@ -642,8 +642,19 @@ async function parseSimTrack(d) {
 
   await loadAirports();
   const cur = currentSector(now);
-  const dep = code(d.sector?.departure) || cur?.dep || '';
-  const arr = code(d.sector?.arrival) || cur?.arr || '';
+  const callsign = typeof d.callsign === 'string' ? d.callsign.trim().toUpperCase() : teamCallsign();
+  let filed = null;
+  if (!code(d.sector?.departure) || !code(d.sector?.arrival)) {
+    try {
+      const feed = await vatsimFeed();
+      const matches = (p) => p.callsign?.toUpperCase() === callsign;
+      filed = feed.pilots?.find(matches)?.flight_plan || feed.prefiles?.find(matches)?.flight_plan;
+    } catch {
+      // Simulator tracking still works when the public flight plan is unavailable.
+    }
+  }
+  const dep = code(d.sector?.departure) || code(filed?.departure) || cur?.dep || '';
+  const arr = code(d.sector?.arrival) || code(filed?.arrival) || cur?.arr || '';
   const depApt = airport(dep);
   const arrApt = airport(arr);
   const gs = num(p.groundSpeedKt) ?? 0;
@@ -669,7 +680,7 @@ async function parseSimTrack(d) {
   const onGround = typeof p.onGround === 'boolean' ? p.onGround : gs < 40;
   state.track = {
     source: 'SIM',
-    callsign: typeof d.callsign === 'string' ? d.callsign.toUpperCase() : teamCallsign(),
+    callsign,
     // Also catches a timestamp from the future (a wrong clock or leftover test data).
     online: Math.abs(now - at) < SIM_STALE_MS,
     prefiled: false,

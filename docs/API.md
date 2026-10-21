@@ -19,6 +19,8 @@ GET <your address>      e.g. https://example.com/qfa100/status
 
 Only `updatedAt` and `position.latitude` / `position.longitude` are required. Leave out anything you cannot supply and the Dashboard estimates it or hides it. Unknown fields are ignored.
 
+When departure or arrival is missing, the Dashboard checks the callsign's VATSIM flight plan (including prefiles), then the current scheduled sector. Position and aircraft readings still come from the simulator.
+
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `version` | number | no | Contract version. Currently `1`. |
