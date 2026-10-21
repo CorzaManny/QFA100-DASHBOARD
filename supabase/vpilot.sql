@@ -299,6 +299,9 @@ begin
     kind := e->>'type';
 
     if kind = 'hello' then
+      -- A hello starts a fresh snapshot. Controllers absent from that
+      -- snapshot must disappear, including deletions missed during an outage.
+      delete from public.vpilot_controllers;
       update public.vpilot_link
          set plugin_version = e->>'pluginVersion',
              features = coalesce((
@@ -313,6 +316,11 @@ begin
          set delivered_at = now(), result_at = now(), ok = false,
              error = 'vPilot restarted before this was sent'
        where delivered_at is null;
+
+    elsif kind = 'vpilot-here' then
+      -- The bridge translates the plugin's hello to vpilot-here. The
+      -- controller-added events that follow rebuild its current list.
+      delete from public.vpilot_controllers;
 
     elsif kind = 'sim' then
       insert into public.sim_status (id, status, updated_at)
@@ -341,11 +349,12 @@ begin
        where id = 1;
       delete from public.vpilot_controllers;
 
-    elsif kind = 'session-ended' then
+    elsif kind in ('session-ended', 'vpilot-gone') then
       -- vPilot has closed. Its message window has gone, so the EFB's mirror
-      -- of it goes too rather than sitting there looking live.
+      -- of it goes too rather than sitting there looking live. With a bridge,
+      -- the upstream link and simulator may still be running.
       update public.vpilot_link
-         set online = false, connected = false, callsign = null, cid = null,
+         set online = (kind = 'vpilot-gone'), connected = false, callsign = null, cid = null,
              type_code = null, selcal = null, observer_mode = null,
              radios = '{}', squawk = null, mode_c = null, ident = null,
              com_activity = '{}', voice_connected = null, chat_tabs = '{}',
