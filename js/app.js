@@ -302,7 +302,7 @@ function pollTrack() {
 }
 
 setInterval(tick, 1000);
-setInterval(pollTrack, 15000);
+setInterval(pollTrack, 2000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   wakeLock();

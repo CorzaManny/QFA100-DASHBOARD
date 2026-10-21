@@ -44,8 +44,9 @@ import {
 } from '../ops.js';
 import { nextIncomplete } from './checklists.js';
 
-// The simulator API is cheap to read; the VATSIM feed is large, so poll it less.
-const pollMs = () => (state.profile.statusUrl.trim() ? 15000 : 60000);
+// Read shared and local simulator reports every two seconds. The VATSIM
+// fallback has its own feed cache in ops.js.
+const POLL_MS = 2000;
 let busy = false;
 let lastPoll = 0;
 
@@ -55,7 +56,7 @@ const onDashboard = () => !location.hash || location.hash.startsWith('#/dashboar
 const watching = () => onDashboard() || location.hash.startsWith('#/ops');
 
 export async function poll(force = false) {
-  if (busy || (!force && Date.now() - lastPoll < pollMs() - 5000)) return;
+  if (busy || (!force && Date.now() - lastPoll < POLL_MS - 100)) return;
   busy = true;
   lastPoll = Date.now();
   if (force) rerender();

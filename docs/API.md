@@ -1,6 +1,6 @@
 # Simulator Status API
 
-This is the contract between the simulator PC and the QFA100 Ops Dashboard. The simulator side publishes one small JSON document describing the flight right now; the Dashboard reads it every 15 seconds and shows the position, progress and ETA.
+This is the contract between the simulator PC and the QFA100 Ops Dashboard. The simulator side publishes one small JSON document describing the flight right now; while visible on a tracking page (or any page for an EFB account), the Dashboard reads it every 2 seconds and shows the position, progress and ETA.
 
 The QFA100 bridge publishes this document through `sim` events to Supabase. Run (or rerun) `supabase/vpilot.sql` to store it in the singleton `sim_status` table. Signed-in flight deck devices, including iPads, read it automatically; no status URL is needed on those devices. A `sim-gone` event clears the stored report.
 
