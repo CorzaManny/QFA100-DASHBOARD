@@ -12,6 +12,7 @@ import {
   putNormalChecklists,
   fetchOpsChat,
   sendOpsMessage,
+  fetchSimStatus,
 } from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
@@ -622,12 +623,16 @@ const time = (v) => (typeof v === 'string' && !isNaN(Date.parse(v)) ? Date.parse
 const code = (v) => (typeof v === 'string' ? v.trim().toUpperCase().slice(0, 4) : '');
 
 async function simTrack(url) {
-  const now = Date.now();
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const d = await res.json().catch(() => {
     throw new Error('response is not JSON');
   });
+  return parseSimTrack(d);
+}
+
+async function parseSimTrack(d) {
+  const now = Date.now();
   const p = d?.position || {};
   const at = time(d?.updatedAt);
   const lat = num(p.latitude);
@@ -702,17 +707,32 @@ async function simTrack(url) {
   return state.track;
 }
 
-// The simulator's own API is the first choice; VATSIM is the fallback.
+// Prefer the bridge's shared report, then the local status URL, then VATSIM.
 export async function refreshTrack() {
   const url = state.profile.statusUrl.trim();
-  if (!url) return vatsimTrack();
   let sim = null;
-  let problem = 'the last simulator report is out of date';
-  try {
-    sim = await simTrack(url);
-    if (sim.online) return sim;
-  } catch (err) {
-    problem = err.message;
+  let problem = null;
+  if (configured && getSession()) {
+    try {
+      const status = await fetchSimStatus();
+      if (status) {
+        sim = await parseSimTrack(status);
+        if (sim.online) return sim;
+        problem = 'the last simulator report is out of date';
+      }
+    } catch {
+      // An unavailable database or an older schema must not stop tracking.
+    }
+  }
+  if (url) {
+    try {
+      const local = await simTrack(url);
+      if (local.online) return local;
+      if (!sim || local.at > sim.at) sim = local;
+      problem = 'the last simulator report is out of date';
+    } catch (err) {
+      problem = err.message;
+    }
   }
   const track = await vatsimTrack();
   if (sim && !track.online) {

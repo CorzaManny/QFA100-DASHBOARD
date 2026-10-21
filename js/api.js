@@ -489,6 +489,10 @@ export const deleteDefect = (defectId) => rest('DELETE', `techlog?id=eq.${id(def
 // Read newest-first and turned back the right way round, like the ops thread.
 const VPILOT_WINDOW = 'vpilot_messages?select=*&order=at.desc&limit=200';
 
+// The bridge's simulator document, shared with every flight deck device.
+export const fetchSimStatus = () =>
+  rest('GET', 'sim_status?select=status&id=eq.1').then((rows) => rows?.[0]?.status || null);
+
 // null for link means supabase/vpilot.sql has not been run, so the app leaves
 // vPilot out altogether.
 export async function fetchVpilot() {

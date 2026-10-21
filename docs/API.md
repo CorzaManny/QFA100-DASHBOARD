@@ -2,7 +2,7 @@
 
 This is the contract between the simulator PC and the QFA100 Ops Dashboard. The simulator side publishes one small JSON document describing the flight right now; the Dashboard reads it every 15 seconds and shows the position, progress and ETA.
 
-Nothing publishes this yet. This document defines what a publisher has to produce. Until one exists, leave the address unset and the Dashboard uses VATSIM.
+The QFA100 bridge publishes this document through `sim` events to Supabase. Run (or rerun) `supabase/vpilot.sql` to store it in the singleton `sim_status` table. Signed-in flight deck devices, including iPads, read it automatically; no status URL is needed on those devices. A `sim-gone` event clears the stored report.
 
 ## The endpoint
 
@@ -79,7 +79,8 @@ See [`api/status.example.json`](../api/status.example.json).
 ## How the Dashboard treats it
 
 - **Live:** `updatedAt` is less than 2 minutes old. The card shows `SIMULATOR LIVE`.
-- **Stale:** `updatedAt` is more than 2 minutes old (or more than 2 minutes in the future, which means a clock is wrong). The Dashboard tries VATSIM instead; if the aircraft is not there either, it shows the simulator's last position marked `POSITION STALE`.
+- **Source order:** the shared Supabase report, then the device's configured status URL, then VATSIM. An absent, invalid, stale or unavailable source falls through to the next.
+- **Stale:** `updatedAt` is more than 2 minutes old (or more than 2 minutes in the future, which means a clock is wrong). If neither simulator source nor VATSIM is live, the Dashboard shows the newest valid simulator report marked `POSITION STALE`.
 - **Unreachable or invalid:** the Dashboard falls back to VATSIM and shows what went wrong.
 
 The publisher should therefore refresh the document at least every 30 seconds while the simulator is running, and always set `updatedAt` to the time the data was read from the simulator, not the time of the request.

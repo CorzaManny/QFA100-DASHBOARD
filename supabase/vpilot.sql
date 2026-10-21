@@ -13,9 +13,10 @@
 -- The GET is held open up to 25 s, so vPilot picks a command up about a second
 -- after the EFB asks for it without the EFB holding a socket of its own.
 --
--- Five things live here:
+-- Six things live here:
 --   vpilot_plugin_secret  the hash of the first plugin key that connects
 --   vpilot_link           one row: vPilot and VATSIM as they are now
+--   sim_status            one row: the bridge's simulator status document
 --   vpilot_messages       vPilot's message window, mirrored
 --   vpilot_controllers    who is on frequency nearby
 --   vpilot_commands       the queue the other way, and what vPilot made of it
@@ -160,6 +161,24 @@ drop policy if exists "the flight deck reads vPilot" on public.vpilot_link;
 create policy "the flight deck reads vPilot" on public.vpilot_link
   for select to authenticated using (public.can_use_vpilot());
 
+-- ---------- The simulator, shared with every device ----------
+
+create table if not exists public.sim_status (
+  id         smallint primary key default 1 check (id = 1),
+  status     jsonb,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.sim_status (id) values (1) on conflict (id) do nothing;
+
+alter table public.sim_status enable row level security;
+revoke all on public.sim_status from anon, authenticated;
+grant select on public.sim_status to authenticated;
+
+drop policy if exists "the flight deck reads the simulator" on public.sim_status;
+create policy "the flight deck reads the simulator" on public.sim_status
+  for select to authenticated using (public.can_use_vpilot());
+
 -- ---------- vPilot's message window ----------
 
 create table if not exists public.vpilot_messages (
@@ -294,6 +313,15 @@ begin
          set delivered_at = now(), result_at = now(), ok = false,
              error = 'vPilot restarted before this was sent'
        where delivered_at is null;
+
+    elsif kind = 'sim' then
+      insert into public.sim_status (id, status, updated_at)
+      values (1, e->'status', now())
+      on conflict (id) do update
+        set status = excluded.status, updated_at = now();
+
+    elsif kind = 'sim-gone' then
+      update public.sim_status set status = null, updated_at = now() where id = 1;
 
     elsif kind = 'connected' then
       update public.vpilot_link
@@ -585,6 +613,7 @@ begin
   delete from public.vpilot_controllers;
   delete from public.vpilot_messages;
   delete from public.vpilot_commands;
+  update public.sim_status set status = null, updated_at = now() where id = 1;
 end;
 $$;
 
