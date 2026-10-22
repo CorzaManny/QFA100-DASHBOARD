@@ -23,6 +23,7 @@ import {
   canUseVpilot,
 } from './ops.js';
 import * as opschat from './opschat.js';
+import * as scratch from './scratch.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
 import * as admin from './views/admin.js';
@@ -222,6 +223,9 @@ function render() {
   // The ops chat lives outside the page a render replaces, so it only needs
   // telling that who is signed in, or who is on shift, may have changed.
   opschat.paint();
+  // The scratchpad likewise: it only needs telling which account's pad to
+  // show. What has been written on it is never touched by a render.
+  scratch.paint();
   // A tablet says so, and which of the two it is, so nobody mistakes one for
   // their own device.
   brand.textContent = efb ? `FLIGHT DECK · ${(me()?.display_name || 'TABLET').toUpperCase()}` : 'WORLDFLIGHT · 737 OPERATIONS';

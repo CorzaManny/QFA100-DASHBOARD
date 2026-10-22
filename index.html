@@ -90,6 +90,28 @@
     <span id="ops-unread" class="ops-unread" hidden></span>
   </button>
 
+  <!-- The flight deck's notepad, pulled out over the right edge on any page
+       for a clearance or a frequency written down in the moment. Built in
+       js/scratch.js; cockpit tablets only, and what is drawn stays on the
+       device. -->
+  <aside id="scratchpanel" class="scratchpanel" aria-label="Scratchpad">
+    <div class="chatpanel-head">
+      <span class="tiny">SCRATCHPAD</span>
+      <button type="button" id="scratch-close" class="icon-btn" aria-label="Hide the scratchpad">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="scratch-tools" class="scratch-tools"></div>
+    <div id="scratch-sheet" class="scratch-sheet">
+      <canvas id="scratch-canvas"></canvas>
+      <p id="scratch-hint" class="scratch-hint">Write here with a stylus or a finger. It stays on this tablet until it is cleared.</p>
+    </div>
+    <div id="scratch-grip" class="scratch-grip" role="separator" aria-label="Drag to make the scratchpad wider"></div>
+  </aside>
+  <button type="button" id="scratch-toggle" class="scratch-toggle" aria-label="Show the scratchpad">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 5.5l4 4"/></svg>
+  </button>
+
   <main id="view"></main>
 
   <nav class="tabs" aria-label="Main">

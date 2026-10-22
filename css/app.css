@@ -32,6 +32,9 @@
   --nav-w: 228px;
   --flightbar-h: 68px;
   --chat-w: 340px;
+  /* The scratchpad is wider than a chat column: it is written on. Dragging
+     its edge overrides this on the device - see js/scratch.js. */
+  --scratch-w: 460px;
   --r: 10px;
   --r-sm: 6px;
   color-scheme: dark;
@@ -405,7 +408,8 @@ body.efb .chatpanel-body .chat {
   margin: 14px;
 }
 .chat-toggle,
-.ops-toggle {
+.ops-toggle,
+.scratch-toggle {
   display: none;
   position: fixed;
   z-index: 11;
@@ -720,6 +724,189 @@ body.ops-chat.ops-open .ops-toggle {
   }
   .ops-msg {
     max-width: 85%;
+  }
+}
+/* ---- Scratchpad ----
+   The flight deck's notepad: the same dock over the right edge as the two
+   chat panels, for the cockpit tablets only (body.scratch, set in
+   js/scratch.js). It is drawn on with a stylus or a finger, so the sheet
+   takes no browser gestures of its own - see touch-action below. */
+.scratchpanel {
+  display: none;
+}
+body.scratch .scratchpanel {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  z-index: 11;
+  top: calc(var(--top-h) + env(safe-area-inset-top) + var(--flightbar-h));
+  right: 0;
+  bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom));
+  width: min(var(--scratch-w), 100vw);
+  max-width: 96vw;
+  background: var(--bg-deep);
+  border-left: 1px solid var(--hair);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+body.scratch.scratch-open .scratchpanel {
+  transform: translateX(0);
+}
+body.scratch.scratch-open main {
+  max-width: none;
+  padding-right: calc(var(--scratch-w) + max(16px, env(safe-area-inset-right)));
+}
+.scratch-tools {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+  background: var(--card);
+}
+.scratch-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.scratch-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.scratch-chip:hover:not(:disabled) {
+  background: var(--card2);
+  color: var(--text);
+}
+.scratch-chip:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* What is in hand - the ink, the nib, the eraser - is outlined, so a glance
+   at the toolbar says what the next stroke will be. */
+.scratch-chip[aria-pressed='true'] {
+  border-color: var(--line);
+  background: var(--card2);
+  color: var(--text);
+}
+.scratch-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5) inset;
+}
+.scratch-dot {
+  border-radius: 999px;
+  background: currentColor;
+}
+.scratch-nib[aria-pressed='true'] .scratch-dot,
+.scratch-chip:hover .scratch-dot {
+  background: var(--text);
+}
+.scratch-note {
+  flex: 1 0 100%;
+  margin: 2px 0 0;
+}
+.scratch-sheet {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  /* Faint ruling, so a line of writing has something to sit on. */
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 31px,
+    rgba(154, 171, 189, 0.12) 31px,
+    rgba(154, 171, 189, 0.12) 32px
+  );
+}
+.scratch-sheet canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* The sheet is written on, not scrolled or pinched. */
+  touch-action: none;
+  cursor: crosshair;
+}
+.scratch-hint {
+  position: absolute;
+  inset: auto 16px 16px 16px;
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.82rem;
+  text-align: center;
+  pointer-events: none;
+}
+.scratch-grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 10px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.scratch-grip::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 4px;
+  height: 46px;
+  margin-top: -23px;
+  border-radius: 999px;
+  background: var(--line);
+}
+.scratch-toggle {
+  display: none;
+}
+body.scratch .scratch-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Third tab down the right edge, under the Twitch chat's and the ops
+     chat's. */
+  top: calc(var(--top-h) + env(safe-area-inset-top) + var(--flightbar-h) + 130px);
+}
+body.scratch.scratch-open .scratch-toggle {
+  display: none;
+}
+@media (min-width: 900px) {
+  body.scratch .scratchpanel {
+    bottom: 0;
+  }
+}
+/* On a phone the pad takes the whole screen: a 340px sheet beside a 390px
+   page is nothing to write on, and writing is what you are doing while it is
+   open. */
+@media (max-width: 600px) {
+  body.scratch .scratchpanel,
+  body.efb.scratch .scratchpanel {
+    top: 0;
+    bottom: 0;
+    z-index: 20; /* over the top bar and the bottom tabs, which are both 10 */
+    width: 100vw;
+    max-width: 100vw;
+    border-left: 0;
+    padding-top: env(safe-area-inset-top);
+  }
+  body.scratch.scratch-open main {
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+  /* Nothing to drag when the pad is already the whole screen. */
+  .scratch-grip {
+    display: none;
   }
 }
 .tabs {

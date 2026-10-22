@@ -112,6 +112,9 @@ const PATHS = {
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   share: '<path d="M12 3v12M8.5 6.5 12 3l3.5 3.5"/><path d="M7 10H5.5A1.5 1.5 0 0 0 4 11.5v8A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 18.5 10H17"/>',
   plus_square: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/>',
+  eraser: '<path d="M8.5 20H21M13 20 20 13a2 2 0 0 0 0-2.8l-4.2-4.2a2 2 0 0 0-2.8 0l-9 9a2 2 0 0 0 0 2.8L5.5 20z"/><path d="M8.5 9.5l6 6"/>',
+  undo: '<path d="M4 9h9a5 5 0 0 1 0 10H7"/><path d="M8 5 4 9l4 4"/>',
+  download: '<path d="M12 4v11M8 11.5l4 4 4-4"/><path d="M4 18v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1"/>',
 };
 
 export function icon(name, cls = '') {
