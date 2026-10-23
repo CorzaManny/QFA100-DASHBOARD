@@ -161,7 +161,16 @@ export function acarsFault() {
   // The one that bit us. A code is set, but the bridge has never been handed
   // any settings at all - so the code physically cannot reach it, and no
   // amount of setting it again will help.
-  if (!acarsTold()) {
+  //
+  // configured is the bridge's own word for "I have a logon code I can use",
+  // so it settles this by itself: a bridge that is configured has plainly
+  // been sent the settings, whatever it says about told. That matters
+  // because a bridge build that predates told does not report the field at
+  // all, and the database cannot tell that from a flat no - vpilot_flag
+  // returns null for a missing field and acars_ingest_event coalesces it to
+  // false. Without this, a station polling Hoppie quite happily is told to
+  // redeploy an endpoint that is already current.
+  if (!acarsTold() && !acarsConfigured()) {
     return {
       code: 'not-reaching-bridge',
       title: 'The logon code is not reaching the simulator PC',
