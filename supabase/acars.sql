@@ -450,7 +450,7 @@ begin
   insert into public.acars_messages
     (reference, direction, from_station, to_station, kind, body, source)
   values (
-    ref, 'uplink', 'OPS',
+    ref, 'uplink', 'QFA-100 OPS',
     (select nullif(btrim(coalesce(callsign, '')), '') from public.acars_state where id = 1),
     'company', body_text, 'ops')
   returning id into made;
@@ -466,7 +466,7 @@ begin
   select online, last_seen_at into live, seen from public.vpilot_link where id = 1;
   if coalesce(live, false) and coalesce(seen, 'epoch'::timestamptz) >= now() - interval '90 seconds' then
     insert into public.vpilot_commands (type, args, requested_by)
-    values ('acars-print', jsonb_build_object('text', body_text), auth.uid());
+    values ('acars-print', jsonb_build_object('text', body_text, 'from', 'QFA-100 OPS', 'kind', 'company'), auth.uid());
   end if;
 
   return made;

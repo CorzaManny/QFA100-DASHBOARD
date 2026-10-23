@@ -449,6 +449,9 @@ export const testPrinter = () => run('acars-test-print');
 // and only if the bridge is there to hear it - ops can leave a message with
 // the simulator switched off.
 export async function sendCompany(message) {
+  // Simulate company datalink transmission before delivery and printing.
+  // The composer stays busy throughout, so a second click cannot resend it.
+  await new Promise((resolve) => setTimeout(resolve, 3000 + Math.floor(Math.random() * 7001)));
   try {
     await sendAcarsCompany(message);
   } catch (err) {
