@@ -32,7 +32,7 @@ import {
   vpilotOnline,
   vpilotPicture,
 } from '../vpilot.js';
-import { acarsKnown, acarsOnline, acarsPicture, acarsPrinter, acarsTrouble, syncAcars } from '../acars.js';
+import { acarsFault, acarsKnown, acarsOnline, acarsPicture, acarsPrinter, syncAcars } from '../acars.js';
 import { esc, zulu, zdate, depWindow, simLocal, span, isoDate, isoTime, icon, rerender } from '../ui.js';
 import {
   sortedSectors,
@@ -369,19 +369,19 @@ function acarsCard() {
   const s = acarsPicture().state;
   const online = acarsOnline();
   const printer = acarsPrinter();
-  const trouble = acarsTrouble();
+  // The same named fault the flight deck sees, because this is where it gets
+  // fixed. See acarsFault() in js/acars.js.
+  const fault = acarsFault();
   // No acars.sql in this database: say so rather than showing a dead panel.
   const missing = acarsKnown() && !s;
 
   const badge = missing
     ? '<span class="badge mute">NOT SET UP</span>'
-    : !acarsLogon?.configured
-      ? '<span class="badge warn">NO LOGON CODE</span>'
-      : !s?.enabled
-        ? '<span class="badge mute">OFF</span>'
-        : online && s?.live
-          ? '<span class="badge ok">ACARS</span>'
-          : '<span class="badge warn">NOT CONNECTED</span>';
+    : fault
+      ? `<span class="badge ${fault.code === 'off' ? 'mute' : 'warn'}">${esc(
+          fault.code === 'off' ? 'OFF' : fault.title.toUpperCase().slice(0, 28),
+        )}</span>`
+      : '<span class="badge ok">ACARS</span>';
 
   if (missing) {
     return `
@@ -412,7 +412,15 @@ function acarsCard() {
             account, then paste it below.</p>`
       }
 
-      ${trouble ? `<p class="note warn">${icon('alert')} Hoppie last said: <strong>${esc(trouble)}</strong></p>` : ''}
+      ${
+        fault
+          ? `<div class="acars-fault ${fault.code === 'off' ? '' : 'bad'}">
+              <p class="acars-fault-title">${fault.code === 'off' ? '' : icon('alert')} ${esc(fault.title)}</p>
+              <p class="acars-fault-detail">${esc(fault.detail)}</p>
+              <p class="acars-fault-fix"><strong>What to do:</strong> ${esc(fault.fix)}</p>
+            </div>`
+          : ''
+      }
 
       <div class="grid2">
         <label class="field">Hoppie logon code

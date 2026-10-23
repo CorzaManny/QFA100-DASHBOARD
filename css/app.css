@@ -4213,3 +4213,57 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ---- Why ACARS is not working ----
+   One named fault with what to do about it, rather than three guesses at
+   which half of the system is broken. The whole reason it exists: a logon
+   code that was set, a callsign that was right, a printer that worked from
+   both ends - and "ACARS is off", because the bridge reported itself off and
+   was telling the truth. See acarsFault() in js/acars.js. */
+
+.acars-fault {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--dim);
+  border-radius: var(--r-sm);
+  background: var(--card2);
+  padding: 12px 14px;
+  margin: 12px 0 0;
+}
+
+/* Anything that is not a deliberate "off" is a fault, and reads like one. */
+.acars-fault.bad {
+  border-color: var(--warn);
+  border-left-color: var(--warn);
+  background: linear-gradient(180deg, rgba(240, 166, 60, 0.12), rgba(240, 166, 60, 0.03));
+}
+
+.acars-fault p {
+  margin: 0;
+}
+
+.acars-fault-title {
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.acars-fault-detail {
+  margin-top: 6px !important;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* The command to run is the point of the whole block, so it is set in the
+   monospace the rest of the page uses for anything typed verbatim. */
+.acars-fault-fix {
+  margin-top: 8px !important;
+  font-size: 0.9rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.acars-fault-fix strong {
+  font-family: system-ui, -apple-system, sans-serif;
+}

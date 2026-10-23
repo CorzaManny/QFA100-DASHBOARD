@@ -25,15 +25,13 @@ import {
   acarsKnown,
   acarsOnline,
   acarsLive,
-  acarsEnabled,
-  acarsConfigured,
+  acarsFault,
   acarsAtcUnit,
   acarsLogonPending,
   acarsAwaitingReply,
   acarsPrinter,
   acarsCanPrint,
   acarsTimes,
-  acarsTrouble,
   sendTelex,
   requestInfo,
   requestPdc,
@@ -111,22 +109,28 @@ function awaiting() {
 
 function stationCard() {
   const s = acarsPicture().state;
-  const online = acarsOnline();
   const unit = acarsAtcUnit();
   const pending = acarsLogonPending();
   const printer = acarsPrinter();
   const times = acarsTimes();
-  const trouble = acarsTrouble();
 
-  const badge = !acarsEnabled()
-    ? '<span class="badge mute">OFF</span>'
-    : !acarsConfigured()
-      ? '<span class="badge warn">NO LOGON CODE</span>'
-      : !online
-        ? '<span class="badge warn">SIM PC NOT CONNECTED</span>'
-        : acarsLive()
-          ? '<span class="badge ok">ACARS</span>'
-          : '<span class="badge warn">NOT READY</span>';
+  // One fault, named, from js/acars.js - which compares what an admin asked
+  // for against what the bridge actually has. The badges below are only its
+  // short form; the banner says what to do about it.
+  const fault = acarsFault();
+  const BADGES = {
+    'bridge-gone': '<span class="badge warn">SIM PC NOT CONNECTED</span>',
+    'no-code': '<span class="badge warn">NO LOGON CODE</span>',
+    'not-reaching-bridge': '<span class="badge bad">NOT REACHING SIM PC</span>',
+    off: '<span class="badge mute">OFF</span>',
+    'not-picked-up': '<span class="badge warn">NOT PICKED UP</span>',
+    'no-callsign': '<span class="badge warn">NO CALLSIGN</span>',
+    'hoppie-refused': '<span class="badge bad">REFUSED</span>',
+    'not-ready': '<span class="badge warn">NOT READY</span>',
+  };
+  const badge = fault
+    ? BADGES[fault.code] || '<span class="badge warn">NOT READY</span>'
+    : '<span class="badge ok">ACARS</span>';
 
   return `
     <section class="card acars-station">
@@ -136,24 +140,12 @@ function stationCard() {
       </div>
 
       ${
-        !acarsEnabled()
-          ? `<p class="note">ACARS is switched off. An admin turns it on in <strong>Admin → Settings</strong>, where the Hoppie logon code is set.</p>`
-          : !acarsConfigured()
-            ? `<p class="note warn">${icon(
-                'alert',
-              )} No Hoppie logon code is set, so nothing can be sent or received. An admin sets it in <strong>Admin → Settings</strong>.</p>`
-            : !online
-              ? `<p class="note warn">${icon(
-                  'alert',
-                )} Nothing has been heard from the simulator PC${
-                  s?.updated_at ? ` since ${zulu(s.updated_at)}` : ''
-                }. The bridge holds the datalink, so nothing can be sent until it is running.</p>`
-              : ''
-      }
-
-      ${
-        trouble
-          ? `<p class="note warn">${icon('alert')} Hoppie said: <strong>${esc(trouble)}</strong></p>`
+        fault
+          ? `<div class="acars-fault ${fault.code === 'off' ? '' : 'bad'}">
+              <p class="acars-fault-title">${fault.code === 'off' ? '' : icon('alert')} ${esc(fault.title)}</p>
+              <p class="acars-fault-detail">${esc(fault.detail)}</p>
+              <p class="acars-fault-fix"><strong>What to do:</strong> ${esc(fault.fix)}</p>
+            </div>`
           : ''
       }
 
@@ -456,6 +448,13 @@ const signature = (p) =>
       enabled: p.state.enabled,
       configured: p.state.configured,
       callsign: p.state.callsign,
+      // The four the fault diagnosis reads. Without these the banner would
+      // go on saying "not reaching the simulator PC" after a redeploy had
+      // fixed it, because nothing else on the row would have changed.
+      told: p.state.told,
+      code_set: p.state.code_set,
+      wanted_enabled: p.state.wanted_enabled,
+      wanted_at: p.state.wanted_at,
       atc_unit: p.state.atc_unit,
       logon_pending: p.state.logon_pending,
       owing: p.state.owing,

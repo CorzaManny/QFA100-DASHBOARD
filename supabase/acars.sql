@@ -68,9 +68,26 @@ revoke all on public.acars_secret from anon, authenticated;
 
 -- ---------- The station as it is now ----------
 
+-- ---- Two writers, two sets of columns ----
+--
+-- This table has two writers and they must not share a column. Everything
+-- from `enabled` down to `times` is **the bridge's**, overwritten wholesale
+-- every time it reports. The `wanted_*` and `code_set` columns below are **an
+-- admin's**, written only by acars_set_logon(), and the bridge never touches
+-- them.
+--
+-- They were shared once, and it went exactly as that always does: saving the
+-- logon code set `enabled` to true, and twenty seconds later the bridge's own
+-- heartbeat - which had never been told anything, because the Edge Function
+-- was too old to pass the code down - wrote it back to false and erased the
+-- evidence. The EFB then said "ACARS is off", which was true of the bridge and
+-- useless to the admin who had just switched it on.
+--
+-- Kept apart, the disagreement between the two is the diagnosis: what the EFB
+-- was told to do, beside what the simulator PC actually has.
 create table if not exists public.acars_state (
   id            smallint primary key default 1 check (id = 1),
-  -- What the bridge last said about itself.
+  -- What the bridge last said about itself. The bridge owns all of these.
   enabled       boolean not null default false,
   -- A logon code is set. Never the code itself.
   configured    boolean not null default false,
@@ -93,6 +110,27 @@ create table if not exists public.acars_state (
 );
 
 insert into public.acars_state (id) values (1) on conflict (id) do nothing;
+
+-- The admin's half, and the bridge's answer to "have you been told anything
+-- at all". Added separately so re-running this file upgrades an install that
+-- already has the table.
+--
+-- `told` is the bridge saying whether the EFB has ever handed it any ACARS
+-- settings, as against having handed it settings that say "off". Both leave
+-- the station switched off; one is a crew decision and the other means the
+-- Edge Function is too old to carry the logon code, and nothing set in
+-- Settings will ever reach the simulator PC. The EFB can only tell those
+-- apart because of this column.
+alter table public.acars_state add column if not exists told boolean not null default false;
+-- A logon code is set. Written by acars_set_logon(), never by the bridge, so
+-- the flight deck can be told "a code is set but the simulator PC has not
+-- been given it" - which no column the bridge owns could ever say. It is a
+-- flag, never the code.
+alter table public.acars_state add column if not exists code_set boolean not null default false;
+-- What an admin asked for, beside what the bridge actually has.
+alter table public.acars_state add column if not exists wanted_callsign text;
+alter table public.acars_state add column if not exists wanted_enabled boolean not null default false;
+alter table public.acars_state add column if not exists wanted_at timestamptz;
 
 alter table public.acars_state enable row level security;
 revoke all on public.acars_state from anon;
@@ -176,8 +214,11 @@ declare
   ref  text;
 begin
   if kind = 'acars-state' then
+    -- The bridge's own columns, every one of them, every time. The admin's
+    -- (code_set, wanted_*) are deliberately absent: see the table.
     update public.acars_state
-       set enabled = coalesce(public.vpilot_flag(e->'enabled'), false),
+       set told = coalesce(public.vpilot_flag(e->'told'), false),
+           enabled = coalesce(public.vpilot_flag(e->'enabled'), false),
            configured = coalesce(public.vpilot_flag(e->'configured'), false),
            callsign = nullif(e->>'callsign', ''),
            live = coalesce(public.vpilot_flag(e->'live'), false),
@@ -298,15 +339,20 @@ begin
          set_at = now()
    where s.id = 1;
 
-  -- The state row says whether a code is set so the EFB can show that
-  -- without the bridge having to be running. The bridge overwrites this with
-  -- what it actually has the moment it next reports.
+  -- What was asked for, in the admin's own columns. Deliberately NOT the
+  -- bridge's `configured`, `callsign` and `enabled`: those say what the
+  -- simulator PC actually has, the bridge rewrites them every twenty seconds,
+  -- and writing an intention into them only destroys the one piece of
+  -- information that explains a station which is set up and still silent.
+  --
+  -- updated_at is the bridge's too - it is how the EFB tells a live bridge
+  -- from a PC that has gone - so this does not touch it either.
   update public.acars_state t
-     set configured = (select s.hoppie_code is not null and s.hoppie_code <> ''
-                         from public.acars_secret s where s.id = 1),
-         callsign = (select s.callsign from public.acars_secret s where s.id = 1),
-         enabled = (select s.enabled from public.acars_secret s where s.id = 1),
-         updated_at = now()
+     set code_set = (select s.hoppie_code is not null and s.hoppie_code <> ''
+                       from public.acars_secret s where s.id = 1),
+         wanted_callsign = (select s.callsign from public.acars_secret s where s.id = 1),
+         wanted_enabled = (select s.enabled from public.acars_secret s where s.id = 1),
+         wanted_at = now()
    where t.id = 1;
 end;
 $$;
@@ -339,9 +385,11 @@ begin
   update public.acars_secret
      set hoppie_code = null, enabled = false, set_by = auth.uid(), set_at = now()
    where id = 1;
+  -- Only the admin's columns, as above. The bridge says what it still has
+  -- until it next reports, which is the truth and is at most twenty seconds
+  -- out of date.
   update public.acars_state
-     set configured = false, enabled = false, live = false, atc_unit = null,
-         logon_pending = null, owing = '{}', updated_at = now()
+     set code_set = false, wanted_enabled = false, wanted_at = now()
    where id = 1;
 end;
 $$;

@@ -102,6 +102,138 @@ export const acarsTimes = () => picture.state?.times || {};
 // the common one. Shown verbatim, because it is what an admin needs to act on.
 export const acarsTrouble = () => picture.state?.trouble || null;
 
+// ---------- Why it is not working ----------
+//
+// A logon code is set (acars_set_logon wrote this; the bridge never touches
+// it). Not the code - only that there is one.
+export const acarsCodeSet = () => !!picture.state?.code_set;
+
+// What an admin asked for, as against what the bridge actually has.
+export const acarsWanted = () => ({
+  callsign: picture.state?.wanted_callsign || null,
+  enabled: !!picture.state?.wanted_enabled,
+  at: picture.state?.wanted_at || null,
+});
+
+// Whether the bridge has ever been handed any ACARS settings at all. False
+// with a code set means the settings are not reaching it - see below.
+export const acarsTold = () => !!picture.state?.told;
+
+// One fault, named, with what to do about it - or null when the station is
+// working.
+//
+// This exists because of a real evening lost to it. The logon code was set,
+// the callsign was right, the switch was on, the printer worked from both the
+// iPad and the sim PC - and the EFB said "ACARS is off", because the bridge
+// reported itself off and the bridge was telling the truth: its vpilot-plugin
+// Edge Function was older than supabase/acars.sql and had no way to pass the
+// code down. Every visible symptom pointed at the wrong half of the system.
+//
+// So the two halves are compared and the difference is named. The order
+// matters: each check assumes the ones above it have passed, so the first
+// thing that is wrong is the thing to fix, not the last.
+export function acarsFault() {
+  const s = picture.state;
+  if (!s) return null;
+
+  // Nothing can be said about a bridge that is not talking to the EFB: every
+  // other column is its last word, however old.
+  if (!acarsOnline()) {
+    return {
+      code: 'bridge-gone',
+      title: 'The simulator PC is not connected to the EFB',
+      detail: s.updated_at
+        ? `Nothing has been heard from the bridge since ${new Date(s.updated_at).toUTCString()}.`
+        : 'Nothing has ever been heard from the bridge.',
+      fix: 'Start the QFA100 bridge on the simulator PC. Everything below is its last word and may be stale.',
+    };
+  }
+
+  if (!acarsCodeSet()) {
+    return {
+      code: 'no-code',
+      title: 'No Hoppie logon code is set',
+      detail: 'Nothing can be sent or received without one.',
+      fix: 'An admin sets it in Admin → Settings → ACARS. Get a code from hoppie.nl/acars for the team account.',
+    };
+  }
+
+  // The one that bit us. A code is set, but the bridge has never been handed
+  // any settings at all - so the code physically cannot reach it, and no
+  // amount of setting it again will help.
+  if (!acarsTold()) {
+    return {
+      code: 'not-reaching-bridge',
+      title: 'The logon code is not reaching the simulator PC',
+      detail:
+        'A code is set here, but the bridge says it has never been sent any ACARS settings. '
+        + 'That means the EFB endpoint is older than the ACARS tables and has no way to pass the code down.',
+      fix: 'Deploy the function again: supabase functions deploy vpilot-plugin --no-verify-jwt '
+        + '(the flag is required - without it the bridge loses the radio too).',
+    };
+  }
+
+  // Told, and told to stay off. A crew decision, not a fault - but worth
+  // saying plainly so nobody hunts for a broken thing.
+  if (!acarsWanted().enabled && !s.enabled) {
+    return {
+      code: 'off',
+      title: 'ACARS is switched off',
+      detail: 'The station is set up and working; it has been told not to poll Hoppie.',
+      fix: 'An admin turns it on in Admin → Settings → ACARS.',
+    };
+  }
+
+  // Asked for one thing, bridge has another. Normal for a few seconds after
+  // saving, so it is only worth saying once the bridge has reported since.
+  const wantedAt = acarsWanted().at ? new Date(acarsWanted().at).getTime() : 0;
+  const reportedAt = s.updated_at ? new Date(s.updated_at).getTime() : 0;
+  const settled = reportedAt > wantedAt + 40000;
+  if (settled && acarsWanted().enabled && !s.enabled) {
+    return {
+      code: 'not-picked-up',
+      title: 'The simulator PC has not picked up the change',
+      detail: 'ACARS is switched on here, but the bridge still has it off after being told.',
+      fix: 'Check the bridge log on the simulator PC (Documents\\QFA100\\Qfa100.Bridge.log) for an ACARS line.',
+    };
+  }
+
+  if (!s.callsign) {
+    return {
+      code: 'no-callsign',
+      title: 'No ACARS callsign is set',
+      detail: 'Hoppie needs a callsign to log this flight on as.',
+      fix: 'An admin sets it in Admin → Settings → ACARS.',
+    };
+  }
+
+  // Hoppie refusing something is its own words, and they are usually
+  // actionable: "illegal logon code", "callsign already in use".
+  if (s.trouble) {
+    return {
+      code: 'hoppie-refused',
+      title: `Hoppie said: ${s.trouble}`,
+      detail: 'That is Hoppie’s own wording, passed through unchanged.',
+      fix: /logon/i.test(s.trouble)
+        ? 'The code is wrong or has expired. Get a fresh one from hoppie.nl/acars and set it again.'
+        : /callsign/i.test(s.trouble)
+          ? 'Another station is logged on with this callsign. Hoppie holds one for 100 seconds after its last message.'
+          : 'Try again; if it persists, check the team account on hoppie.nl/acars.',
+    };
+  }
+
+  if (!s.live) {
+    return {
+      code: 'not-ready',
+      title: 'The datalink is not ready',
+      detail: 'The bridge has the settings but is not able to talk to Hoppie yet.',
+      fix: 'Give it a moment, then use Test the link.',
+    };
+  }
+
+  return null;
+}
+
 // The uplinks that are waiting on an answer, newest first, with the answers
 // each one allows. What the ATC tab puts at the top.
 export function acarsAwaitingReply() {
