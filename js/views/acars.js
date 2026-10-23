@@ -20,7 +20,6 @@ import { esc, zulu, icon, rerender } from '../ui.js';
 import { canUseVpilot, currentSector, teamAircraft, teamCallsign } from '../ops.js';
 import {
   watchAcars,
-  wakeAcars,
   acarsPicture,
   acarsReady,
   acarsKnown,
@@ -438,23 +437,75 @@ export function render() {
 }
 
 let unwatch = null;
+// What was on screen when it was last drawn, so an unchanged poll does not
+// redraw the page for nothing.
+let painted = '';
+
+function stop() {
+  unwatch?.();
+  unwatch = null;
+  painted = '';
+}
+
+// What the page actually shows. The bridge stamps acars_state on every
+// report, so comparing the whole picture would call everything a change.
+const signature = (p) =>
+  JSON.stringify([
+    p.state && {
+      live: p.state.live,
+      enabled: p.state.enabled,
+      configured: p.state.configured,
+      callsign: p.state.callsign,
+      atc_unit: p.state.atc_unit,
+      logon_pending: p.state.logon_pending,
+      owing: p.state.owing,
+      times: p.state.times,
+      trouble: p.state.trouble,
+      printer: p.state.printer,
+      last_polled_at: p.state.last_polled_at,
+    },
+    p.messages.length,
+    p.messages[p.messages.length - 1]?.reference ?? null,
+  ]);
+
+function onPicture(picture) {
+  // Signed out, or drawn away: let go of the poll rather than redrawing a
+  // page that is no longer here.
+  if (!document.querySelector('.acars')) {
+    stop();
+    return;
+  }
+  // Don't redraw underneath somebody who is typing a request: the whole
+  // page is replaced on render, and that would lose a half-written
+  // clearance request. app.js has the same rule for its background syncs.
+  if (document.activeElement?.closest?.('.acars-send')) return;
+  const now = signature(picture);
+  if (now === painted) return;
+  painted = now;
+  rerender();
+}
 
 export function mounted(root) {
-  wakeAcars();
-  // Only one watcher, however many times this page is drawn.
-  unwatch?.();
-  unwatch = watchAcars(() => {
-    // Don't redraw underneath somebody who is typing a request: the whole
-    // page is replaced on render, and that would lose a half-written
-    // clearance request. app.js has the same rule for its background syncs.
-    if (document.activeElement?.closest?.('.acars-send')) return;
-    rerender();
-  });
+  // rerender() brings us straight back through here, so this must not start
+  // anything: watchAcars() reads immediately, and that read ends in
+  // onPicture(), which rerenders. Registering again - or waking the poll
+  // again - would make that a loop that never lets go of the main thread.
+  // One watcher for as long as the page is up; hashchange below drops it.
+  if (!unwatch) {
+    painted = signature(acarsPicture());
+    unwatch = watchAcars(onPicture);
+  }
 
   // The window sits at the newest message, which is the one that matters.
   const log = root.querySelector('#acars-log');
   if (log) log.scrollTop = log.scrollHeight;
 }
+
+// Leaving the page. The panel check in onPicture() catches the rest, but the
+// poll should stop when the crew navigates away, not two seconds later.
+window.addEventListener('hashchange', () => {
+  if (!location.hash.startsWith('#/acars')) stop();
+});
 
 // Whatever the crew types is kept as it is typed, so a redraw - a clearance
 // arriving mid-sentence - cannot eat it.
