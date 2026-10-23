@@ -17,7 +17,7 @@
 // the bridge. See supabase/acars.sql.
 
 import { esc, zulu, icon, rerender } from '../ui.js';
-import { canUseVpilot, currentSector, teamAircraft, teamCallsign } from '../ops.js';
+import { canEdit, canUseVpilot, currentSector, teamAircraft, teamCallsign } from '../ops.js';
 import {
   watchAcars,
   acarsPicture,
@@ -33,6 +33,7 @@ import {
   acarsCanPrint,
   acarsTimes,
   sendTelex,
+  sendCompany,
   requestInfo,
   requestPdc,
   logonAtc,
@@ -229,6 +230,7 @@ const KINDS = {
   ivaoatis: 'ATIS',
   ping: 'PING',
   notice: 'BRIDGE',
+  company: 'COMPANY',
 };
 
 function messageWindow() {
@@ -277,7 +279,13 @@ const TABS = [
   ['telex', 'Telex'],
   ['weather', 'Weather'],
   ['clearance', 'Clearance'],
+  // Ops only. The flight deck has no use for it: a company message is the
+  // one thing on this page that travels towards the aeroplane.
+  ['company', 'To crew', () => canEdit()],
 ];
+
+// The tabs this account may actually see.
+const tabsOpen = () => TABS.filter(([, , shown]) => !shown || shown());
 
 // The requests a crew actually sends, as buttons rather than free text: the
 // wording CPDLC expects is fussy, and a controller client that cannot parse a
@@ -293,13 +301,18 @@ const REQUESTS = [
 ];
 
 function sendPanel() {
+  // An account that loses the ops role mid-session must not be left looking
+  // at a tab it may no longer use; the database would refuse the send
+  // anyway, but the form should not be there to fill in.
+  if (!tabsOpen().some(([key]) => key === tab)) tab = 'atc';
+
   const unit = acarsAtcUnit();
   const sector = currentSector();
   const ready = acarsLive();
 
   const tabs = `
     <div class="acars-tabs" role="tablist">
-      ${TABS.map(
+      ${tabsOpen().map(
         ([key, label]) =>
           `<button class="acars-tab ${tab === key ? 'on' : ''}" type="button" role="tab"
             aria-selected="${tab === key}" data-act="tab" data-tab="${key}">${esc(label)}</button>`,
@@ -375,6 +388,25 @@ function sendPanel() {
         </div>
       </div>
       <p class="tiny">Hoppie answers these straight away rather than on a poll, so the reply lands in the window within a second or two.</p>`;
+  } else if (tab === 'company') {
+    // Ops to the flight deck. No Hoppie, so nothing here waits on the
+    // datalink being live: the message is written where the crew is already
+    // looking, and printed as well if the simulator PC is up.
+    body = `
+      <form class="card-form" data-form="company">
+        <label class="field">Message to the crew
+          <textarea name="message" rows="4" maxlength="900"
+            placeholder="e.g. SLOT REVISED 1420Z. EXPECT STAND 32 ON ARRIVAL."
+            data-change="draft" data-key="company">${esc(draft('company'))}</textarea></label>
+        <p class="tiny">${
+          acarsOnline()
+            ? acarsCanPrint()
+              ? 'Lands in the flight deck ACARS window and prints on the receipt printer.'
+              : 'Lands in the flight deck ACARS window. The printer is not available, so there will be no strip.'
+            : 'The simulator PC is not connected, so nothing will print. The crew will see this the next time they open ACARS.'
+        }</p>
+        <button class="btn primary" type="submit" ${busy === 'company' ? 'disabled' : ''}>Send to crew</button>
+      </form>`;
   } else {
     body = `
       <form class="card-form acars-pdc" data-form="pdc">
@@ -606,6 +638,15 @@ export const forms = {
       if (result.ok) drafts.delete('request');
       return result;
     }, 'Request sent.');
+  },
+
+  company(data) {
+    const message = String(data.get('message') || '');
+    doing('company', async () => {
+      const result = await sendCompany(message);
+      if (result.ok) drafts.delete('company');
+      return result;
+    }, 'Sent to the crew.');
   },
 
   telex(data) {

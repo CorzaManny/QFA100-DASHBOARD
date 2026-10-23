@@ -168,6 +168,15 @@ create table if not exists public.acars_messages (
   print_error text
 );
 
+-- Where the message came from. The live database has carried this since
+-- before it was written down here, defaulting everything to 'hoppie'; it is
+-- spelled out now because ops messages are the first rows that are not off
+-- the datalink, and a row that lies about its own provenance is worse than
+-- no column at all. Added rather than put in the create above, so a database
+-- that already has the table gets it too.
+alter table public.acars_messages
+  add column if not exists source text not null default 'hoppie';
+
 create index if not exists acars_messages_at_idx on public.acars_messages (at desc);
 -- The bridge may report a message twice if a batch is retried after the EFB
 -- took it but before the bridge heard so. Its reference is stable, so the
@@ -394,6 +403,76 @@ begin
 end;
 $$;
 
+-- ---------- Ops to the crew ----------
+--
+-- A company uplink: ops types a message on their own tablet and it lands in
+-- the flight deck's ACARS window and on the receipt printer, the way an
+-- airline's own messages arrive alongside ATC's.
+--
+-- It deliberately does not go near Hoppie. Hoppie carries messages between
+-- stations, and ops and the flight deck are the same station - a telex
+-- addressed to our own callsign is either refused or comes straight back.
+-- Both sides already share this database, so the message is simply written
+-- here, where the flight deck is looking anyway, and the printer is asked
+-- separately. That also means ops can leave a message with the simulator PC
+-- switched off; the crew reads it when they next open ACARS.
+--
+-- Who may send: can_edit(), which is admin, dispatcher and operations. The
+-- flight deck roles are left out on purpose - a pilot talking to ops has the
+-- ops chat, and a crew member sending themselves a company message would be
+-- a confusing thing to find on a strip of paper.
+create or replace function public.acars_send_company(message text)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare
+  body_text text := btrim(coalesce(message, ''));
+  ref       text;
+  made      bigint;
+  live      boolean;
+  seen      timestamptz;
+begin
+  if not public.can_edit() then
+    raise exception 'Only ops can send a company message to the crew';
+  end if;
+  if body_text = '' then
+    raise exception 'There is no message to send';
+  end if;
+  -- One strip of paper. Hoppie's own limit is smaller, but this never goes
+  -- to Hoppie; the cap is here so a pasted flight plan cannot empty the roll.
+  if length(body_text) > 900 then
+    raise exception 'That is too long for one ACARS message (% characters of 900)', length(body_text);
+  end if;
+
+  -- Our own reference, in the bridge's shape but plainly not Hoppie's. The
+  -- unique index on reference is what stops a retried bridge batch printing
+  -- a message twice; nothing retries this one, but it keeps the shape.
+  ref := 'ops-' || gen_random_uuid()::text;
+
+  insert into public.acars_messages
+    (reference, direction, from_station, to_station, kind, body, source)
+  values (
+    ref, 'uplink', 'OPS',
+    (select nullif(btrim(coalesce(callsign, '')), '') from public.acars_state where id = 1),
+    'company', body_text, 'ops')
+  returning id into made;
+
+  -- And print it, if there is anything listening. Best effort on purpose:
+  -- the message is already saved, and a sim PC that is switched off must not
+  -- cost ops the message. vpilot_command() would raise here instead, which
+  -- is right for a button on the flight deck and wrong for this.
+  --
+  -- Only 'text' goes down. 'reference' asks the bridge to print something it
+  -- already holds, and it has never seen this one - it never came from
+  -- Hoppie.
+  select online, last_seen_at into live, seen from public.vpilot_link where id = 1;
+  if coalesce(live, false) and coalesce(seen, 'epoch'::timestamptz) >= now() - interval '90 seconds' then
+    insert into public.vpilot_commands (type, args, requested_by)
+    values ('acars-print', jsonb_build_object('text', body_text), auth.uid());
+  end if;
+
+  return made;
+end;
+$$;
+
 -- ---------- Driving the station ----------
 -- The commands go down the queue the radio already uses, so there is one
 -- path from the EFB to the sim PC and one place that checks what may be sent.
@@ -471,6 +550,11 @@ grant execute on function public.acars_bridge_config() to service_role;
 
 revoke all on function public.acars_ingest_event(jsonb) from public, anon, authenticated;
 grant execute on function public.acars_ingest_event(jsonb) to service_role;
+
+-- Ops writes it; can_edit() inside decides who that is, so the grant is the
+-- same as every other signed-in call.
+revoke all on function public.acars_send_company(text) from anon;
+grant execute on function public.acars_send_company(text) to authenticated;
 
 revoke all on function public.acars_set_logon(text, text, boolean) from anon;
 revoke all on function public.acars_logon_status() from anon;

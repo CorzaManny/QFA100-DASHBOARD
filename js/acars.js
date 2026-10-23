@@ -19,7 +19,13 @@
 // the app. An admin writes it and the database only ever hands it to the
 // bridge. See supabase/acars.sql.
 
-import { acarsCommand, configured, fetchAcars, fetchVpilotResult } from './api.js';
+import {
+  acarsCommand,
+  configured,
+  fetchAcars,
+  fetchVpilotResult,
+  sendAcarsCompany,
+} from './api.js';
 import { teamCallsign } from './ops.js';
 
 // Two seconds while a panel is open, like vPilot: a clearance arriving is
@@ -433,3 +439,25 @@ export function printAgain(message) {
 }
 
 export const testPrinter = () => run('acars-test-print');
+
+// ---- Ops to the crew ----
+
+// A company message, written straight into the window both sides read rather
+// than queued for the sim PC (supabase/acars.sql). So it does not go through
+// run(): there is no command for the bridge to answer, and waiting for one
+// would time out every time. The printer is asked for inside the function,
+// and only if the bridge is there to hear it - ops can leave a message with
+// the simulator switched off.
+export async function sendCompany(message) {
+  try {
+    await sendAcarsCompany(message);
+  } catch (err) {
+    // What the database refused: not ops, nothing typed, or too long for one
+    // strip of paper. Its words, which are the ones worth showing.
+    return { ok: false, error: err.message };
+  }
+  // Straight back, so the sender sees their own message land in the window
+  // rather than waiting out the poll.
+  await syncAcars();
+  return { ok: true, error: null };
+}

@@ -557,3 +557,9 @@ export const fetchAcarsLogon = () =>
 export const setAcarsLogon = (args) => rest('POST', 'rpc/acars_set_logon', args);
 
 export const forgetAcarsLogon = () => rest('POST', 'rpc/acars_forget_logon', {});
+
+// A company message from ops to the flight deck. Not a queued command: it is
+// written straight into the message window both sides read, and the printer
+// is asked separately, so it works with the simulator PC switched off.
+export const sendAcarsCompany = (message) =>
+  rest('POST', 'rpc/acars_send_company', { message });
