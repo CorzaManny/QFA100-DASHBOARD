@@ -28,6 +28,12 @@
 -- Push-to-talk is deliberately absent, here and in the plugin: a "PTT on"
 -- whose "off" was lost on a flaky connection would leave a microphone keyed
 -- on a live frequency.
+--
+-- Every delete in here says "where true" even when it means every row.
+-- PostgREST's role loads the safeupdate extension, which refuses an UPDATE or
+-- DELETE with no WHERE clause, so a bare "delete from ..." raises as soon as
+-- the Edge Function calls this - taking the whole batch with it and wedging
+-- the plugin, which retries that same batch for ever. Keep the condition.
 
 -- Who may watch the radio and drive it. The same people who may report a
 -- defect - the flight deck tablets, the pilots and ops - and deliberately its
@@ -301,7 +307,7 @@ begin
     if kind = 'hello' then
       -- A hello starts a fresh snapshot. Controllers absent from that
       -- snapshot must disappear, including deletions missed during an outage.
-      delete from public.vpilot_controllers;
+      delete from public.vpilot_controllers where true;
       update public.vpilot_link
          set plugin_version = e->>'pluginVersion',
              features = coalesce((
@@ -316,11 +322,30 @@ begin
          set delivered_at = now(), result_at = now(), ok = false,
              error = 'vPilot restarted before this was sent'
        where delivered_at is null;
+      -- As for vpilot-here below: the hello is what says vPilot is logged out.
+      if public.vpilot_flag(e->'connected') is false then
+        update public.vpilot_link
+           set connected = false, callsign = null, cid = null, type_code = null,
+               selcal = null, observer_mode = null, updated_at = now()
+         where id = 1;
+      end if;
 
     elsif kind = 'vpilot-here' then
       -- The bridge translates the plugin's hello to vpilot-here. The
       -- controller-added events that follow rebuild its current list.
-      delete from public.vpilot_controllers;
+      delete from public.vpilot_controllers where true;
+      -- The plugin says in its hello whether vPilot is on VATSIM, and sends
+      -- the 'connected' event itself in the same batch when it is. An
+      -- explicit false is the only thing that says "logged out" after a
+      -- resync, so without this the EFB would keep showing the callsign of a
+      -- flight that ended hours ago. The bridge's own vpilot-here carries no
+      -- flag and leaves this alone.
+      if public.vpilot_flag(e->'connected') is false then
+        update public.vpilot_link
+           set connected = false, callsign = null, cid = null, type_code = null,
+               selcal = null, observer_mode = null, updated_at = now()
+         where id = 1;
+      end if;
 
     elsif kind = 'sim' then
       insert into public.sim_status (id, status, updated_at)
@@ -347,7 +372,7 @@ begin
          set connected = false, callsign = null, cid = null, type_code = null,
              selcal = null, observer_mode = null, updated_at = now()
        where id = 1;
-      delete from public.vpilot_controllers;
+      delete from public.vpilot_controllers where true;
 
     elsif kind in ('session-ended', 'vpilot-gone') then
       -- vPilot has closed. Its message window has gone, so the EFB's mirror
@@ -360,8 +385,8 @@ begin
              com_activity = '{}', voice_connected = null, chat_tabs = '{}',
              updated_at = now()
        where id = 1;
-      delete from public.vpilot_controllers;
-      delete from public.vpilot_messages;
+      delete from public.vpilot_controllers where true;
+      delete from public.vpilot_messages where true;
 
     elsif kind in ('radio', 'radio-sent') then
       insert into public.vpilot_messages (kind, from_callsign, body, frequencies)
@@ -480,6 +505,20 @@ begin
              result_at = now()
        where seq = public.vpilot_number(e->'id');
 
+    elsif kind like 'acars-%' then
+      -- The datalink station, which lives in supabase/acars.sql. Handled
+      -- there rather than here so the ACARS events can grow without anybody
+      -- editing the radio's ingest, which is the part that must not break.
+      --
+      -- Guarded, because acars.sql is a separate file and may not have been
+      -- run: a database with no ACARS tables must ignore these events, not
+      -- raise on them. A raise here would take the whole batch down and wedge
+      -- the bridge, which would retry that same batch for ever - and that
+      -- batch is usually carrying the radio.
+      if to_regprocedure('public.acars_ingest_event(jsonb)') is not null then
+        perform public.acars_ingest_event(e);
+      end if;
+
     end if;
     -- Anything else is from a newer plugin than this EFB: ignored on purpose.
   end loop;
@@ -544,7 +583,20 @@ begin
     raise exception 'Only the flight deck and ops can use vPilot';
   end if;
 
-  if kind is null or kind not in (
+  -- The bridge routes a command by its prefix (see bridge/Bridge.cs), so
+  -- "acars-" goes to the datalink station and everything unprefixed goes to
+  -- vPilot. Each set is checked by whichever file owns it.
+  if kind like 'acars-%' then
+    -- acars.sql may not have been run, in which case nothing can carry these
+    -- out and saying so beats queueing one that is silently never collected.
+    if to_regprocedure('public.acars_known_command(text)') is null then
+      raise exception 'This EFB is not set up for ACARS (supabase/acars.sql has not been run)';
+    end if;
+    if not public.acars_known_command(kind) then
+      raise exception 'The bridge does not know "%"', kind;
+    end if;
+    perform public.acars_check_command(kind, given);
+  elsif kind is null or kind not in (
     'connect', 'connect-observer', 'disconnect', 'radio', 'private',
     'metar', 'atis', 'mode-c', 'ident', 'open-chat', 'close-chat')
   then
@@ -554,6 +606,12 @@ begin
   -- Said now, rather than after a minute of nobody collecting it.
   select online, last_seen_at into live, seen from public.vpilot_link where id = 1;
   if not coalesce(live, false) or coalesce(seen, 'epoch'::timestamptz) < now() - interval '90 seconds' then
+    -- online here means the bridge is talking to the EFB, which is what both
+    -- the radio and ACARS actually depend on. Said in whichever terms the
+    -- crew is looking at.
+    if kind like 'acars-%' then
+      raise exception 'The simulator PC is not connected to the EFB';
+    end if;
     raise exception 'vPilot is not connected to the EFB';
   end if;
 
@@ -619,9 +677,9 @@ begin
          chat_tabs = '{}', updated_at = now()
    where id = 1;
 
-  delete from public.vpilot_controllers;
-  delete from public.vpilot_messages;
-  delete from public.vpilot_commands;
+  delete from public.vpilot_controllers where true;
+  delete from public.vpilot_messages where true;
+  delete from public.vpilot_commands where true;
   update public.sim_status set status = null, updated_at = now() where id = 1;
 end;
 $$;

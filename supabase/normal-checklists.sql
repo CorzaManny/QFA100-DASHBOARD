@@ -50,7 +50,9 @@ begin
   -- Replace rather than merge: the app always sends the whole list, so a
   -- checklist missing from it is one the admin deleted. Position comes from
   -- the order they arrive in, which is the order the flight deck flies them.
-  delete from public.normal_checklists;
+  -- "where true" rather than a bare delete: PostgREST's role loads
+  -- safeupdate, which refuses an UPDATE or DELETE with no WHERE clause.
+  delete from public.normal_checklists where true;
   insert into public.normal_checklists (id, name, position, items, updated_at)
   select
     coalesce(trim(entry ->> 'id'), ''),
