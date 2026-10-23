@@ -451,7 +451,7 @@ export const testPrinter = () => run('acars-test-print');
 export async function sendCompany(message) {
   // Simulate company datalink transmission before delivery and printing.
   // The composer stays busy throughout, so a second click cannot resend it.
-  await new Promise((resolve) => setTimeout(resolve, 3000 + Math.floor(Math.random() * 7001)));
+  await new Promise((resolve) => setTimeout(resolve, 10000 + Math.floor(Math.random() * 65001)));
   try {
     await sendAcarsCompany(message);
   } catch (err) {
