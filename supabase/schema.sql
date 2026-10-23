@@ -483,7 +483,7 @@ begin
   if not public.is_admin() then
     raise exception 'Only admins can change roles';
   end if;
-  if new_role not in ('pending', 'admin', 'dispatcher', 'pilot', 'observer') then
+  if new_role not in ('pending', 'admin', 'dispatcher', 'pilot', 'observer', 'efb') then
     raise exception 'Unknown role';
   end if;
   if target = auth.uid() and new_role <> 'admin' then

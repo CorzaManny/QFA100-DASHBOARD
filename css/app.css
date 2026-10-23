@@ -3967,7 +3967,8 @@ body.efb.vpilot .tabs a[data-tab='vpilot'] {
 .tabs a[data-tab='acars'] {
   display: none;
 }
-body.efb.vpilot .tabs a[data-tab='acars'] {
+body.efb.vpilot .tabs a[data-tab='acars'],
+body.editor.vpilot .tabs a[data-tab='acars'] {
   display: flex;
 }
 

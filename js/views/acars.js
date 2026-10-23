@@ -279,9 +279,6 @@ const TABS = [
   ['telex', 'Telex'],
   ['weather', 'Weather'],
   ['clearance', 'Clearance'],
-  // Ops only. The flight deck has no use for it: a company message is the
-  // one thing on this page that travels towards the aeroplane.
-  ['company', 'To crew', () => canEdit()],
 ];
 
 // The tabs this account may actually see.
@@ -388,25 +385,6 @@ function sendPanel() {
         </div>
       </div>
       <p class="tiny">Hoppie answers these straight away rather than on a poll, so the reply lands in the window within a second or two.</p>`;
-  } else if (tab === 'company') {
-    // Ops to the flight deck. No Hoppie, so nothing here waits on the
-    // datalink being live: the message is written where the crew is already
-    // looking, and printed as well if the simulator PC is up.
-    body = `
-      <form class="card-form" data-form="company">
-        <label class="field">Message to the crew
-          <textarea name="message" rows="4" maxlength="900"
-            placeholder="e.g. SLOT REVISED 1420Z. EXPECT STAND 32 ON ARRIVAL."
-            data-change="draft" data-key="company">${esc(draft('company'))}</textarea></label>
-        <p class="tiny">${
-          acarsOnline()
-            ? acarsCanPrint()
-              ? 'Lands in the flight deck ACARS window and prints on the receipt printer.'
-              : 'Lands in the flight deck ACARS window. The printer is not available, so there will be no strip.'
-            : 'The simulator PC is not connected, so nothing will print. The crew will see this the next time they open ACARS.'
-        }</p>
-        <button class="btn primary" type="submit" ${busy === 'company' ? 'disabled' : ''}>Send to crew</button>
-      </form>`;
   } else {
     body = `
       <form class="card-form acars-pdc" data-form="pdc">
@@ -433,6 +411,27 @@ function sendPanel() {
 
 // ---- The page ----
 
+function companyPanel() {
+  if (!canEdit()) return '';
+  return `<section class="card acars-send">
+    <h2>Message flight deck</h2>
+    <form class="card-form" data-form="company">
+      <label class="field">ACARS company message
+        <textarea name="message" rows="4" maxlength="900" required
+          placeholder="e.g. SLOT REVISED 1420Z. EXPECT STAND 32 ON ARRIVAL."
+          data-change="draft" data-key="company">${esc(draft('company'))}</textarea></label>
+      <p class="tiny">Up to 900 characters. ${
+        acarsOnline()
+          ? acarsCanPrint() && acarsPrinter().found
+            ? 'Sends to the flight deck ACARS window and requests a strip from the receipt printer.'
+            : 'Sends to the flight deck ACARS window. The printer is unavailable, so a strip cannot be confirmed.'
+          : 'The simulator PC is disconnected. The message will be saved for the crew to read in ACARS; it will not print automatically later.'
+      }</p>
+      <button class="btn primary" type="submit" ${busy === 'company' ? 'disabled' : ''}>${busy === 'company' ? 'Sending…' : 'Send to flight deck'}</button>
+    </form>
+  </section>`;
+}
+
 export function render() {
   if (!canUseVpilot()) {
     return `<section class="card"><h2>ACARS</h2>
@@ -451,6 +450,7 @@ export function render() {
       ${awaiting()}
       ${error ? `<p class="note warn acars-error">${icon('alert')} ${esc(error)}</p>` : ''}
       ${note ? `<p class="note ok">${icon('check')} ${esc(note)}</p>` : ''}
+      ${companyPanel()}
       ${stationCard()}
       <section class="card acars-window">
         <div class="card-head"><h2>Messages</h2></div>
@@ -641,7 +641,14 @@ export const forms = {
   },
 
   company(data) {
-    const message = String(data.get('message') || '');
+    if (busy === 'company') return;
+    const message = String(data.get('message') || '').trim();
+    if (!canEdit() || !message || [...message].length > 900) {
+      error = !canEdit() ? 'Only ops can send a company message to the crew.' : 'Enter a message of 1 to 900 characters.';
+      note = '';
+      rerender();
+      return;
+    }
     doing('company', async () => {
       const result = await sendCompany(message);
       if (result.ok) drafts.delete('company');
