@@ -98,21 +98,6 @@ export const acarsCanPrint = () => !!acarsPrinter().enabled;
 // OUT, OFF, ON and IN as the bridge reported them.
 export const acarsTimes = () => picture.state?.times || {};
 
-// PMDG's Global Flight Operations, which the bridge only observes.
-//
-// GFO is not Hoppie: the aeroplane talks to PMDG's own service directly, so
-// nothing on the sim PC is a party to that conversation and the bridge cannot
-// ask it for anything. ACARS Print Bridge intercepts it on that PC and our
-// bridge reads what it saw through that program's companion API - see
-// bridge/Integrations/GfoIntegration.cs. So this is read-only, and a METAR
-// the crew asked for on the FMC appears in the window beside the ones the EFB
-// asked Hoppie for.
-export const acarsGfo = () => picture.state?.gfo || {};
-
-// Whether PMDG's datalink is being read at all. False is the normal state
-// when ACARS Print Bridge is not running, which is not a fault.
-export const acarsGfoLive = () => !!acarsGfo().reachable && acarsOnline();
-
 // Hoppie's own words when it last refused something - "illegal logon code" is
 // the common one. Shown verbatim, because it is what an admin needs to act on.
 export const acarsTrouble = () => picture.state?.trouble || null;

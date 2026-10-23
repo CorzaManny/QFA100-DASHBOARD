@@ -4267,22 +4267,3 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
 .acars-fault-fix strong {
   font-family: system-ui, -apple-system, sans-serif;
 }
-
-/* Where a datalink message came off. PMDG's Global Flight Operations is a
-   different network from Hoppie and the crew asks for it on the FMC, not in
-   here - so a GFO line is marked, or a METAR the EFB never requested looks
-   like one it did. See bridge/Integrations/GfoIntegration.cs. */
-.acars-src {
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  padding: 1px 5px;
-  border-radius: 3px;
-  border: 1px solid var(--ctwo-operational);
-  color: var(--ctwo-operational);
-  text-transform: uppercase;
-}
-
-.acars-gfo-note {
-  margin-top: 12px !important;
-}
