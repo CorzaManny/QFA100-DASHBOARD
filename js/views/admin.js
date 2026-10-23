@@ -19,6 +19,9 @@ import {
   deleteOpsShift,
   takeOpsDesk,
   releaseOpsDesk,
+  fetchAcarsLogon,
+  setAcarsLogon,
+  forgetAcarsLogon,
 } from '../api.js';
 import { DEFAULT_RULES, planRoster, problems, isBoc } from '../autoroster.js';
 import {
@@ -29,6 +32,7 @@ import {
   vpilotOnline,
   vpilotPicture,
 } from '../vpilot.js';
+import { acarsKnown, acarsOnline, acarsPicture, acarsPrinter, acarsTrouble, syncAcars } from '../acars.js';
 import { esc, zulu, zdate, depWindow, simLocal, span, isoDate, isoTime, icon, rerender } from '../ui.js';
 import {
   sortedSectors,
@@ -344,6 +348,119 @@ function vpilotCard() {
     </form>`;
 }
 
+// ---- ACARS ----
+// The Hoppie logon code, the callsign the flight logs on as, and the switch.
+//
+// The code is write-only from here, and that is the point of the whole
+// arrangement: it is a bearer credential for the team's datalink, so nothing
+// in the app ever reads it back. acars_logon_status() says whether one is set
+// and who set it, never what it is, and the database only ever hands the code
+// itself to the bridge that has already proved itself with its own key. An
+// admin who has lost it gets a new one from Hoppie rather than reading this
+// one back out of the EFB. See supabase/acars.sql.
+
+// What acars_logon_status() last said. Read on the way into this tab rather
+// than kept in store.js: it is an admin's business once a sector, not
+// something every tablet should be polling for.
+let acarsLogon = null;
+let acarsLogonRead = false;
+
+function acarsCard() {
+  const s = acarsPicture().state;
+  const online = acarsOnline();
+  const printer = acarsPrinter();
+  const trouble = acarsTrouble();
+  // No acars.sql in this database: say so rather than showing a dead panel.
+  const missing = acarsKnown() && !s;
+
+  const badge = missing
+    ? '<span class="badge mute">NOT SET UP</span>'
+    : !acarsLogon?.configured
+      ? '<span class="badge warn">NO LOGON CODE</span>'
+      : !s?.enabled
+        ? '<span class="badge mute">OFF</span>'
+        : online && s?.live
+          ? '<span class="badge ok">ACARS</span>'
+          : '<span class="badge warn">NOT CONNECTED</span>';
+
+  if (missing) {
+    return `
+      <section class="card">
+        <div class="card-head"><h2>ACARS</h2>${badge}</div>
+        <p class="note">This database has no ACARS tables yet. Run
+        <strong>supabase/acars.sql</strong> in the Supabase SQL Editor, then deploy the
+        <strong>vpilot-plugin</strong> function again so it can pass the logon code to the bridge.</p>
+      </section>`;
+  }
+
+  return `
+    <form class="card form" data-form="acars">
+      <div class="card-head"><h2>ACARS</h2>${badge}</div>
+      <p class="note">Hoppie's network, for telex, CPDLC and the receipt printer on the sim PC.
+      The bridge holds the datalink; the flight deck works it from the
+      <a href="#/acars">ACARS</a> page.</p>
+
+      ${
+        acarsLogon?.configured
+          ? `<p class="note ok">${icon('check')} A logon code is set${
+              acarsLogon.set_by ? ` by ${esc(acarsLogon.set_by)}` : ''
+            }${acarsLogon.set_at ? ` on ${zdate(acarsLogon.set_at)}` : ''}. It is never shown
+            again, here or anywhere - type a new one to replace it.</p>`
+          : `<p class="note">${icon(
+              'alert',
+            )} No logon code yet. Get one from <strong>hoppie.nl/acars</strong> for the team's
+            account, then paste it below.</p>`
+      }
+
+      ${trouble ? `<p class="note warn">${icon('alert')} Hoppie last said: <strong>${esc(trouble)}</strong></p>` : ''}
+
+      <div class="grid2">
+        <label class="field">Hoppie logon code
+          <input name="code" type="password" autocomplete="off" spellcheck="false" maxlength="64"
+            placeholder="${acarsLogon?.configured ? 'Set - type a new one to replace it' : 'Paste it here'}">
+          <span class="tiny">Issued by Hoppie for the team's account. Kept where only the sim PC's
+          bridge can read it, and never sent to a tablet.</span></label>
+        <label class="field">ACARS callsign
+          <input name="callsign" autocapitalize="characters" autocomplete="off" maxlength="12"
+            value="${esc(acarsLogon?.callsign || '')}" placeholder="e.g. QFA100">
+          <span class="tiny">What this flight logs on to Hoppie as. Hoppie locks a callsign to one
+          logon code for 100 seconds, so two stations cannot share it.</span></label>
+      </div>
+
+      <label class="check"><input type="checkbox" name="enabled" ${
+        acarsLogon?.enabled ? 'checked' : ''
+      }> ACARS on</label>
+      <p class="tiny">Off means the bridge does not poll Hoppie at all, which is the right state
+      between sectors - Hoppie asks that a station not poll until it has something to say.</p>
+
+      ${
+        printer.enabled
+          ? printer.found
+            ? `<p class="note ok">${icon('check')} Receipts print to <strong>${esc(
+                printer.printer || '',
+              )}</strong> at ${esc(printer.columns || '')} columns${printer.cutter ? ' with a cut' : ''}.</p>`
+            : `<p class="note warn">${icon('alert')} The bridge cannot find a printer called
+              <strong>${esc(printer.printer || '')}</strong> on the sim PC. Put the right name in
+              <strong>Qfa100.Bridge.json</strong> beside the bridge.</p>`
+          : online
+            ? `<p class="note">No receipt printer is set up on the sim PC. Add a
+              <strong>printer</strong> block to <strong>Qfa100.Bridge.json</strong> beside the bridge.</p>`
+            : ''
+      }
+
+      <p class="form-error" hidden></p>
+      <div class="btn-row">
+        <button class="btn primary" type="submit">Save</button>
+        <button class="btn" type="button" data-act="refreshAcars">Refresh</button>
+        ${
+          acarsLogon?.configured
+            ? '<button class="btn danger" type="button" data-act="forgetAcars">Forget the code</button>'
+            : ''
+        }
+      </div>
+    </form>`;
+}
+
 // ---- Ops Desk ----
 // The ops controllers' own roster: who is answering the flight deck, and when.
 // It lives in here rather than on a page of its own because it is nobody's
@@ -512,6 +629,7 @@ function rulesPage() {
     ${tabs('rules')}
     ${resetTimesCard()}
     ${vpilotCard()}
+    ${acarsCard()}
     <form class="card form" data-form="bidding">
       <div class="card-head"><h2>Bidding</h2><span class="badge ${
         biddingOn() ? (biddingOpen() ? 'warn' : 'ok') : 'mute'
@@ -1252,6 +1370,46 @@ export const forms = {
       result = 'Saved. The EFB will say so if vPilot is signed in as anybody else.';
     });
   },
+  // The Hoppie logon code, the callsign and the switch. An empty code field
+  // leaves whatever is already set alone, so the callsign or the switch can
+  // be changed without the code having to be typed again - which matters,
+  // because nothing can read it back to prefill it.
+  acars(data, formEl) {
+    const problem = formEl.querySelector('.form-error');
+    const code = String(data.get('code') || '').trim();
+    const callsign = String(data.get('callsign') || '').trim().toUpperCase();
+    const enabled = !!data.get('enabled');
+
+    if (code && code.length < 6) {
+      problem.textContent = 'That does not look like a Hoppie logon code.';
+      problem.hidden = false;
+      return;
+    }
+    // Switching ACARS on with no code would leave the bridge polling a
+    // network that will only refuse it, and the crew looking at a page that
+    // says it is live.
+    if (enabled && !code && !acarsLogon?.configured) {
+      problem.textContent = 'Set a logon code before switching ACARS on.';
+      problem.hidden = false;
+      return;
+    }
+    if (enabled && !callsign) {
+      problem.textContent = 'Set the ACARS callsign before switching ACARS on.';
+      problem.hidden = false;
+      return;
+    }
+    if (problem) problem.hidden = true;
+
+    return change(async () => {
+      await setAcarsLogon({ ...(code ? { code } : {}), callsign, enabled });
+      acarsLogon = await fetchAcarsLogon().catch(() => acarsLogon);
+      // The bridge picks this up on its next poll, within 25 seconds.
+      await syncAcars();
+      result = enabled
+        ? 'Saved. The sim PC will be on the network within half a minute.'
+        : 'Saved. ACARS is off.';
+    });
+  },
   account(data, formEl) {
     const who = String(data.get('name')).trim();
     formEl.querySelector('[type=submit]').disabled = true;
@@ -1302,6 +1460,31 @@ export const actions = {
       const { ok, error: why } = await forgetVpilotPlugin();
       if (!ok) throw new Error(why || 'The plugin could not be forgotten.');
       result = 'Forgotten. Start vPilot on the computer that should have the EFB.';
+    });
+  },
+
+  // ---- ACARS ----
+  refreshAcars(el) {
+    el.disabled = true;
+    return change(async () => {
+      acarsLogon = await fetchAcarsLogon().catch(() => acarsLogon);
+      await syncAcars();
+    });
+  },
+  forgetAcars(el) {
+    if (
+      !confirm(
+        'Forget the Hoppie logon code?\n\nACARS is switched off with it, and nothing can be sent or received until a new code is set. The code cannot be recovered - get a fresh one from hoppie.nl.',
+      )
+    ) {
+      return;
+    }
+    el.disabled = true;
+    return change(async () => {
+      await forgetAcarsLogon();
+      acarsLogon = await fetchAcarsLogon().catch(() => null);
+      await syncAcars();
+      result = 'Forgotten, and ACARS is off.';
     });
   },
 
@@ -1507,6 +1690,15 @@ export function mounted(root, args = []) {
   // no hook for leaving a page, so a poll started here would outlive it.
   if (args[0] === 'rules' && isAdmin() && !vpilotKnown()) {
     syncVpilot().then(() => {
+      if (location.hash.startsWith('#/admin')) rerender();
+    });
+  }
+  // The same for ACARS, and for whether a logon code is set - which only an
+  // admin may ask, and which nothing else in the app needs.
+  if (args[0] === 'rules' && isAdmin() && !acarsLogonRead) {
+    acarsLogonRead = true;
+    Promise.all([fetchAcarsLogon().catch(() => null), acarsKnown() ? null : syncAcars()]).then(([logon]) => {
+      acarsLogon = logon;
       if (location.hash.startsWith('#/admin')) rerender();
     });
   }

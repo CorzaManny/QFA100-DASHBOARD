@@ -40,8 +40,9 @@ import * as progress from './views/progress.js';
 import * as opsboard from './views/ops.js';
 import * as stream from './views/stream.js';
 import * as vpilot from './views/vpilot.js';
+import * as acars from './views/acars.js';
 
-const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, brief, dispatch: brief, ctwo, settings, admin, availability, progress, ops: opsboard, stream, vpilot };
+const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, brief, dispatch: brief, ctwo, settings, admin, availability, progress, ops: opsboard, stream, vpilot, acars };
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
 const clockSim = document.getElementById('clock-sim');

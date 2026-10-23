@@ -19,6 +19,13 @@
 // The GET is held open up to 25 s. vPilot's own HTTP client gives up at 40 s,
 // so this must always answer before then, with an empty list if there is
 // nothing for vPilot to do.
+//
+// Both answers also carry a "settings" object, which is how the one secret
+// the bridge is not allowed to keep on disk reaches it: the Hoppie ACARS
+// logon code. It is read here with the service role and handed only to a
+// bridge that has already proved itself with its key, and it never goes to a
+// browser. It deliberately does not travel as a queued command, because a
+// command sits in vpilot_commands, which every signed-in tablet can read.
 
 const PROJECT_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -59,6 +66,22 @@ async function sha256Hex(value: string): Promise<string> {
     .join("");
 }
 
+// What the bridge needs from the EFB but does not store: the Hoppie logon
+// code and the ACARS callsign.
+//
+// Undefined when supabase/acars.sql has not been run, which is a database
+// with no ACARS at all - the RPC simply is not there. That must not fail the
+// request: the bridge's radio and simulator do not depend on it, and a bridge
+// wedged on a missing ACARS table would take those down with it.
+async function settings(): Promise<Record<string, unknown> | undefined> {
+  try {
+    return await rpc<Record<string, unknown>>("acars_bridge_config", {});
+  } catch (err) {
+    console.warn("acars_bridge_config:", err instanceof Error ? err.message : err);
+    return undefined;
+  }
+}
+
 // The instance id, or null when this key is not the plugin that claimed the EFB.
 async function claim(req: Request): Promise<string | null> {
   const header = req.headers.get("authorization") ?? "";
@@ -97,7 +120,11 @@ Deno.serve(async (req: Request) => {
       } catch {
         return json(400, { error: "That was not JSON." });
       }
-      return json(200, { instance: await rpc<string>("vpilot_ingest", { events }) });
+      const [ingested, config] = await Promise.all([
+        rpc<string>("vpilot_ingest", { events }),
+        settings(),
+      ]);
+      return json(200, { instance: ingested, settings: config });
     }
 
     if (req.method === "GET") {
@@ -106,14 +133,18 @@ Deno.serve(async (req: Request) => {
       const until = Date.now() + HOLD_MS;
       for (;;) {
         const commands = await rpc<Command[]>("vpilot_take_commands", { after });
-        if (commands.length > 0) return json(200, { instance, commands });
+        // The settings go out with the commands as well as with an empty
+        // poll, so a logon code set while a command was waiting still reaches
+        // the bridge on this answer rather than on the next one.
+        if (commands.length > 0) return json(200, { instance, commands, settings: await settings() });
         if (Date.now() >= until) break;
         await sleep(LOOK_EVERY_MS);
       }
       // Nothing to do. The instance is read again on the way out, so a resync
       // asked for during the poll reaches the plugin now rather than 25 s from
       // now.
-      return json(200, { instance: (await claim(req)) ?? instance, commands: [] });
+      const [fresh, config] = await Promise.all([claim(req), settings()]);
+      return json(200, { instance: fresh ?? instance, commands: [], settings: config });
     }
 
     return json(405, { error: `${req.method} is not how to talk to this.` });

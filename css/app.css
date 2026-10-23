@@ -3949,3 +3949,267 @@ body.efb.vpilot .tabs a[data-tab='vpilot'] {
     margin-inline: 0;
   }
 }
+
+/* ===== ACARS =====================================================
+   The datalink, on the tablet. Laid out in the order it is used rather
+   than the order the protocol is shaped: an uplink waiting on a WILCO
+   sits at the very top of the page, above everything, because a
+   clearance left unanswered is the one mistake here that reaches other
+   aeroplanes. Then the station, then the message window, then what the
+   crew sends.
+
+   Message bodies are monospaced throughout. A clearance, a METAR and a
+   position report are all written to be read in fixed columns, and a
+   proportional font turns "FL340" and "133.80" into a guess. */
+
+/* Open to the flight deck and ops only, like the radio - see the
+   body.vpilot rule above. The page and the database both check again. */
+.tabs a[data-tab='acars'] {
+  display: none;
+}
+body.efb.vpilot .tabs a[data-tab='acars'] {
+  display: flex;
+}
+
+.acars {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ---- Waiting on an answer ---- */
+/* Deliberately the loudest thing in the app. An instruction the crew has
+   not answered is not a notification; it is an outstanding clearance. */
+
+.acars-owed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.acars-owed-msg {
+  border: 2px solid var(--warn);
+  border-radius: var(--r);
+  background: linear-gradient(180deg, rgba(240, 166, 60, 0.14), rgba(240, 166, 60, 0.04));
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.acars-owed-msg header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.acars-owed-from {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.acars-owed-body {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.25rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---- The station ---- */
+
+.acars-facts,
+.acars-times {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px 16px;
+  margin: 12px 0 0;
+}
+
+.acars-facts dt,
+.acars-times dt {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.acars-facts dd,
+.acars-times dd {
+  margin: 2px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.acars-times {
+  border-top: 1px solid var(--hair);
+  padding-top: 10px;
+  grid-template-columns: repeat(4, 1fr);
+  max-width: 420px;
+}
+
+/* ---- The message window ---- */
+
+.acars-window {
+  padding-bottom: 0;
+}
+
+.acars-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 2px 2px 14px;
+  overscroll-behavior: contain;
+}
+
+.acars-msg {
+  border: 1px solid var(--hair);
+  border-left: 3px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card2);
+  padding: 8px 10px;
+  position: relative;
+}
+
+/* Which way a message went, at a glance and without reading it: what
+   arrived is what the crew acts on. */
+.acars-msg.up {
+  border-left-color: var(--info);
+}
+
+.acars-msg.down {
+  border-left-color: var(--dim);
+  opacity: 0.88;
+}
+
+.acars-msg header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.acars-kind {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+}
+
+.acars-who {
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.acars-body {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  /* A METAR and a route string both run long, and both are read in
+     columns - so they wrap rather than scrolling sideways, and the
+     column structure survives. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
+.acars-msg .tiny-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.acars-msg:hover .tiny-btn,
+.acars-msg:focus-within .tiny-btn {
+  opacity: 1;
+}
+
+/* A touch screen has no hover, so on a tablet the button is always there. */
+@media (hover: none) {
+  .acars-msg .tiny-btn {
+    opacity: 1;
+  }
+}
+
+.acars-empty {
+  color: var(--dim);
+  padding: 18px 2px;
+  margin: 0;
+}
+
+/* ---- What the crew sends ---- */
+
+.acars-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--hair);
+  margin: -4px 0 14px;
+}
+
+.acars-tab {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.acars-tab.on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.acars-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.acars-row .field {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.acars-row textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.acars-requests {
+  margin-bottom: 12px;
+}
+
+.acars-pdc .grid2 {
+  margin-bottom: 8px;
+}
+
+.acars-error {
+  /* Shown above the station card, where the eye already is after tapping
+     a button that failed. */
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .acars-owed-body {
+    font-size: 1.1rem;
+  }
+  .acars-log {
+    max-height: 56vh;
+  }
+  .acars-times {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

@@ -520,3 +520,40 @@ export const vpilotResync = () => rest('POST', 'rpc/vpilot_resync', {});
 
 // Lets a different vPilot install claim the EFB (admin only).
 export const vpilotForgetPlugin = () => rest('POST', 'rpc/vpilot_forget_plugin', {});
+
+// ---- ACARS ----
+// The datalink station on the sim PC: Hoppie telex and CPDLC, and the receipt
+// printer (supabase/acars.sql). Read like vPilot - live while a flight is on
+// and of no interest the rest of the time - and driven through the same
+// command queue, so there is one path from the EFB to that PC.
+
+const ACARS_WINDOW = 'acars_messages?select=*&order=at.desc&limit=200';
+
+// null for state means supabase/acars.sql has not been run, so the app leaves
+// ACARS out altogether.
+export async function fetchAcars() {
+  const [state, messages] = await Promise.all([
+    rest('GET', 'acars_state?select=*&id=eq.1').catch(() => null),
+    rest('GET', ACARS_WINDOW).catch(() => null),
+  ]);
+  return {
+    state: state === null ? null : state[0] || null,
+    messages: messages ? [...messages].reverse() : [],
+  };
+}
+
+// ACARS commands go down the same queue as vPilot's: the bridge routes them
+// by their "acars-" prefix, and vpilot_command checks them against what the
+// bridge actually understands before anything is queued.
+export const acarsCommand = (kind, args = {}) => vpilotCommand(kind, args);
+
+// Whether a Hoppie logon code is set, and who set it - never the code itself.
+// Nothing in the database hands the code back to a browser.
+export const fetchAcarsLogon = () =>
+  rest('POST', 'rpc/acars_logon_status', {}).then((rows) => rows?.[0] || null);
+
+// Sets the Hoppie logon code, the ACARS callsign, or the on/off switch
+// (admin only). Leave the code out to change the others without retyping it.
+export const setAcarsLogon = (args) => rest('POST', 'rpc/acars_set_logon', args);
+
+export const forgetAcarsLogon = () => rest('POST', 'rpc/acars_forget_logon', {});
