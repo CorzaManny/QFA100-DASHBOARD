@@ -32,6 +32,8 @@ import {
   acarsPrinter,
   acarsCanPrint,
   acarsTimes,
+  acarsGfo,
+  acarsGfoLive,
   sendTelex,
   requestInfo,
   requestPdc,
@@ -174,6 +176,16 @@ function stationCard() {
           : ''
       }
 
+      ${
+        acarsGfo().enabled
+          ? `<p class="note ${acarsGfoLive() ? 'ok' : ''} acars-gfo-note">${
+              acarsGfoLive()
+                ? `${icon('check')} PMDG's datalink is being read too — anything asked for on the FMC appears here, marked PMDG.`
+                : `PMDG's datalink is not being read. It needs ACARS Print Bridge running on the simulator PC with its companion server on.`
+            }</p>`
+          : ''
+      }
+
       <dl class="acars-times">
         ${['out', 'off', 'on', 'in']
           .map(
@@ -248,6 +260,11 @@ function messageWindow() {
       <article class="acars-msg ${up ? 'up' : 'down'}">
         <header>
           <span class="acars-kind">${esc(kind)}</span>
+          ${
+            m.source === 'gfo'
+              ? '<span class="acars-src" title="PMDG Global Flight Operations - asked for on the FMC">PMDG</span>'
+              : ''
+          }
           <span class="acars-who">${esc(up ? m.from_station || '' : `→ ${m.to_station || ''}`)}</span>
           <span class="tiny">${zulu(m.at)}</span>
           ${m.msg_no != null ? `<span class="tiny">MSG ${esc(m.msg_no)}</span>` : ''}
@@ -453,6 +470,7 @@ const signature = (p) =>
       // fixed it, because nothing else on the row would have changed.
       told: p.state.told,
       code_set: p.state.code_set,
+      gfo: p.state.gfo,
       wanted_enabled: p.state.wanted_enabled,
       wanted_at: p.state.wanted_at,
       atc_unit: p.state.atc_unit,

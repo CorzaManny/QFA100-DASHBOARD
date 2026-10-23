@@ -131,6 +131,11 @@ alter table public.acars_state add column if not exists code_set boolean not nul
 alter table public.acars_state add column if not exists wanted_callsign text;
 alter table public.acars_state add column if not exists wanted_enabled boolean not null default false;
 alter table public.acars_state add column if not exists wanted_at timestamptz;
+-- PMDG's Global Flight Operations, as the bridge reads it from ACARS Print
+-- Bridge's companion API. GFO is not Hoppie: the aeroplane talks to PMDG's own
+-- service directly, so the bridge cannot be a party to it and only observes
+-- what that program saw. Whether it is switched on, reachable and printing.
+alter table public.acars_state add column if not exists gfo jsonb not null default '{}';
 
 alter table public.acars_state enable row level security;
 revoke all on public.acars_state from anon;
@@ -167,6 +172,12 @@ create table if not exists public.acars_messages (
   printed    boolean,
   print_error text
 );
+
+-- Which network a message came off: 'hoppie' for the bridge's own datalink
+-- station, 'gfo' for PMDG's Global Flight Operations read through ACARS Print
+-- Bridge. Added separately so re-running this file upgrades an install that
+-- already has the table; everything already in it was Hoppie's.
+alter table public.acars_messages add column if not exists source text not null default 'hoppie';
 
 create index if not exists acars_messages_at_idx on public.acars_messages (at desc);
 -- The bridge may report a message twice if a batch is retried after the EFB
@@ -244,7 +255,7 @@ begin
       return;
     end if;
     insert into public.acars_messages
-      (reference, at, direction, from_station, to_station, kind, body, msg_no, answers, meaning)
+      (reference, at, direction, from_station, to_station, kind, body, msg_no, answers, meaning, source)
     values (
       ref,
       case when coalesce(e->>'at', '') = '' then now() else (e->>'at')::timestamptz end,
@@ -258,7 +269,10 @@ begin
         select array_agg(a.value order by a.ord)
         from jsonb_array_elements_text(coalesce(e->'answers', '[]'::jsonb))
           with ordinality as a(value, ord)), '{}'),
-      nullif(e->>'meaning', ''))
+      nullif(e->>'meaning', ''),
+      -- Anything without a source is from the bridge's own Hoppie station,
+      -- which is what every message was before GFO existed.
+      case when e->>'source' = 'gfo' then 'gfo' else 'hoppie' end)
     -- A batch the bridge retried after the EFB had already taken it must not
     -- double up in the message window.
     on conflict (reference) do nothing;
@@ -269,6 +283,21 @@ begin
     -- and pruning on each of those would be three pointless scans a minute.
     delete from public.acars_messages
      where id <= coalesce((select max(id) from public.acars_messages), 0) - 500;
+
+  elsif kind = 'acars-gfo' then
+    -- PMDG's datalink, which the bridge only observes. Kept whole as jsonb
+    -- rather than spread into columns: nothing in the EFB does anything with
+    -- it but show whether it is working.
+    update public.acars_state
+       set gfo = jsonb_build_object(
+             'enabled', coalesce(public.vpilot_flag(e->'enabled'), false),
+             'reachable', coalesce(public.vpilot_flag(e->'reachable'), false),
+             'printing', coalesce(public.vpilot_flag(e->'printing'), false),
+             'callsign', e->>'callsign',
+             'port', public.vpilot_number(e->'port'),
+             'lastMessageAt', e->>'lastMessageAt'),
+           updated_at = now()
+     where id = 1;
 
   elsif kind = 'acars-printed' then
     ref := nullif(e->>'reference', '');
