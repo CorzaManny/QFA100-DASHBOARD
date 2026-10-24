@@ -8,7 +8,7 @@
 
 import { state } from '../store.js';
 import { saveRoster, deleteRoster } from '../api.js';
-import { problems } from '../autoroster.js';
+import { problemList } from '../autoroster.js';
 import { esc, zulu, zdate, simClock, simLocal, SIM_TZ, icon, rerender } from '../ui.js';
 import {
   rosterable,
@@ -89,6 +89,12 @@ let timeMode = 'zulu';
 // The sector whose crew is open for a quick edit, if any.
 let editingSectorId = null;
 let error = '';
+// Where the timeline is scrolled to, kept across renders. A render replaces
+// the whole page, so without this every save, drag or background sync would
+// throw whoever is building the roster back to "now" and the top of the
+// crew list. Only a different day or clock starts the view afresh.
+let scrollAt = null;
+let scrollKey = '';
 
 // Midnight on or before t, in whichever clock is selected: UTC midnight for
 // Zulu, Sydney midnight for Local. Shift into that clock's frame, floor to a
@@ -172,12 +178,19 @@ function crewRows(start, end) {
   const r = rules();
   return rosterable().map((p) => {
     const bars = (byPerson.get(p.id) || []).sort((a, b) => a.from - b.from);
-    // Whatever duty rule their whole rostered load breaks, same check the
-    // Admin roster's "Duty rules" card makes: not pinned to one leg, since a
-    // rest or duty-hours break is really about the pair or the run of them.
+    // Whatever duty rules their whole rostered load breaks, same check the
+    // Admin roster's "Duty rules" card makes, then pinned to the sectors
+    // each break is made of - a rest or duty-hours break is about the pair
+    // or the run of them, not every sector they fly all event.
     const flies = bars.some((b) => PILOT_DUTIES.includes(b.entry.duty));
-    const ruleBreaks = flies ? problems(flownBy(p.id), r) : [];
-    for (const b of bars) if (PILOT_DUTIES.includes(b.entry.duty)) b.ruleBreaks = ruleBreaks;
+    const ruleBreaks = flies ? problemList(flownBy(p.id), r) : [];
+    // Each break is marked only on the sectors it is actually about: a long
+    // duty flags the sectors in that duty, and a sector elsewhere in the
+    // event that breaks nothing stays unflagged.
+    for (const b of bars) {
+      if (!PILOT_DUTIES.includes(b.entry.duty)) continue;
+      b.ruleBreaks = ruleBreaks.filter((x) => x.sectors.includes(b.sector.id)).map((x) => x.text);
+    }
     return { p, bars, hints: hintBlocks(p, start, end, bars) };
   });
 }
@@ -667,8 +680,22 @@ export function mountedRoster(root) {
   const scroll = root.querySelector('#lr-scroll');
   if (scroll) {
     const { start, end } = windowRange();
-    const now = Date.now();
-    if (now >= start && now <= end) scroll.scrollLeft = Math.max(0, left(now, start) - 140);
+    const key = `${start}|${timeMode}`;
+    if (key !== scrollKey) {
+      // A window we have not shown yet: open it on "now" if it is in there.
+      const now = Date.now();
+      scrollKey = key;
+      scrollAt = { left: now >= start && now <= end ? Math.max(0, left(now, start) - 140) : 0, top: 0 };
+    }
+    scroll.scrollLeft = scrollAt.left;
+    scroll.scrollTop = scrollAt.top;
+    scroll.addEventListener(
+      'scroll',
+      () => {
+        scrollAt = { left: scroll.scrollLeft, top: scroll.scrollTop };
+      },
+      { passive: true },
+    );
   }
   for (const b of root.querySelectorAll('.lr-bar')) {
     b.addEventListener('dragstart', (e) => {

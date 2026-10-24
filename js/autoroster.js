@@ -72,40 +72,48 @@ const night = (sector) => simDay(std(sector) - 12 * HOUR);
 const clamp01 = (n) => Math.max(0, Math.min(1, n));
 export const desirability = (sector, rules) => clamp01(blockHours(sector) / 10 - (isBoc(sector, rules) ? 0.35 : 0));
 
-// Everything wrong with one person's set of sectors, as plain sentences.
-export function problems(sectors, rules) {
+// Everything wrong with one person's set of sectors: a sentence each, with
+// the sectors that rule actually involves. A duty-hours or rest break is
+// about the run of sectors that make it up, so only those carry the warning;
+// sectors elsewhere in the event are not at fault and are left unmarked.
+export function problemList(sectors, rules) {
   const list = [...sectors].sort(byStd);
   const out = [];
+  const add = (text, involved) => out.push({ text, sectors: involved.map((s) => s.id) });
   let duty = [];
   const dutyBlocks = [];
 
   const endDuty = () => {
     if (!duty.length) return;
-    const first = duty[0];
-    if (duty.length > rules.maxSectorsPerDuty) {
-      out.push(`${duty.length} sectors without a rest from ${first.flight} (limit ${rules.maxSectorsPerDuty})`);
+    const block = duty;
+    const first = block[0];
+    if (block.length > rules.maxSectorsPerDuty) {
+      add(`${block.length} sectors without a rest from ${first.flight} (limit ${rules.maxSectorsPerDuty})`, block);
     }
     // A duty that touches back-of-clock hours can carry its own, shorter
     // limit, separate from an ordinary daytime duty's.
-    const boc = duty.filter((s) => isBoc(s, rules));
-    const hours = (sta(duty.at(-1)) - std(first)) / HOUR + rules.reportLeadMinutes / 60;
+    const boc = block.filter((s) => isBoc(s, rules));
+    const hours = (sta(block.at(-1)) - std(first)) / HOUR + rules.reportLeadMinutes / 60;
     const dutyLimit = boc.length && rules.maxDutyHoursBoc > 0 ? rules.maxDutyHoursBoc : rules.maxDutyHours;
     if (hours > dutyLimit) {
-      out.push(`${hours.toFixed(1)} hour duty from ${first.flight} (limit ${dutyLimit}${boc.length ? ', back-of-clock' : ''})`);
+      add(
+        `${hours.toFixed(1)} hour duty from ${first.flight} (limit ${dutyLimit}${boc.length ? ', back-of-clock' : ''})`,
+        block,
+      );
     }
     // Back-of-clock sectors flown one after another in the same duty, not
     // the spacing between separate back-of-clock duties (that's bocEveryDays).
     if (rules.maxConsecutiveBoc > 0) {
-      let run = 0;
-      for (const s of duty) {
-        run = isBoc(s, rules) ? run + 1 : 0;
-        if (run > rules.maxConsecutiveBoc) {
-          out.push(`${run} back-of-clock sectors in a row from ${first.flight} (limit ${rules.maxConsecutiveBoc})`);
+      let run = [];
+      for (const s of block) {
+        run = isBoc(s, rules) ? [...run, s] : [];
+        if (run.length > rules.maxConsecutiveBoc) {
+          add(`${run.length} back-of-clock sectors in a row from ${first.flight} (limit ${rules.maxConsecutiveBoc})`, run);
           break;
         }
       }
     }
-    dutyBlocks.push(duty);
+    dutyBlocks.push(block);
     duty = [];
   };
 
@@ -113,7 +121,7 @@ export function problems(sectors, rules) {
     const prev = list[i - 1];
     if (prev) {
       const gap = std(s) - sta(prev);
-      if (gap < 0) out.push(`${prev.flight} and ${s.flight} overlap`);
+      if (gap < 0) add(`${prev.flight} and ${s.flight} overlap`, [prev, s]);
       if (gap >= rules.restHours * HOUR) endDuty();
     }
     duty.push(s);
@@ -122,7 +130,7 @@ export function problems(sectors, rules) {
 
   const boc = list.filter((s) => isBoc(s, rules));
   if (rules.maxBoc > 0 && boc.length > rules.maxBoc) {
-    out.push(`${boc.length} back-of-clock sectors (limit ${rules.maxBoc})`);
+    add(`${boc.length} back-of-clock sectors (limit ${rules.maxBoc})`, boc);
   }
   if (rules.bocEveryDays > 1) {
     // Every back-of-clock sector in the same duty is the same occurrence -
@@ -132,16 +140,24 @@ export function problems(sectors, rules) {
     bocDuties.forEach((s, i) => {
       const prev = bocDuties[i - 1];
       if (prev && night(s) - night(prev) < rules.bocEveryDays) {
-        out.push(`back-of-clock duties from ${prev.flight} and ${s.flight} are too close (one every ${rules.bocEveryDays} days)`);
+        add(
+          `back-of-clock duties from ${prev.flight} and ${s.flight} are too close (one every ${rules.bocEveryDays} days)`,
+          [prev, s],
+        );
       }
     });
   }
 
+  // A whole-event total is the one rule no single sector is to blame for, so
+  // every sector in the set carries it.
   if (rules.maxSectors > 0 && list.length > rules.maxSectors) {
-    out.push(`${list.length} sectors in total (limit ${rules.maxSectors})`);
+    add(`${list.length} sectors in total (limit ${rules.maxSectors})`, list);
   }
   return out;
 }
+
+// The same rules as plain sentences, for everywhere that only needs the text.
+export const problems = (sectors, rules) => problemList(sectors, rules).map((p) => p.text);
 
 // Each pilot's fair share of the hours still to crew, in proportion to how
 // much of the schedule they have said they can fly. A blank counts as

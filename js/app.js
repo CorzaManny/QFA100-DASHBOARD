@@ -209,6 +209,11 @@ chatToggle.addEventListener('click', () => setChatOpen(true));
 document.getElementById('chat-close').addEventListener('click', () => setChatOpen(false));
 
 function render() {
+  // Rendering replaces the whole page, which drops the page's scroll
+  // position. A render is usually something changing under somebody who is
+  // reading or editing, not a move to another page, so put them back where
+  // they were; hashchange scrolls to the top itself, after this.
+  const wasAt = window.scrollY;
   const gate = locked();
   document.body.classList.toggle('locked', gate);
   document.body.classList.toggle('editor', !gate && canEdit());
@@ -247,6 +252,7 @@ function render() {
     tab.classList.toggle('on', tab.dataset.tab === (route.name === 'airports' ? 'brief' : route.name));
   }
   route.view.mounted?.(root, route.args);
+  if (window.scrollY !== wasAt) window.scrollTo(0, wasAt);
   wakeLock();
 }
 
