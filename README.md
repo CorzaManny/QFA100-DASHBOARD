@@ -162,6 +162,16 @@ Each seat has its own colour, so a glance says which one you are in rather
 than only that you are rostered: **red** Captain, **yellow** First Officer,
 **blue** Relief Pilot. An Observer keeps the plain grey badge.
 
+A **UTC / Local** button at the top of the page says which of the two every
+time on it leads with. The roster is planned in Zulu but flown by people living
+in Sydney, so neither is the right one for everybody: press Local and the sim
+local time comes first, with the Zulu one kept beside it, and the day headings
+and dates follow — a sector departing 1330Z on 01 NOV is listed under 02 NOV,
+because that is the night you are actually flying it. Nothing is ever hidden,
+and no time can be read as the wrong one: each carries its own `Z` or `AEDT`.
+The choice is remembered on your own device. The published departure window
+stays in Zulu, as WorldFlight publishes it.
+
 Between two of your own sectors, My Roster draws a yellow **Off duty for 11h
 30m** band with the window it covers, so your breaks are as easy to find as
 your flying. Back-to-back sectors flown in one duty leave no gap, so nothing is

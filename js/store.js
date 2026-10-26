@@ -49,6 +49,9 @@ function defaults() {
     opsDesk: null, // { user_id, taken_at } when somebody has stepped in off the roster
     opsChat: [], // { id, sent_at, user_id, sender, body }
     chatSeen: 0, // when this device last had the thread open, for the unread count
+    // Which way round the Roster page puts its times: 'utc' leads with Zulu,
+    // 'local' with sim local (Sydney). The other is always kept beside it.
+    rosterTimes: 'utc',
     checks: {}, // checklist progress by checklist id
     checkRev: {}, // which version of a checklist the ticks above were made against
     checklistStatus: [], // team-wide: which checklists are complete, from the other EFB too

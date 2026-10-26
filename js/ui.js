@@ -46,6 +46,14 @@ export function simClock(t) {
   return p ? `${p.hour}${p.minute} ${p.timeZoneName}` : '—';
 }
 
+// "01 NOV" in sim local time: zdate's counterpart, for wherever a local clock
+// needs the day beside it. The sim local day is not always the Zulu one.
+const simDayMonth = new Intl.DateTimeFormat('en-GB', { timeZone: SIM_TZ, day: '2-digit', month: 'short' });
+export function simDateLabel(t) {
+  const d = new Date(t);
+  return isNaN(d) ? '—' : simDayMonth.format(d).toUpperCase();
+}
+
 // Hour of the day in sim local time, with minutes as a fraction (6.5 = 0630).
 export function simHour(t) {
   const p = simParts(t);

@@ -1,9 +1,9 @@
 // Roster: which accounts fly which sectors, their duty and report time.
 // Read-only here; admins and dispatchers build it in the Admin section.
 
-import { state } from '../store.js';
+import { state, save } from '../store.js';
 import { configured, offerSector, claimSwap, withdrawSwap, requestPickup, withdrawPickup } from '../api.js';
-import { esc, zulu, zdate, span, depWindow, simLocal, icon, dutyBadge, dutyClass, rerender } from '../ui.js';
+import { esc, zulu, zdate, span, depWindow, simLocal, simClock, simDateLabel, icon, dutyBadge, dutyClass, rerender } from '../ui.js';
 import {
   sortedSectors, crewOf, person, me, canEdit, pilotsShort, pilotsNeeded, needsRelief, isDraft,
   MIN_PILOTS, rules, isEfb, isOps, openSwaps, swapFor, swapSector, swapEntry, wouldBreak, syncTeam,
@@ -17,6 +17,31 @@ let offering = '';
 const name = (id) => esc(person(id)?.display_name || 'Unknown');
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
 
+// The roster is planned in Zulu but flown by people living in Sydney, so
+// neither time is the right one for everybody. The UTC/LOCAL button says which
+// one this device leads with; the other is always kept beside it, so nothing
+// is ever hidden and no time can be read as the wrong one - every one of them
+// carries its own Z or AEDT. The choice is saved on the device.
+const localTimes = () => state.rosterTimes === 'local';
+
+// Day and time: "01 NOV 1245Z" or "SUN 2345 AEDT".
+const stamp = (t) => (localTimes() ? simLocal(t) : when(t));
+// The same moment the other way round, for the line beside it.
+const other = (t) => (localTimes() ? when(t) : simLocal(t));
+// Time on its own: "1245Z" or "2345 AEDT".
+const clock = (t) => (localTimes() ? simClock(t) : zulu(t));
+const otherClock = (t) => (localTimes() ? zulu(t) : simClock(t));
+// Day on its own, for a list's date headings: "01 NOV" in whichever zone.
+const dayOf = (t) => (localTimes() ? simDateLabel(t) : zdate(t));
+
+function tzToggle() {
+  const loc = localTimes();
+  return `<nav class="seg tz-toggle" aria-label="Show times in">
+    <button type="button" class="${loc ? '' : 'on'}" data-act="tz" data-tz="utc" aria-pressed="${!loc}">UTC</button>
+    <button type="button" class="${loc ? 'on' : ''}" data-act="tz" data-tz="local" aria-pressed="${loc}">Local</button>
+  </nav>`;
+}
+
 // Duty runs from signing on to on blocks at the far end - the same two ends
 // the team's duty-hours rule measures between - so a pilot can see how long
 // they are on for and when they are released without working it out. Sign-off
@@ -27,9 +52,9 @@ function dutyLine(signOn, sector, withSignOn = false) {
   const off = new Date(sector.sta);
   const on = new Date(signOn);
   if (isNaN(on) || isNaN(off)) return '';
-  return `<div class="sub duty-line">${withSignOn ? `Sign on <strong>${zulu(on)}</strong> · ` : ''}Duty <strong>${span(
+  return `<div class="sub duty-line">${withSignOn ? `Sign on <strong>${clock(on)}</strong> · ` : ''}Duty <strong>${span(
     off - on,
-  )}</strong> · Sign off <strong>${zulu(off)}</strong> · ${simLocal(off)}</div>`;
+  )}</strong> · Sign off <strong>${clock(off)}</strong> · ${otherClock(off)}</div>`;
 }
 
 // The break between two of my own sectors: from being released at the end of
@@ -41,7 +66,7 @@ function offDuty(prevSector, nextSignOn, now) {
   const to = new Date(nextSignOn).getTime();
   if (!(to > from)) return '';
   return `<div class="off-duty${to < now ? ' past' : ''}">${icon('deck')} Off duty for ${span(to - from)}
-    <span class="off-when">${zulu(from)} → ${zulu(to)}</span></div>`;
+    <span class="off-when">${clock(from)} → ${clock(to)}</span></div>`;
 }
 
 function needBadge(s) {
@@ -89,7 +114,7 @@ function coverCard() {
       <div class="row">
         <div class="row-main">
           <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${dutyBadge(entry?.duty)}</div>
-          <div class="sub">${esc(s.flight)} · ${when(s.std)} · ${simLocal(s.std)}</div>
+          <div class="sub">${esc(s.flight)} · ${stamp(s.std)} · ${other(s.std)}</div>
           <div class="sub">${mine ? 'You offered this' : `${name(w.from_user)} cannot fly it`}${w.reason ? ` · ${esc(w.reason)}` : ''}</div>
           ${breaks.map((t) => `<div class="sub warn-text">${icon('alert')} ${esc(t)}</div>`).join('')}
         </div>
@@ -143,7 +168,7 @@ function openSeatsCard() {
       <div class="row">
         <div class="row-main grow">
           <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${needBadge(s)}</div>
-          <div class="sub">${esc(s.flight)} · ${when(s.std)} · ${simLocal(s.std)}</div>
+          <div class="sub">${esc(s.flight)} · ${stamp(s.std)} · ${other(s.std)}</div>
           ${dutyLine(defaultReport(s), s, true)}
           ${crewOf(s)
             .map((r) => `<div class="sub crew-line">${esc(r.duty)} · ${name(r.user_id)}</div>`)
@@ -200,13 +225,13 @@ function list() {
       <a class="row ${new Date(s.sta) < now ? 'past' : ''}" href="#/roster/${esc(s.id)}">
         <div class="row-main">
           <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${dutyBadge(r.duty)}</div>
-          <div class="sub">${esc(s.flight)} · Report <strong>${when(r.report_at)}</strong> · ${simLocal(r.report_at)}</div>
+          <div class="sub">${esc(s.flight)} · Report <strong>${stamp(r.report_at)}</strong> · ${other(r.report_at)}</div>
           ${dutyLine(r.report_at, s)}
           ${r.notes ? `<div class="sub">${esc(r.notes)}</div>` : ''}
         </div>
         <div class="right">
-          <div class="row-t">${zulu(s.std)}</div>
-          <div class="sub">${zdate(s.std)}</div>
+          <div class="row-t">${clock(s.std)}</div>
+          <div class="sub">${dayOf(s.std)}</div>
         </div>
       </a>`;
     })
@@ -215,15 +240,15 @@ function list() {
   let day = '';
   const allRows = sectors
     .map((s) => {
-      const d = zdate(s.std);
+      const d = dayOf(s.std);
       const header = d !== day ? `<div class="list-day">${(day = d)}</div>` : '';
       return `${header}
         <a class="row ${new Date(s.sta) < now ? 'past' : ''}" href="#/roster/${esc(s.id)}">
           <div class="row-main">
             <div class="row-t">${esc(s.dep)} → ${esc(s.arr)}${needsRelief(s) ? ' <span class="badge info">3 PILOTS</span>' : ''}</div>
-            <div class="sub">${esc(s.flight)} · ${zulu(s.std)}</div>
+            <div class="sub">${esc(s.flight)} · ${clock(s.std)}</div>
             ${crewOf(s)
-              .map((r) => `<div class="sub crew-line">${name(r.user_id)} · ${esc(r.duty)} · report ${zulu(r.report_at)}</div>`)
+              .map((r) => `<div class="sub crew-line">${name(r.user_id)} · ${esc(r.duty)} · report ${clock(r.report_at)}</div>`)
               .join('')}
           </div>
           <div class="right">${needBadge(s)} ${icon('chevron')}</div>
@@ -238,6 +263,7 @@ function list() {
     <div class="btn-row">
       ${isEfb() || isOps() ? '' : '<a class="btn ghost" href="#/availability">My availability</a>'}
       ${canEdit() ? '<a class="btn primary" href="#/admin">Edit roster</a>' : ''}
+      ${tzToggle()}
     </div>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
     ${isEfb() ? '' : coverCard()}
@@ -257,7 +283,9 @@ function list() {
         ${short ? `<span class="badge warn">${short} NEED PILOTS</span>` : '<span class="badge ok">ALL CREWED</span>'}</div>
       ${allRows || '<p class="note">No sectors in the schedule yet.</p>'}
     </section>
-    <p class="tiny center">All times UTC. Every sector needs ${MIN_PILOTS} pilots${
+    <p class="tiny center">${
+      localTimes() ? 'Times lead with sim local (Sydney), Zulu beside them.' : 'Times lead with Zulu, sim local (Sydney) beside them.'
+    } Every sector needs ${MIN_PILOTS} pilots${
       rules().reliefOverHours > 0 ? `, and a relief pilot as well when it is longer than ${rules().reliefOverHours} hours` : ''
     }.</p>`;
 }
@@ -271,7 +299,7 @@ function detail(id) {
       <div class="row">
         <div class="row-main">
           <div class="row-t">${name(r.user_id)} ${dutyBadge(r.duty)}</div>
-          <div class="sub">Report <strong>${when(r.report_at)}</strong>${r.notes ? ` · ${esc(r.notes)}` : ''}</div>
+          <div class="sub">Report <strong>${stamp(r.report_at)}</strong> · ${other(r.report_at)}${r.notes ? ` · ${esc(r.notes)}` : ''}</div>
         </div>
       </div>`,
     )
@@ -281,12 +309,12 @@ function detail(id) {
   const gone = new Date(s.std) < Date.now();
 
   return `
-    <div class="page-head"><a class="back" href="#/roster">${icon('back')} Team Roster</a></div>
+    <div class="page-head"><a class="back" href="#/roster">${icon('back')} Team Roster</a>${tzToggle()}</div>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
     <section class="card list">
       <div class="card-head"><div>
         <div class="big">${esc(s.dep)} → ${esc(s.arr)}</div>
-        <div class="sub">${esc(s.flight)} · Departs ${when(s.std)}${s.window ? ` · window ${depWindow(s)}` : ''}</div>
+        <div class="sub">${esc(s.flight)} · Departs ${stamp(s.std)} · ${other(s.std)}${s.window ? ` · window ${depWindow(s)}` : ''}</div>
       </div>${needBadge(s)}</div>
       ${rows || '<p class="note">No crew rostered on this sector yet.</p>'}
       ${
@@ -355,6 +383,11 @@ async function act(id, work) {
 }
 
 export const actions = {
+  tz(el) {
+    state.rosterTimes = el.dataset.tz === 'local' ? 'local' : 'utc';
+    save();
+    rerender();
+  },
   pick(el) {
     const { sector, duty } = el.dataset;
     if (!confirm(`Ask to fly this sector as ${duty}? An admin or dispatcher agrees it first.`)) return;

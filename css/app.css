@@ -1759,6 +1759,25 @@ button:focus-visible {
   color: #7fb8f5;
 }
 
+/* Whether the roster leads with Zulu or with sim local time. Compact, because
+   it sits beside the page's own buttons rather than instead of them. */
+.tz-toggle {
+  grid-template-columns: auto auto;
+  margin-left: auto;
+  padding: 2px;
+}
+.tz-toggle button {
+  min-height: 30px;
+  padding: 0 11px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.page-head .tz-toggle {
+  margin-left: auto;
+}
+
 /* Sign on, duty length and sign off, under each of my sectors. */
 .duty-line {
   font-variant-numeric: tabular-nums;
