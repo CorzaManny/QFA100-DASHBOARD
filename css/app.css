@@ -1729,6 +1729,78 @@ button:focus-visible {
 .chevron-btn.open .icon {
   transform: rotate(90deg);
 }
+/* ---- Which seat somebody is in ---- */
+
+/* One colour per seat, so a roster reads at a glance: red Captain, yellow
+   First Officer, blue Relief Pilot. An Observer keeps the plain grey badge. */
+.badge.duty.capt {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.14);
+  color: #ff8585;
+}
+.badge.duty.fo {
+  border-color: rgba(245, 208, 61, 0.5);
+  background: rgba(245, 208, 61, 0.14);
+  color: #f3d14a;
+}
+.badge.duty.relief {
+  border-color: rgba(79, 155, 240, 0.5);
+  background: rgba(79, 155, 240, 0.14);
+  color: #7fb8f5;
+}
+/* The same three on the open-seat slots, which name a seat without a badge. */
+.seat-duty.capt {
+  color: #ff8585;
+}
+.seat-duty.fo {
+  color: #f3d14a;
+}
+.seat-duty.relief {
+  color: #7fb8f5;
+}
+
+/* Sign on, duty length and sign off, under each of my sectors. */
+.duty-line {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The break between two of my own duties: where the pilot is not rostered. */
+.off-duty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+  padding: 7px 10px;
+  border-left: 3px solid var(--warn);
+  border-radius: 4px;
+  background: rgba(240, 166, 60, 0.1);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  color: var(--warn);
+}
+.off-duty .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.off-duty .off-when {
+  margin-left: auto;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  opacity: 0.85;
+}
+.off-duty.past {
+  opacity: 0.45;
+}
+/* The band is the separator, so the row under it does not need its own line. */
+.off-duty + .row {
+  border-top: 0;
+}
+
 /* ---- Sectors published two ways round (route A / route B) ---- */
 
 .opt-card {

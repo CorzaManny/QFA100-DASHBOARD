@@ -3,11 +3,11 @@
 
 import { state } from '../store.js';
 import { configured, offerSector, claimSwap, withdrawSwap, requestPickup, withdrawPickup } from '../api.js';
-import { esc, zulu, zdate, depWindow, simLocal, icon, rerender } from '../ui.js';
+import { esc, zulu, zdate, span, depWindow, simLocal, icon, dutyBadge, dutyClass, rerender } from '../ui.js';
 import {
   sortedSectors, crewOf, person, me, canEdit, pilotsShort, pilotsNeeded, needsRelief, isDraft,
   MIN_PILOTS, rules, isEfb, isOps, openSwaps, swapFor, swapSector, swapEntry, wouldBreak, syncTeam,
-  canPickUp, openSeats, pendingPickups, workload, prefOf,
+  canPickUp, openSeats, pendingPickups, workload, prefOf, defaultReport,
 } from '../ops.js';
 
 let busy = '';
@@ -16,6 +16,33 @@ let offering = '';
 
 const name = (id) => esc(person(id)?.display_name || 'Unknown');
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
+
+// Duty runs from signing on to on blocks at the far end - the same two ends
+// the team's duty-hours rule measures between - so a pilot can see how long
+// they are on for and when they are released without working it out. Sign-off
+// is given in Zulu and then in sim local time, because that is where they are
+// sitting. signOn is a roster entry's report time, or what it would be for a
+// seat nobody is in yet.
+function dutyLine(signOn, sector, withSignOn = false) {
+  const off = new Date(sector.sta);
+  const on = new Date(signOn);
+  if (isNaN(on) || isNaN(off)) return '';
+  return `<div class="sub duty-line">${withSignOn ? `Sign on <strong>${zulu(on)}</strong> · ` : ''}Duty <strong>${span(
+    off - on,
+  )}</strong> · Sign off <strong>${zulu(off)}</strong> · ${simLocal(off)}</div>`;
+}
+
+// The break between two of my own sectors: from being released at the end of
+// one to signing on for the next. Back-to-back sectors flown in the same duty
+// leave no gap at all, so nothing is drawn for them - only a real break shows,
+// which is the point of it.
+function offDuty(prevSector, nextSignOn, now) {
+  const from = new Date(prevSector.sta).getTime();
+  const to = new Date(nextSignOn).getTime();
+  if (!(to > from)) return '';
+  return `<div class="off-duty${to < now ? ' past' : ''}">${icon('deck')} Off duty for ${span(to - from)}
+    <span class="off-when">${zulu(from)} → ${zulu(to)}</span></div>`;
+}
 
 function needBadge(s) {
   const short = pilotsShort(s);
@@ -61,7 +88,7 @@ function coverCard() {
       return `
       <div class="row">
         <div class="row-main">
-          <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} <span class="badge warn">${esc((entry?.duty || '').toUpperCase())}</span></div>
+          <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${dutyBadge(entry?.duty)}</div>
           <div class="sub">${esc(s.flight)} · ${when(s.std)} · ${simLocal(s.std)}</div>
           <div class="sub">${mine ? 'You offered this' : `${name(w.from_user)} cannot fly it`}${w.reason ? ` · ${esc(w.reason)}` : ''}</div>
           ${breaks.map((t) => `<div class="sub warn-text">${icon('alert')} ${esc(t)}</div>`).join('')}
@@ -95,9 +122,9 @@ function seatButtons(s) {
   const slot = (duty) =>
     asked?.duty === duty
       ? `<button class="seat-slot asked" data-act="unpick" data-id="${esc(asked.id)}" ${busy === asked.id ? 'disabled' : ''}>
-          <span><span class="seat-duty">${esc(duty)}</span> Asked for, waiting for ops</span><span class="seat-go">Cancel</span></button>`
+          <span><span class="seat-duty ${dutyClass(duty)}">${esc(duty)}</span> Asked for, waiting for ops</span><span class="seat-go">Cancel</span></button>`
       : `<button class="seat-slot" data-act="pick" data-sector="${esc(s.id)}" data-duty="${esc(duty)}" ${busy === s.id || asked ? 'disabled' : ''}>
-          <span><span class="seat-duty">${esc(duty)}</span> Open seat</span><span class="seat-go">${asked ? '' : `Ask to fly ${icon('chevron')}`}</span></button>`;
+          <span><span class="seat-duty ${dutyClass(duty)}">${esc(duty)}</span> Open seat</span><span class="seat-go">${asked ? '' : `Ask to fly ${icon('chevron')}`}</span></button>`;
   return `<div class="seat-slots">${openSeats(s).map(slot).join('')}</div>`;
 }
 
@@ -117,6 +144,7 @@ function openSeatsCard() {
         <div class="row-main grow">
           <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${needBadge(s)}</div>
           <div class="sub">${esc(s.flight)} · ${when(s.std)} · ${simLocal(s.std)}</div>
+          ${dutyLine(defaultReport(s), s, true)}
           ${crewOf(s)
             .map((r) => `<div class="sub crew-line">${esc(r.duty)} · ${name(r.user_id)}</div>`)
             .join('')}
@@ -165,20 +193,23 @@ function list() {
     .map((r) => ({ r, s: byId.get(r.sector_id) }))
     .sort((a, b) => new Date(a.s.std) - new Date(b.s.std));
   const myRows = mine
-    .map(
-      ({ r, s }) => `
+    .map(({ r, s }, i) => {
+      const prev = mine[i - 1];
+      return `
+      ${prev ? offDuty(prev.s, r.report_at, now) : ''}
       <a class="row ${new Date(s.sta) < now ? 'past' : ''}" href="#/roster/${esc(s.id)}">
         <div class="row-main">
-          <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} <span class="badge warn">${esc(r.duty.toUpperCase())}</span></div>
+          <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${dutyBadge(r.duty)}</div>
           <div class="sub">${esc(s.flight)} · Report <strong>${when(r.report_at)}</strong> · ${simLocal(r.report_at)}</div>
+          ${dutyLine(r.report_at, s)}
           ${r.notes ? `<div class="sub">${esc(r.notes)}</div>` : ''}
         </div>
         <div class="right">
           <div class="row-t">${zulu(s.std)}</div>
           <div class="sub">${zdate(s.std)}</div>
         </div>
-      </a>`,
-    )
+      </a>`;
+    })
     .join('');
 
   let day = '';
@@ -239,7 +270,7 @@ function detail(id) {
       (r) => `
       <div class="row">
         <div class="row-main">
-          <div class="row-t">${name(r.user_id)} <span class="badge warn">${esc(r.duty.toUpperCase())}</span></div>
+          <div class="row-t">${name(r.user_id)} ${dutyBadge(r.duty)}</div>
           <div class="sub">Report <strong>${when(r.report_at)}</strong>${r.notes ? ` · ${esc(r.notes)}` : ''}</div>
         </div>
       </div>`,

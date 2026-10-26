@@ -8,7 +8,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **Dashboard** – a map of the sector being flown with the aeroplane on it, and shows where the aircraft is, its altitude, ground speed, distance to go and estimated arrival, read from the simulator's status API or from VATSIM. Shows your next rostered sector with your duty, report time and a countdown, and warns when a late arrival will push back the following departure.
 - **737 Checklists** – tap-through checklists in two groups: **Normal** from Preflight to Secure, and **Non-normal**, the extracted QRH. Each group lists its checklists down the side with how far through each one is, and there is a "CHECKLIST COMPLETE" footer and a Next button. Works with no connection and keeps the screen awake. An **admin** can reword the normal checklists in the app and add their own – see below.
 - **Schedule** – the official WorldFlight 2026 schedule. Each sector shows when its departure window opens (UTC), the window, block time and validated route. Tapping a sector opens its briefing; admins and dispatchers can add, edit or delete sectors.
-- **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with short-crewed sectors flagged. The cockpit tablets sign in to their own accounts and show the whole team's roster instead.
+- **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with short-crewed sectors flagged. Your own sectors carry the duty length and sign-off time, each seat has its own colour, and your breaks between sectors are drawn in as well. The cockpit tablets sign in to their own accounts and show the whole team's roster instead.
 - **Admin** (shield icon, top right) – where the roster is built: pick a Captain and First Officer for each sector from a dropdown and it saves straight away. Admins also set each person's role here.
 - **Tech Log** – report defects, check them against the built-in MEL, defer them with a restriction, or mark them rectified. The log is shared by the whole team, stays with the aircraft between sectors and shows as a banner on the Dashboard.
 - **MEL** – the 737 Minimum Equipment List as drop-downs (system → item → option) inside the Tech Log: it shows whether the aircraft can go with something inoperative, the conditions, and how long the fix can wait.
@@ -148,6 +148,25 @@ Pilots still read the whole tech log and the MEL on their own phones; they just 
 The duty rules are edited in **Admin → Settings** and apply to the whole team: minimum rest, sectors per duty (one, so everyone rests between sectors), longest duty, sectors per person, the length over which a sector also carries a relief pilot (six hours, so those sectors are rostered with three pilots instead of two; set it to 0 to turn it off), the back-of-clock window how many back-of-clock sectors each person may fly in the event (two) and how far apart they must be (one every two days, so never on consecutive nights), report times, and whether everyone counts as available unless they say otherwise (on by default, so a pilot only marks the sectors they want or cannot fly). Sectors with less than the minimum rest between them count as one duty.
 
 Auto roster is a sensible-rules fill, not a perfect optimiser: it works through the sectors in order, evening out the number of sectors each person flies and the time they spend in each seat, favouring sectors people asked for and keeping a crew together on back-to-back sectors. Expect to adjust a few by hand.
+
+### Reading your own roster
+
+**My Roster** and **Open seats** show, under each sector's number and sign-on
+time, **how long the duty runs and when you sign off** — in Zulu and then in
+sim local (Sydney) time, since that is where you are sitting. Duty is measured
+from signing on to on blocks at the far end, the same two ends the team's
+duty-hours rule measures between, so what you read is what the rule check
+counts.
+
+Each seat has its own colour, so a glance says which one you are in rather
+than only that you are rostered: **red** Captain, **yellow** First Officer,
+**blue** Relief Pilot. An Observer keeps the plain grey badge.
+
+Between two of your own sectors, My Roster draws a yellow **Off duty for 11h
+30m** band with the window it covers, so your breaks are as easy to find as
+your flying. Back-to-back sectors flown in one duty leave no gap, so nothing is
+drawn between them — only a real break shows.
+
 
 ### Accounts
 

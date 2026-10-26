@@ -83,6 +83,14 @@ export function ago(t) {
 
 export const icao = (s) => String(s ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
 
+// Each seat has its own colour, so a glance down a roster says who is flying
+// what rather than only that somebody is: red for the Captain, yellow for the
+// First Officer, blue for a Relief Pilot. An Observer keeps the plain badge.
+const DUTY_CLASS = { Captain: 'capt', 'First Officer': 'fo', 'Relief Pilot': 'relief' };
+export const dutyClass = (duty) => DUTY_CLASS[duty] || '';
+export const dutyBadge = (duty) =>
+  `<span class="badge duty ${dutyClass(duty)}">${esc(String(duty || '').toUpperCase())}</span>`;
+
 export function rerender() {
   window.dispatchEvent(new Event('app:render'));
 }
