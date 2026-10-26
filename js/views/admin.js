@@ -892,7 +892,7 @@ function swapsCard() {
 
 // The toggle between the sector-by-sector list and the Landscape view timeline.
 function rosterToggle() {
-  return `<nav class="seg ops-toggle" aria-label="Roster view">
+  return `<nav class="seg seg-inline" aria-label="Roster view">
     <button type="button" class="${rosterView === 'list' ? 'on' : ''}" data-act="viewList">List</button>
     <button type="button" class="${rosterView === 'timeline' ? 'on' : ''}" data-act="viewTimeline">Landscape</button>
   </nav>`;

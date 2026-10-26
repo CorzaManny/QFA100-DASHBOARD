@@ -2768,14 +2768,17 @@ body.efb .tabs a[data-tab='ctwo'] {
     max-height: calc(100vh - 280px);
   }
 }
-/* The toggle between the status cards and the Live Roster, right under the
-   page title, sized to its own label rather than stretched edge to edge. */
-.ops-toggle {
+/* A .seg sized to its own labels rather than stretched edge to edge: the
+   toggle between the status cards and the Live Roster, right under the page
+   title. Deliberately not called .ops-toggle - that is the fixed ops chat
+   button over on the right edge, and sharing the name once hid and showed
+   the wrong one. */
+.seg-inline {
   display: inline-grid;
   grid-template-columns: repeat(2, auto);
   width: fit-content;
 }
-.ops-toggle button {
+.seg-inline button {
   padding: 0 18px;
 }
 .lr-grid {
