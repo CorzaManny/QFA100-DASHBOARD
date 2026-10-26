@@ -72,10 +72,11 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 13. In another query, paste in [`supabase/ops-chat-notify.sql`](supabase/ops-chat-notify.sql) and press **Run**. This notifies the controller on shift when the flight deck messages them, and the tablets when ops answers. It needs both the file above and notifications.sql, and is optional: without it the chat still dings and badges inside the app.
 14. In another query, paste in [`supabase/ops-call.sql`](supabase/ops-call.sql) and press **Run**. This lets the flight deck and the ops desk call each other in the app: it says who may join the channel that carries the handshake, and sends the notification that tells somebody their app is ringing. Optional, and calling does nothing until it has been run.
 15. In another query, paste in [`supabase/normal-checklists.sql`](supabase/normal-checklists.sql) and press **Run**. This lets an admin reword the normal checklists, reorder them and add their own, from the Checklists page in the app. It is optional; without it the whole team flies the checklists the app ships with and there is nothing to edit.
-16. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-17. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
-18. Push the change to GitHub.
-19. Open the app and **create your own account first**. The first account becomes the admin.
+16. In another query, paste in [`supabase/airport-docs.sql`](supabase/airport-docs.sql) and press **Run**. This lets the briefings show the official WorldFlight pilot briefing and charts for each airport. It is optional; without it the briefings say so and show everything else.
+17. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+18. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
+19. Push the change to GitHub.
+20. Open the app and **create your own account first**. The first account becomes the admin.
 
 Nobody signs themselves up. An admin makes each account in **Admin → People
 and roles → Add a team member**: a name, a role, and a password to pass on. The
@@ -238,6 +239,30 @@ Area control (`_CTR`) is left out on purpose. An enroute sector is not an
 airport station, its frequency moves about as sectors are split and combined,
 and it is often not published at all.
 
+## Official WorldFlight airport briefings
+
+The team controlling each destination publishes its own **pilot briefing** on
+the WorldFlight planning site, often with an **aerodrome chart** and a
+**parking and docking chart** drawn for the event. They are what the
+controllers expect the crew to have read, and they go up over the days leading
+into the week rather than all at once.
+
+The app lists them in two places: on each **sector briefing**, for the
+departure and the arrival together, and on the **airport's own page**. The
+documents are not copied into the app — each one is a link straight to
+WorldFlight's own file, so what opens is always the current version.
+
+The list comes from the planning site's own listing, which does not let a
+browser read it directly, so [`supabase/airport-docs.sql`](supabase/airport-docs.sql)
+has the database read it instead and keep each airport's list for two hours.
+The refresh button asks again straight away. Until that file is run, the
+briefings say so and show everything else.
+
+Names differ from airport to airport (`PILOT BRIEFING VHHH`,
+`VATROC RCTP PILOT BRIEFING AH`, `DUBAI PILOT BRIEF ARRIVALS`) and some
+airports publish several documents while most publish none yet, so nothing is
+guessed: whatever WorldFlight has listed for that airport is what shows.
+
 ## Running late
 
 WorldFlight slips, and a late sector in Indonesia is still late over Canada two days later. The app keeps the published schedule exactly as it is and lays the real running over the top of it.
@@ -334,6 +359,7 @@ The Dashboard can read the aircraft's position, phase, ETA and fuel straight fro
 The **Briefings** tab opens the briefing for the next sector (pick any other from the drop-down, or tap a sector on the **WF Schedule**, which opens straight into its briefing). It is saved in the team database, so everyone sees the same thing:
 
 - **Weather** – the METAR and TAF for both the departure and arrival airports, right there on the page, so a pilot does not have to leave the briefing just to check them. The airport's own page (still reachable from the DEP/ARR briefing buttons) adds runways, who is controlling it on VATSIM, and the team's notes.
+- **Official WorldFlight briefings** – the pilot briefing published by the team controlling each end of the sector, and the aerodrome and parking charts they draw for the event, listed for the departure and the arrival side by side and opened straight from the WorldFlight site. See below.
 - **Destination congestion forecast** – see above.
 - **Flight plan (OFP)** – imported from SimBrief and saved for the whole team. An admin or dispatcher sets the team's one SimBrief username or Pilot ID on the briefing page; until then each person imports from their own account in Settings. A plan for a different sector is refused.
 - **Aircraft status** – open and deferred defects from the tech log, with their restrictions.
@@ -426,6 +452,7 @@ Then open `http://localhost:8000`. (Opening `index.html` by double-clicking will
 - Accounts, schedule and roster: your Supabase project, refreshed every two minutes and whenever the app is reopened. The last copy is kept on the device for use offline.
 - Aircraft position: the simulator status API if configured, otherwise the public [VATSIM data feed](https://data.vatsim.net/v3/vatsim-data.json), refreshed every minute while the Dashboard is open. Without a simulator ETA, the ETA is a straight-line estimate from ground speed.
 - Weather: VATSIM's METAR service.
+- Airport briefings and charts: the official [WorldFlight planning site](https://planning.worldflight.center/), as each controlling team publishes them. Linked, never copied.
 - Flight plans: SimBrief's "latest OFP" service for your username.
 - Schedule: the official [WorldFlight planning site](https://planning.worldflight.center/schedule), as published on 12 October 2026.
 - Airports and runways: [OurAirports](https://ourairports.com/data/) (public domain). Rebuild with `tools/build_airports.py`.

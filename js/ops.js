@@ -8,6 +8,7 @@ import {
   saveBriefing,
   saveSettings,
   fetchTaf,
+  fetchAirportDocs,
   fetchChecklistStatus,
   putNormalChecklists,
   fetchOpsChat,
@@ -924,6 +925,23 @@ export async function fetchTafFor(code) {
   state.taf[code] = { text: String(text).trim(), at: Date.now() };
   save();
   return state.taf[code];
+}
+
+// ---- WorldFlight's airport documents ----
+
+// The documents the team controlling an airport has published on the
+// WorldFlight planning site: their pilot briefing, and often an aerodrome or
+// parking chart drawn for the event. Read through the team database for the
+// same reason as the TAF - the planning site does not let a browser read its
+// own listing - and the documents themselves are opened straight from there.
+// null means supabase/airport-docs.sql has not been run.
+export async function fetchDocsFor(code, force = false) {
+  if (!configured || !getSession()) return null;
+  const list = await fetchAirportDocs(code, force);
+  if (list == null) return null;
+  state.docs[code] = { list: Array.isArray(list) ? list : [], at: Date.now() };
+  save();
+  return state.docs[code];
 }
 
 export async function fetchMetar(code) {

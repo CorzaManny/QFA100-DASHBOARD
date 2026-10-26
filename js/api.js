@@ -364,6 +364,20 @@ export async function fetchTaf(icao) {
   }
 }
 
+// WorldFlight's own documents for an airport - the controlling team's pilot
+// briefing, and any aerodrome or parking charts with it - from
+// supabase/airport-docs.sql. Returns null when that file has not been run, so
+// the app can simply leave them out.
+// force is for the refresh button: it skips the database's two-hour wait.
+export async function fetchAirportDocs(icao, force = false) {
+  try {
+    return await rest('POST', 'rpc/airport_docs', { icao_code: icao, force });
+  } catch (err) {
+    if (/not find|does not exist|404/i.test(err.message)) return null;
+    throw err;
+  }
+}
+
 export const requestPickup = (sectorId, duty) => rest('POST', 'rpc/request_pickup', { sector: sectorId, seat: duty });
 export const withdrawPickup = (pickupId) => rest('POST', 'rpc/withdraw_pickup', { pickup: pickupId });
 export const decidePickup = (pickupId, agree, why = '', report = null) =>

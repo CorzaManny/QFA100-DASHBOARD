@@ -22,11 +22,13 @@ import {
   saveBrief,
   simbriefId,
   syncTeam,
+  fetchDocsFor,
   estimateArrivalDelay,
   delayOf,
   setChosenDelay,
   DELAY_BANDS,
 } from '../ops.js';
+import { docsBlock } from './airports.js';
 
 const WF_SCHEDULE = 'https://planning.worldflight.center/schedule';
 const TEXT_FIELDS = ['notes', 'wf_url', 'wf_notes', 'handover'];
@@ -45,6 +47,10 @@ let collapsed = new Set();
 // as the Airport Briefings page but tracked for two airports at once.
 let tafState = {};
 let tafError = {};
+// The same again for WorldFlight's airport documents, which are read for both
+// airports too (loading/ok/none/off/error).
+let docsState = {};
+let docsError = {};
 
 const isLink = (url) => /^https?:\/\/\S+$/i.test(url || '');
 
@@ -110,6 +116,32 @@ function weatherCard(s) {
   return `
     <section class="card">
       ${collapseHead('weather', `<h2>Weather</h2>${toggleBtn('weather')}`)}
+      ${open ? `<div class="wx-grid">${airport(s.dep, 'DEPARTURE')}${airport(s.arr, 'ARRIVAL')}</div>` : ''}
+    </section>`;
+}
+
+// The official WorldFlight briefing for each end of the sector: the pilot
+// briefing written by the team controlling that airport, and the aerodrome and
+// parking charts they draw for the event. Everything the crew is meant to have
+// read before pushing back is then on this one page.
+function wfDocsCard(s) {
+  const open = isOpen('wfdocs');
+  const airport = (code, label) => `
+    <div class="wx-col">
+      <div class="wx-col-head"><span class="apt">${esc(code)}</span><span class="badge mute">${label}</span></div>
+      ${docsBlock(code, docsState[code], docsError[code])}
+    </div>`;
+  return `
+    <section class="card">
+      ${collapseHead(
+        'wfdocs',
+        `<div><h2>Official WorldFlight briefings</h2>
+          <div class="tiny">Published by the teams controlling each airport</div></div>
+        <div class="head-right">
+          <button class="icon-btn" data-act="docs" aria-label="Refresh">${icon('refresh')}</button>
+          ${toggleBtn('wfdocs')}
+        </div>`,
+      )}
       ${open ? `<div class="wx-grid">${airport(s.dep, 'DEPARTURE')}${airport(s.arr, 'ARRIVAL')}</div>` : ''}
     </section>`;
 }
@@ -423,6 +455,7 @@ export function render(args) {
       </div>
     </section>
     ${weatherCard(s)}
+    ${wfDocsCard(s)}
     ${defectsCard()}
     ${
       prev
@@ -523,12 +556,42 @@ function loadWx(s) {
   }
 }
 
+// WorldFlight's documents for both airports. Uploaded over days rather than
+// minutes, so a list already read is kept for two hours - the same window the
+// database keeps one for - unless the refresh button asks for it again.
+function loadDocs(s, force = false) {
+  for (const code of [s.dep, s.arr]) {
+    const got = state.docs[code];
+    const key = `${code}:docs`;
+    if (wxLoading.has(key)) continue;
+    if (!force && got && Date.now() - got.at <= 2 * 3600000) {
+      docsState[code] = got.list.length ? 'ok' : 'none';
+      continue;
+    }
+    wxLoading.add(key);
+    docsState[code] = 'loading';
+    fetchDocsFor(code, force)
+      .then((read) => {
+        docsState[code] = read == null ? 'off' : read.list.length ? 'ok' : 'none';
+      })
+      .catch((err) => {
+        docsState[code] = 'error';
+        docsError[code] = err.message;
+      })
+      .finally(() => {
+        wxLoading.delete(key);
+        if (currentSectorId() === s.id) rerender();
+      });
+  }
+}
+
 export function mounted(root, args) {
   const s = sectorFor(args);
   if (!s) return;
   const cached = delayOf(s.id);
   if (!delayLoading && (!cached || Date.now() - cached.at > 5 * 60000)) loadDelay(s);
   loadWx(s);
+  loadDocs(s);
 }
 
 async function run(work, done) {
@@ -582,6 +645,12 @@ export const actions = {
     const s = sortedSectors().find((x) => x.id === currentSectorId());
     if (!s || delayLoading) return;
     loadDelay(s);
+    rerender();
+  },
+  docs() {
+    const s = sortedSectors().find((x) => x.id === currentSectorId());
+    if (!s) return;
+    loadDocs(s, true);
     rerender();
   },
   toggleCard(el) {

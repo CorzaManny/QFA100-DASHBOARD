@@ -1,8 +1,8 @@
 // Airport briefings: facts, live METAR, runways, team notes, chart links.
 
 import { state, save } from '../store.js';
-import { esc, ago, icao, icon, zulu, rerender } from '../ui.js';
-import { airport, sortedSectors, upcomingSector, fetchMetar, fetchTafFor, fetchStations } from '../ops.js';
+import { esc, ago, icao, icon, zulu, zdate, rerender } from '../ui.js';
+import { airport, sortedSectors, upcomingSector, fetchMetar, fetchTafFor, fetchStations, fetchDocsFor } from '../ops.js';
 
 // The airport whose team notes are open for editing. They read until then.
 let editing = '';
@@ -10,6 +10,10 @@ let editing = '';
 // has no weather.sql) or error.
 let tafState = '';
 let tafError = '';
+// The same, for WorldFlight's airport documents; off means the database has no
+// airport-docs.sql.
+let docsState = '';
+let docsError = '';
 
 function list() {
   const next = upcomingSector();
@@ -69,6 +73,42 @@ function tafBlock(code) {
   return `<p class="note">${esc(code)} does not publish a TAF.</p>`;
 }
 
+// WorldFlight's own documents for an airport: the pilot briefing written by
+// the team controlling it, and whatever charts they publish alongside it.
+// Shared with the sector Briefing page, so what the last read did is passed in
+// rather than read from this module's own state.
+const DOC_BADGE = { PDF: 'info', IMAGE: 'mute' };
+
+export function docsBlock(code, status, errMessage = '') {
+  const got = state.docs[code];
+  const rows = (got?.list || [])
+    .map((d) => {
+      const sub = [d.scope, d.by && `uploaded by ${d.by}`, d.updated && `updated ${zdate(d.updated)}`]
+        .filter(Boolean)
+        .map((part) => esc(part))
+        .join(' · ');
+      return `<a class="row" href="${esc(d.url)}" target="_blank" rel="noopener">
+        <div class="row-main">
+          <div class="row-t">${esc(d.name)}</div>
+          ${sub ? `<div class="sub">${sub}</div>` : ''}
+        </div>
+        <div class="right">${
+          d.type ? `<span class="badge ${DOC_BADGE[d.type] || 'mute'}">${esc(d.type)}</span> ` : ''
+        }${icon('external')}</div>
+      </a>`;
+    })
+    .join('');
+  if (rows) return `${rows}<div class="tiny">From the WorldFlight planning site · read ${ago(got.at)}</div>`;
+  if (status === 'loading') return '<p class="note">Looking for WorldFlight’s documents…</p>';
+  if (status === 'off') {
+    return '<p class="note">WorldFlight’s airport documents are not switched on for this team yet. An admin runs <code>supabase/airport-docs.sql</code> once, in Supabase.</p>';
+  }
+  if (status === 'error') {
+    return `<p class="note warn">${icon('alert')} Could not read WorldFlight’s documents (${esc(errMessage)}).</p>`;
+  }
+  return `<p class="note">WorldFlight has not published anything for ${esc(code)} yet. The controlling team usually puts their briefing up in the days before the event.</p>`;
+}
+
 // Who is working the airport on VATSIM, and the ATIS they are putting out.
 function vatsimBlock(code) {
   const s = state.stations[code];
@@ -119,6 +159,12 @@ function detail(code) {
         <a class="btn ghost" href="https://charts.navigraph.com/airport/${esc(code)}" target="_blank" rel="noopener">Navigraph Charts ${icon('external')}</a>
         <a class="btn ghost" href="https://chartfox.org/${esc(code)}" target="_blank" rel="noopener">ChartFox ${icon('external')}</a>
       </div>
+    </section>
+    <section class="card list">
+      <div class="card-head"><div><h2>WorldFlight briefing</h2>
+        <div class="tiny">Published by the team controlling ${esc(code)}</div></div>
+        <button class="icon-btn" data-act="docs" aria-label="Refresh WorldFlight documents">${icon('refresh')}</button></div>
+      <div id="wfdocs">${docsBlock(code, docsState, docsError)}</div>
     </section>
     <section class="card">
       <div class="card-head"><h2>Weather</h2>
@@ -186,6 +232,21 @@ async function loadTaf(root, code) {
   if (currentCode() === code && box?.isConnected) box.innerHTML = tafBlock(code);
 }
 
+async function loadDocs(root, code, force = false) {
+  const box = root.querySelector('#wfdocs');
+  docsState = 'loading';
+  docsError = '';
+  if (box?.isConnected) box.innerHTML = docsBlock(code, docsState, docsError);
+  try {
+    const got = await fetchDocsFor(code, force);
+    docsState = got == null ? 'off' : got.list.length ? 'ok' : 'none';
+  } catch (err) {
+    docsState = 'error';
+    docsError = err.message;
+  }
+  if (currentCode() === code && box?.isConnected) box.innerHTML = docsBlock(code, docsState, docsError);
+}
+
 async function loadStations(root, code) {
   const box = root.querySelector('#stations');
   try {
@@ -208,6 +269,11 @@ export function mounted(root, args) {
   if (!taf || Date.now() - taf.at > 15 * 60000) loadTaf(root, code);
   const st = state.stations[code];
   if (!st || Date.now() - st.at > 60000) loadStations(root, code);
+  // Documents are uploaded over days, not minutes, so the list is only reread
+  // after two hours - the same window the database itself keeps one for.
+  const docs = state.docs[code];
+  docsState = docs ? (docs.list.length ? 'ok' : 'none') : '';
+  if (!docs || Date.now() - docs.at > 2 * 3600000) loadDocs(root, code);
 }
 
 export const forms = {
@@ -238,5 +304,8 @@ export const actions = {
   },
   stations(el) {
     loadStations(el.closest('main'), currentCode());
+  },
+  docs(el) {
+    loadDocs(el.closest('main'), currentCode(), true);
   },
 };

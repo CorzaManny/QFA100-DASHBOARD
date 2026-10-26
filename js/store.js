@@ -40,6 +40,7 @@ function defaults() {
     notes: {}, // airport briefing notes by ICAO
     metar: {}, // last METAR by ICAO: { text, at }
     taf: {}, // last TAF by ICAO: { text, at }, read through the team database
+    docs: {}, // WorldFlight's airport documents by ICAO: { list, at }, read through the team database
     stations: {}, // who is controlling an airport on VATSIM: { atis, controllers, at }
     // The ops desk: the controllers' shift roster, who has actually taken the
     // desk, and the thread between the flight deck and whoever that is.
