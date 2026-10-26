@@ -39,6 +39,7 @@ import {
   syncTeam,
 } from '../ops.js';
 import { renderRoster, mountedRoster, rosterActions, rosterChanges } from './liveroster.js';
+import { sendCompany, syncAcars, acarsKnown, acarsReady, acarsOnline, acarsCanPrint, acarsPrinter } from '../acars.js';
 
 // How far ahead the board looks. Beyond this it is planning, not operating.
 const AHEAD_HOURS = 24;
@@ -49,6 +50,10 @@ const name = (id) => esc(person(id)?.display_name || 'Unknown');
 // letting it be pressed twice.
 let busy = '';
 let error = '';
+let note = '';
+// A company message half written. Kept here so a redraw - the live position
+// poll is the usual one - does not take the sentence with it.
+let companyDraft = '';
 // Which of the board's two views is showing: the status cards, or the Live
 // Roster timeline.
 let view = 'board';
@@ -354,7 +359,6 @@ function requests() {
     <section class="card list slot-card short">
       <div class="card-head"><div class="tiny">WAITING FOR YOU</div>
         <span class="badge warn">${swaps.length + pickups.length}</span></div>
-      ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
       ${swapRows}${pickupRows}
       <p class="tiny">Agreeing a swap moves the sector across; agreeing a pickup rosters them in the empty seat. A duty rule it would break is shown, and you can agree anyway.</p>
     </section>`;
@@ -416,6 +420,41 @@ function official() {
 
 // The status cards: everything the board showed before the Landscape view
 // timeline joined it as a second view.
+// Ops to the crew. The datalink itself is worked from the cockpit, but this
+// one message goes the other way, so it lives here rather than on a page ops
+// have no other reason to open. It is not queued for the simulator PC: it is
+// written straight into the window both sides read, and the printer is asked
+// separately, so it works with the sim switched off (see sendCompany in
+// js/acars.js and supabase/acars.sql).
+function company() {
+  // The first read has come back and this database has no ACARS tables, so
+  // there is nothing to send with. Say nothing rather than offer a dead form.
+  if (acarsKnown() && !acarsReady()) return '';
+  const sending = busy === 'company';
+  const online = acarsOnline();
+  return `
+    <section class="card acars-send">
+      <div class="card-head"><h2>Message the flight deck</h2>
+        <span class="badge ${online ? 'ok' : 'mute'}">${online ? 'DATALINK UP' : 'SIM PC OFFLINE'}</span></div>
+      <form class="card-form" data-form="company">
+        <label class="field">ACARS company message
+          <textarea name="message" rows="3" maxlength="900" required
+            placeholder="e.g. SLOT REVISED 1420Z. EXPECT STAND 32 ON ARRIVAL."
+            data-change="companyDraft">${esc(companyDraft)}</textarea></label>
+        <p class="tiny">Up to 900 characters. ${
+          online
+            ? acarsCanPrint() && acarsPrinter().found
+              ? 'Goes to the flight deck ACARS window and asks the receipt printer for a strip.'
+              : 'Goes to the flight deck ACARS window. The printer is unavailable, so a strip cannot be confirmed.'
+            : 'The simulator PC is disconnected. The message is saved for the crew to read in ACARS; it will not print automatically later.'
+        } Company traffic takes 10 to 75 seconds to go through, as it would on the real network.</p>
+        <button class="btn primary" type="submit" ${sending ? 'disabled' : ''}>${
+          sending ? 'Transmitting…' : 'Send to flight deck'
+        }</button>
+      </form>
+    </section>`;
+}
+
 function board(now) {
   return `
     ${
@@ -427,8 +466,11 @@ function board(now) {
     }
     ${aogBanner()}
     ${official()}
+    ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
+    ${note ? `<p class="note ok">${icon('check')} ${esc(note)}</p>` : ''}
     ${summary(now)}
     ${aircraft(now)}
+    ${company()}
     ${requests()}
     ${reports(now)}
     ${crewing(now)}
@@ -493,12 +535,65 @@ export const actions = {
   ...rosterActions,
 };
 
-export const changes = { ...rosterChanges };
+export const changes = {
+  companyDraft(el) {
+    companyDraft = el.value;
+  },
+  ...rosterChanges,
+};
+
+export const forms = {
+  company(data) {
+    if (busy) return;
+    const message = String(data.get('message') || '').trim();
+    if (!message || [...message].length > 900) {
+      error = 'Enter a message of 1 to 900 characters.';
+      note = '';
+      return rerender();
+    }
+    companyDraft = message;
+    busy = 'company';
+    error = '';
+    note = '';
+    rerender();
+    // sendCompany answers with the database's own words rather than throwing,
+    // so a refusal - not ops, nothing typed, too long for one strip - is shown
+    // as it was given.
+    return sendCompany(message)
+      .then((result) => {
+        if (result.ok) {
+          companyDraft = '';
+          note = 'Company message sent to the flight deck.';
+        } else {
+          error = result.error;
+        }
+      })
+      .catch((err) => {
+        error = err.message;
+      })
+      .finally(() => {
+        busy = '';
+        if (onOps()) rerender();
+      });
+  },
+};
 
 // The weather is the only thing the Overview has to go and get; the Live
 // Roster needs its own drag-and-drop wired up once it is in the DOM.
+// The datalink is read once when the board opens, so the composer can say
+// whether the simulator PC is actually there. The board does not sit on the
+// station the way the flight deck's ACARS page does; the send itself reports
+// what really happened either way.
+let acarsRead = false;
+
 export function mounted(root) {
   if (!canEdit()) return;
+  if (!acarsRead) {
+    acarsRead = true;
+    syncAcars()
+      .catch(() => {})
+      .then(() => onOps() && rerender());
+  }
   poll();
   if (view === 'roster') {
     mountedRoster(root);

@@ -15,7 +15,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **Airport Briefings** – runways, elevation, live METAR and TAF, who is controlling the airport on VATSIM with their ATIS, your team's own notes, and links to Navigraph Charts and ChartFox for every airport on the schedule (or any ICAO code).
 - **SimBrief** – opens SimBrief with the next sector filled in, then imports your latest OFP (route, fuel, weights, times). The link already carries extra fuel for any holding or traffic the Briefing expects at the destination.
 - **Stream** – on the flight deck tablets and for ops staff: a muted preview of the team's Twitch stream as the audience sees it, and a list of things worth talking about, half typed in by ops and half worked out from the flight itself. Chat sits in its own panel beside every page on a flight deck tablet.
-- **Ops chat** – a panel beside every page, for the flight deck tablets and ops staff: one thread between the cockpit and whichever operations controller is on shift, with that controller's name at the top of it so the crew know who is answering and the controllers know whose turn it is. Who is on comes from a shift roster kept in **Admin → Ops Desk**, which nobody else sees, and a controller stepping in off the roster can take the desk there. A **Call** button beside the thread puts the two sides on a voice call inside the app: the audio goes straight between the two devices, so nothing is recorded and nothing passes through a server. It rings whoever has the desk (or all three controllers when nobody has it), and both tablets when ops calls them. A message from the other side dings inside the app and notifies the phone of whoever it is for: the controller on shift when the flight deck asks something (all three of them when nobody is on the desk), and both tablets when ops answers. At most one notification per half minute each, however much is being said, sent within about ten seconds, and each person can switch them off in Settings.
+- **Ops chat** – a panel beside every page, for the flight deck tablets, Operations and admins: one thread between the cockpit and whichever operations controller is on shift, with that controller's name at the top of it so the crew know who is answering and the controllers know whose turn it is. Who is on comes from a shift roster kept in **Admin → Ops Desk**, which nobody else sees, and a controller stepping in off the roster can take the desk there. A **Call** button beside the thread puts the two sides on a voice call inside the app: the audio goes straight between the two devices, so nothing is recorded and nothing passes through a server. It rings whoever has the desk (or every controller when nobody has it), and both tablets when ops calls them. A message from the other side dings inside the app and notifies the phone of whoever it is for: the controller on shift when the flight deck asks something (all of them when nobody is on the desk), and both tablets when ops answers. At most one notification per half minute each, however much is being said, sent within about ten seconds, and each person can switch them off in Settings.
 - **Ops board** – for admins, dispatchers and operations: where the aeroplane is and how far behind the day is running, swaps and seat requests with the buttons to settle them, any defect grounding the aircraft, who reports next with live countdowns, which sectors are short of pilots, which still have no flight plan, and the weather at the airports coming up.
 - **Logbook** – the whole route around the world on one map, how far the team has got, and who has flown what, in hours, sectors and miles.
 
@@ -104,6 +104,9 @@ In / Providers → Email**, and switch off **Allow new users to sign up**.
 | Set their own availability | | yes | | | yes | yes |
 | Add, edit and delete sectors | | | | yes | yes | yes |
 | Build the roster, set duties and report times | | | | yes | yes | yes |
+| CTWO+ briefing, and the ACARS datalink station | | | yes | | | |
+| Ops chat and calls with the flight deck | | | yes | yes | | yes |
+| Send the crew a company ACARS message | | | | yes | yes | yes |
 | Change the team's settings and other people's roles | | | | | | yes |
 
 **Operations** is for people who run the event but do not fly it. They can do
@@ -111,6 +114,19 @@ everything a dispatcher can — build the roster, edit the schedule, agree swaps
 and seat pickups, keep the tech log — but they are never on the roster
 themselves, so the app never asks them for availability and never offers them a
 seat. It needs [`supabase/operations-role.sql`](supabase/operations-role.sql).
+
+Three pages are the **flight deck's alone**, so nobody else is given a tab for
+them: the **CTWO+ Briefing**, which the crew tick through item by item with the
+ticks shared between the two tablets, and the **ACARS** datalink station, which
+is worked from the cockpit. The one part of ACARS that belongs to ops — a
+company message to the crew — is on the **Ops Board** instead, under *Message
+the flight deck*. An admin still writes the CTWO+ points, from
+**Admin → Settings → CTWO+ briefing points**.
+
+The **ops chat** panel is the thread between the cockpit tablets and whoever is
+working the ops desk, so only the tablets, **Operations** and **Admin** get its
+icon. A dispatcher builds the roster and the schedule but does not answer the
+flight deck, so they are not in the thread and are never notified about it.
 
 New accounts start as **Awaiting approval** and see nothing; approving one makes it a Pilot. An admin changes roles, or sets someone back to Awaiting approval to remove their access, in **Admin → People and roles**. These rules are enforced by the database, not just by hiding buttons. A forgotten password is reset from **Authentication → Users** in Supabase.
 
@@ -192,6 +208,16 @@ functions that made them.
 ### After updating the app
 
 When a new version changes the database (new roles, new schedule times), run `supabase/schema.sql` and then `supabase/schedule.sql` again in the SQL Editor. Both are safe to re-run and keep your accounts and roster, and re-running the schema does not reset a tablet password you have changed.
+
+A version that changes **who may do what** needs the file that holds that rule
+re-run as well, because the database enforces it rather than taking the app's
+word for it. Dispatchers were taken out of the ops desk in the version that
+moved the ACARS company message to the Ops Board, so run
+[`supabase/ops-chat.sql`](supabase/ops-chat.sql),
+[`supabase/ops-chat-notify.sql`](supabase/ops-chat-notify.sql) and
+[`supabase/ops-call.sql`](supabase/ops-call.sql) again if you had them. Until
+you do, a dispatcher keeps being notified about a thread the app no longer
+gives them. All three are safe to re-run.
 
 ### If the WorldFlight schedule changes
 

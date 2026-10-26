@@ -12,13 +12,15 @@
 --                back everything that has been said
 
 -- Who may see and write in the thread: the cockpit tablets and the ops
--- controllers. Deliberately its own function rather than can_log(), so
--- changing who keeps the tech log never quietly changes who reads the chat.
+-- controllers who work the desk. A dispatcher builds the roster and the
+-- schedule but does not answer the flight deck, so they are not in it.
+-- Deliberately its own function rather than can_log(), so changing who keeps
+-- the tech log never quietly changes who reads the chat.
 create or replace function public.in_ops_chat()
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from public.profiles
-    where id = auth.uid() and role in ('admin', 'dispatcher', 'operations', 'efb')
+    where id = auth.uid() and role in ('admin', 'operations', 'efb')
   );
 $$;
 

@@ -60,12 +60,12 @@ begin
     from public.profiles where id = auth.uid();
 
   if caller_role = 'efb' then
-    -- Whoever has the desk, or all the controllers when nobody has it, so a
-    -- call is never made to an empty chair.
+    -- Whoever has the desk, or every controller when nobody has it, so a
+    -- call is never made to an empty chair. Only the roles that can answer.
     on_desk := public.ops_on_desk();
     for r in
       select id from public.profiles
-      where role in ('admin', 'dispatcher', 'operations')
+      where role in ('admin', 'operations')
         and id <> auth.uid()
         and (on_desk is null or id = on_desk)
     loop

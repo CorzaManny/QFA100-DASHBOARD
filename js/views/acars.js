@@ -17,13 +17,12 @@
 // the bridge. See supabase/acars.sql.
 
 import { esc, zulu, icon, rerender } from '../ui.js';
-import { canEdit, canUseVpilot, currentSector, teamAircraft, teamCallsign } from '../ops.js';
+import { isEfb, currentSector, teamAircraft, teamCallsign } from '../ops.js';
 import {
   watchAcars,
   acarsPicture,
   acarsReady,
   acarsKnown,
-  acarsOnline,
   acarsLive,
   acarsFault,
   acarsAtcUnit,
@@ -33,7 +32,6 @@ import {
   acarsCanPrint,
   acarsTimes,
   sendTelex,
-  sendCompany,
   requestInfo,
   requestPdc,
   logonAtc,
@@ -411,31 +409,13 @@ function sendPanel() {
 
 // ---- The page ----
 
-function companyPanel() {
-  if (!canEdit()) return '';
-  return `<section class="card acars-send">
-    <h2>Message flight deck</h2>
-    <form class="card-form" data-form="company">
-      <label class="field">ACARS company message
-        <textarea name="message" rows="4" maxlength="900" required
-          placeholder="e.g. SLOT REVISED 1420Z. EXPECT STAND 32 ON ARRIVAL."
-          data-change="draft" data-key="company">${esc(draft('company'))}</textarea></label>
-      <p class="tiny">Up to 900 characters. ${
-        acarsOnline()
-          ? acarsCanPrint() && acarsPrinter().found
-            ? 'Sends to the flight deck ACARS window and requests a strip from the receipt printer.'
-            : 'Sends to the flight deck ACARS window. The printer is unavailable, so a strip cannot be confirmed.'
-          : 'The simulator PC is disconnected. The message will be saved for the crew to read in ACARS; it will not print automatically later.'
-      }</p>
-      <button class="btn primary" type="submit" ${busy === 'company' ? 'disabled' : ''}>${busy === 'company' ? 'Sending…' : 'Send to flight deck'}</button>
-    </form>
-  </section>`;
-}
-
 export function render() {
-  if (!canUseVpilot()) {
+  // The station is worked from the cockpit, so the page is a tablet's. Ops
+  // send the crew a company message from the Ops Board instead.
+  if (!isEfb()) {
     return `<section class="card"><h2>ACARS</h2>
-      <p class="note">The datalink is open to the flight deck and ops only.</p></section>`;
+      <p class="note">The datalink station is worked from the flight deck, so it is open to the cockpit tablets only.
+      Ops send the crew a company message from the <a href="#/ops">Ops Board</a>.</p></section>`;
   }
   // No acars.sql in this database: say so rather than showing a dead page.
   if (acarsKnown() && !acarsReady()) {
@@ -450,7 +430,6 @@ export function render() {
       ${awaiting()}
       ${error ? `<p class="note warn acars-error">${icon('alert')} ${esc(error)}</p>` : ''}
       ${note ? `<p class="note ok">${icon('check')} ${esc(note)}</p>` : ''}
-      ${companyPanel()}
       ${stationCard()}
       <section class="card acars-window">
         <div class="card-head"><h2>Messages</h2></div>
@@ -517,6 +496,9 @@ function onPicture(picture) {
 }
 
 export function mounted(root) {
+  // Nothing to watch for an account that is not a tablet: the page is a card
+  // saying so, with no station on it.
+  if (!isEfb()) return;
   // rerender() brings us straight back through here, so this must not start
   // anything: watchAcars() reads immediately, and that read ends in
   // onPicture(), which rerenders. Registering again - or waking the poll
@@ -638,22 +620,6 @@ export const forms = {
       if (result.ok) drafts.delete('request');
       return result;
     }, 'Request sent.');
-  },
-
-  company(data) {
-    if (busy === 'company') return;
-    const message = String(data.get('message') || '').trim();
-    if (!canEdit() || !message || [...message].length > 900) {
-      error = !canEdit() ? 'Only ops can send a company message to the crew.' : 'Enter a message of 1 to 900 characters.';
-      note = '';
-      rerender();
-      return;
-    }
-    doing('company', async () => {
-      const result = await sendCompany(message);
-      if (result.ok) drafts.delete('company');
-      return result;
-    }, 'Sent to the crew.');
   },
 
   telex(data) {

@@ -2722,6 +2722,16 @@ body.editor .tabs a[data-tab='ops'] {
   display: flex;
 }
 
+/* The CTWO+ briefing is worked through in the cockpit, item by item, with the
+   ticks shared between the two tablets. It is a flight-deck tool, so only a
+   tablet is offered it. An admin edits its points from Admin -> Settings. */
+.tabs a[data-tab='ctwo'] {
+  display: none;
+}
+body.efb .tabs a[data-tab='ctwo'] {
+  display: flex;
+}
+
 /* The Live Roster timeline wants more than a normal card column, so the ops
    board alone is let run wider on a screen that has the room. */
 @media (min-width: 900px) {
@@ -4086,13 +4096,14 @@ body.efb.vpilot .tabs a[data-tab='vpilot'] {
    position report are all written to be read in fixed columns, and a
    proportional font turns "FL340" and "133.80" into a guess. */
 
-/* Open to the flight deck and ops only, like the radio - see the
-   body.vpilot rule above. The page and the database both check again. */
+/* The datalink is the flight deck's station: a tablet works it, nobody else
+   has anything to do on it. The one part of it that is ops' - a company
+   message to the crew - is on the Ops Board instead. The page and the
+   database both check again. */
 .tabs a[data-tab='acars'] {
   display: none;
 }
-body.efb.vpilot .tabs a[data-tab='acars'],
-body.editor.vpilot .tabs a[data-tab='acars'] {
+body.efb.vpilot .tabs a[data-tab='acars'] {
   display: flex;
 }
 

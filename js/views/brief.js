@@ -10,6 +10,7 @@ import {
   currentSector,
   crewLabel,
   canEdit,
+  isEfb,
   canSetSimbrief,
   canReport,
   sharedLog,
@@ -458,7 +459,11 @@ export function render(args) {
       ${s.route ? `<pre class="metar">${esc(s.route)}</pre>` : ''}
       ${s.notes ? `<p class="note"><strong>Sector notes:</strong> ${esc(s.notes)}</p>` : ''}
       <div class="btn-row">
-        <a class="btn primary" href="#/ctwo/${esc(s.id)}">Open CTWO+ Briefing</a>
+        ${
+          isEfb()
+            ? `<a class="btn primary" href="#/ctwo/${esc(s.id)}">Open CTWO+ Briefing</a>`
+            : ''
+        }
         <a class="btn ghost" href="#/airports/${esc(s.dep)}">${esc(s.dep)} briefing</a>
         <a class="btn ghost" href="#/airports/${esc(s.arr)}">${esc(s.arr)} briefing</a>
       </div>

@@ -65,13 +65,13 @@ begin
   who := coalesce(nullif(btrim(new.sender), ''), 'Someone');
 
   if sender_role = 'efb' then
-    -- The flight deck is asking. It goes to whoever has the desk, and to all
-    -- three controllers when nobody has it, so a question is never left with
-    -- nobody's name on it.
+    -- The flight deck is asking. It goes to whoever has the desk, and to
+    -- every controller when nobody has it, so a question is never left with
+    -- nobody's name on it. Only the roles that have the panel to answer in.
     on_desk := public.ops_on_desk();
     for r in
       select id from public.profiles
-      where role in ('admin', 'dispatcher', 'operations')
+      where role in ('admin', 'operations')
         and id <> new.user_id
         and (on_desk is null or id = on_desk)
     loop

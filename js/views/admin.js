@@ -63,6 +63,7 @@ import {
   teamAircraft,
   teamSimbrief,
   canSetSimbrief,
+  OPS_DESK_ROLES,
   teamAirframe,
   teamVatsimCid,
   teamSelcal,
@@ -397,8 +398,9 @@ function acarsCard() {
     <form class="card form" data-form="acars">
       <div class="card-head"><h2>ACARS</h2>${badge}</div>
       <p class="note">Hoppie's network, for telex, CPDLC and the receipt printer on the sim PC.
-      The bridge holds the datalink; the flight deck works it from the
-      <a href="#/acars">ACARS</a> page.</p>
+      The bridge holds the datalink and the cockpit tablets work it, so the ACARS page is
+      theirs alone. To send the crew a company message, use
+      <a href="#/ops">Ops Board → Message the flight deck</a>.</p>
 
       ${
         acarsLogon?.configured
@@ -477,7 +479,7 @@ function acarsCard() {
 
 // Who can hold the desk: the people who could answer, which is the same set
 // the chat is open to apart from the tablets.
-const controllers = () => state.people.filter((p) => ['admin', 'dispatcher', 'operations'].includes(p.role));
+const controllers = () => state.people.filter((p) => OPS_DESK_ROLES.includes(p.role));
 
 function deskNowCard() {
   const on = opsOnShift();
@@ -624,6 +626,18 @@ function example() {
   return next ? simbriefPlanUrl(next) : 'No sectors in the schedule yet.';
 }
 
+// The CTWO+ briefing is worked through in the cockpit, so its tab is a
+// tablet's and nobody else is offered it. Its points are still an admin's to
+// write, and this is the way in to them.
+function ctwoCard() {
+  return `
+    <section class="card">
+      <h2>CTWO+ briefing points</h2>
+      <p class="note">The points the crew work through before each departure and arrival - Charts, Terrain, Weather, Operational, Threats. They apply to every sector, and are edited on the briefing itself. The page is the flight deck's, so only a cockpit tablet has it in the nav.</p>
+      <a class="btn ghost" href="#/ctwo">Open the CTWO+ briefing ${icon('chevron')}</a>
+    </section>`;
+}
+
 function rulesPage() {
   // The aeroplane, the duty rules and the stamped times belong to the whole
   // team, so they are an admin's to change rather than a dispatcher's.
@@ -636,6 +650,7 @@ function rulesPage() {
   return `
     ${tabs('rules')}
     ${resetTimesCard()}
+    ${ctwoCard()}
     ${vpilotCard()}
     ${acarsCard()}
     <form class="card form" data-form="bidding">

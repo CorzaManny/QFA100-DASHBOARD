@@ -423,9 +423,14 @@ export async function syncChecklistStatus() {
 // Who the flight deck should be talking to, and the thread they talk in. The
 // shift roster itself is built in Admin; see supabase/ops-chat.sql.
 
-// The cockpit tablets and the ops controllers. Everybody else - pilots reading
-// their own roster, observers - never sees the panel.
-export const canOpsChat = () => ['admin', 'dispatcher', 'operations', 'efb'].includes(me()?.role);
+// The cockpit tablets and the controllers who work the ops desk. A dispatcher
+// builds the roster and the schedule but does not answer the flight deck, so
+// they are left out along with the pilots reading their own roster and the
+// observers; none of them sees the panel at all.
+//
+// This mirrors in_ops_chat() in supabase/ops-chat.sql, which is what actually
+// enforces it - change one and re-run the other.
+export const canOpsChat = () => ['admin', 'operations', 'efb'].includes(me()?.role);
 
 // ---- vPilot ----
 // Who may watch the radio and drive it. The same people who may report a
@@ -439,10 +444,12 @@ export const canOpsChat = () => ['admin', 'dispatcher', 'operations', 'efb'].inc
 // rather than show a radio that answers every press with "not allowed".
 export const canUseVpilot = () => ['admin', 'dispatcher', 'operations', 'pilot', 'efb'].includes(me()?.role);
 
-// Which side of the radio somebody is on. The controllers are one side and the
-// flight deck the other, and that is the basis for the badges in the thread,
-// for which messages make a sound, and for who a call rings.
-export const OPS_DESK_ROLES = ['admin', 'dispatcher', 'operations'];
+// Which side of the thread somebody is on. The controllers are one side and
+// the flight deck the other, and that is the basis for the badges in the
+// thread, for which messages make a sound, for who a call rings, and for who
+// can be put on a shift at all. Everybody here must also be in canOpsChat(),
+// or a question would be sent to somebody with no panel to answer in.
+export const OPS_DESK_ROLES = ['admin', 'operations'];
 export const sideOf = (userId) => (OPS_DESK_ROLES.includes(person(userId)?.role) ? 'ops' : 'deck');
 
 // Who a call from this account should ring: the controller holding the desk if
