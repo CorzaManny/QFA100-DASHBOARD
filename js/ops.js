@@ -165,6 +165,11 @@ export function routeOptions() {
   });
 }
 
+// The run a sector belongs to, or null for the great majority that have no
+// alternative. The choice is offered on each of the run's own sectors rather
+// than gathered up somewhere, but it is still the run that moves.
+export const routeOptionFor = (flight) => routeOptions().find((r) => r.flights.includes(flight)) || null;
+
 // Switching a run over. The database moves every sector of it at once and
 // clears any flight plan imported for the route being left behind; the crew,
 // the report times and the rest of each briefing stay where they are.

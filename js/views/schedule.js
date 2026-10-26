@@ -5,7 +5,7 @@
 import { state } from '../store.js';
 import { saveSector, deleteSector, clearActuals } from '../api.js';
 import { esc, zulu, zdate, span, ago, depWindow, simLocal, isoDate, isoTime, icao, icon, rerender } from '../ui.js';
-import { sortedSectors, currentSector, isMine, canEdit, crewLabel, simbriefPlanUrl, delayOf, syncTeam, scheduleDrift, officialCheck, watchingSchedule, running, canLog, actualOf, rules, routeOptions, chooseRouteLeg, briefingOf } from '../ops.js';
+import { sortedSectors, currentSector, isMine, canEdit, crewLabel, simbriefPlanUrl, delayOf, syncTeam, scheduleDrift, officialCheck, watchingSchedule, running, canLog, actualOf, rules, routeOptionFor, chooseRouteLeg, briefingOf } from '../ops.js';
 import { round5 } from '../running.js';
 import { saveActual } from '../api.js';
 
@@ -87,11 +87,10 @@ function officialChanges() {
 // the whole run over. The crew is rostered on the sector, not on the route, so
 // whoever is flying it flies it either way - which is the point of doing it
 // this way rather than as a second set of sectors.
-function routeOptionCards() {
-  const runs = routeOptions();
-  if (!runs.length) return '';
+function routeOptionCard(run) {
+  if (!run) return '';
   const admin = canEdit();
-  const option = (run, leg) => {
+  const option = (leg) => {
     const on = run.leg === leg;
     const path = run[leg];
     const via = path.slice(1, -1);
@@ -105,34 +104,37 @@ function routeOptionCards() {
           on
             ? '<span class="badge ok">FLYING</span>'
             : admin
-              ? `<button class="btn ghost" data-act="chooseLeg" data-run="${esc(run.id)}" data-leg="${leg}" ${
+              ? `<button class="btn ghost" data-act="chooseLeg" data-flight="${esc(run.flights[0])}" data-leg="${leg}" ${
                   choosing ? 'disabled' : ''
                 }>${choosing === run.id ? 'Switching…' : `Fly route ${leg}`}</button>`
               : ''
         }</div>
       </div>`;
   };
-  return runs
-    .map(
-      (run) => `
+  return `
     <section class="card list opt-card${run.leg === 'mixed' ? ' mixed' : ''}">
       <div class="card-head"><div class="tiny">TWO WAYS ROUND · ${esc(run.flights.join(', '))}</div>
         <span class="badge ${run.leg === 'mixed' ? 'bad' : 'info'}">${
           run.leg === 'mixed' ? 'HALF SWITCHED' : `ROUTE ${run.leg}`
         }</span></div>
-      <p class="note">WorldFlight publishes ${run.sectors.length} sector${run.sectors.length === 1 ? '' : 's'} here two ways round, at the same departure times either way, and the team flies one of them.${
-        admin ? ' The crew already rostered on each sector flies whichever is chosen; an imported flight plan for the route being left behind is dropped.' : ''
+      <p class="note">WorldFlight publishes this one two ways round, at the same departure times either way, and the team flies one of them. ${
+        run.sectors.length > 1
+          ? `It is part of a run of ${run.sectors.length} that has to be flown one way the whole way through, so choosing here moves all of them.`
+          : ''
+      }${
+        admin
+          ? ' The crew already rostered on each sector stays exactly where it is and flies whichever route is chosen; only an imported flight plan for the route being left behind is dropped.'
+          : ''
       }</p>
-      ${option(run, 'A')}
-      ${option(run, 'B')}
+      ${option('A')}
+      ${option('B')}
       ${
         run.leg === 'mixed'
           ? `<p class="note warn">${icon('alert')} These sectors are not all on the same route, so the aeroplane cannot fly them as they stand. Press one of the two above to put the whole run on it.</p>`
           : ''
       }
-    </section>`,
-    )
-    .join('');
+      ${chooseError ? `<p class="note warn">${icon('alert')} ${esc(chooseError)}</p>` : ''}
+    </section>`;
 }
 
 // A one-line pointer, in view mode, to official changes waiting in edit mode.
@@ -197,10 +199,7 @@ function list(editing) {
             ? '<a class="btn ghost" href="#/schedule/edit">Edit</a>'
             : ''
       }</div>
-    ${editing ? officialChanges() : changesHint()}
-    ${chooseError ? `<p class="note warn">${icon('alert')} ${esc(chooseError)}</p>` : ''}
-    ${routeOptionCards()}
-    ${editing ? '<p class="tiny center">Tap a sector to change it.</p>' : ''}
+    ${editing ? `${officialChanges()}<p class="tiny center">Tap a sector to change it.</p>` : changesHint()}
     <section class="card list">${rows || '<p class="note">No sectors in the schedule yet.</p>'}</section>
     <p class="tiny center">Times are Zulu, with sim local (Sydney) time under each sector. WorldFlight sectors show when the departure window opens, then the window and block time.${
       run.trusted && run.late ? ' A second time under a departure is what it is really expected to be, worked out from the times stamped on the flight deck.' : ''
@@ -279,21 +278,7 @@ function view(s) {
       ${s.route ? `<h3>Route</h3><p class="mel-text">${esc(s.route)}</p>` : ''}
       ${s.notes ? `<h3>Notes</h3><p class="mel-text">${esc(s.notes)}</p>` : ''}
     </section>
-    ${
-      s.optB
-        ? `<section class="card">
-            <div class="card-head"><h2>Two ways round</h2><span class="badge info">ROUTE ${esc(s.leg)}</span></div>
-            <p class="note">WorldFlight publishes this sector twice, at the same departure time either way. The team is flying route ${esc(
-              s.leg,
-            )}, ${esc(s.leg === 'B' ? `${s.optB.dep} → ${s.optB.arr}` : `${s.optA.dep} → ${s.optA.arr}`)}. The crew below flies it whichever route is chosen.</p>
-            <div class="kvs">
-              ${kv('Route A', esc(`${s.optA.dep} → ${s.optA.arr}`))}
-              ${kv('Route B', esc(`${s.optB.dep} → ${s.optB.arr}`))}
-            </div>
-            ${canEdit() ? '<a class="btn ghost" href="#/schedule/edit">Choose the route on the schedule</a>' : ''}
-          </section>`
-        : ''
-    }
+    ${routeOptionCard(routeOptionFor(s.flight))}
     ${actualsCard(s)}
     <section class="card">
       <h2>Crew</h2>
@@ -493,7 +478,7 @@ export const actions = {
   },
   // Put a whole run of alternative sectors on route A or route B.
   async chooseLeg(el) {
-    const run = routeOptions().find((r) => r.id === el.dataset.run);
+    const run = routeOptionFor(el.dataset.flight);
     const leg = el.dataset.leg;
     if (!run || choosing) return;
     const path = run[leg].join(' → ');
