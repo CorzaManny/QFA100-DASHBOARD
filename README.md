@@ -73,10 +73,11 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 14. In another query, paste in [`supabase/ops-call.sql`](supabase/ops-call.sql) and press **Run**. This lets the flight deck and the ops desk call each other in the app: it says who may join the channel that carries the handshake, and sends the notification that tells somebody their app is ringing. Optional, and calling does nothing until it has been run.
 15. In another query, paste in [`supabase/normal-checklists.sql`](supabase/normal-checklists.sql) and press **Run**. This lets an admin reword the normal checklists, reorder them and add their own, from the Checklists page in the app. It is optional; without it the whole team flies the checklists the app ships with and there is nothing to edit.
 16. In another query, paste in [`supabase/airport-docs.sql`](supabase/airport-docs.sql) and press **Run**. This lets the briefings show the official WorldFlight pilot briefing and charts for each airport. It is optional; without it the briefings say so and show everything else.
-17. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
-18. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
-19. Push the change to GitHub.
-20. Open the app and **create your own account first**. The first account becomes the admin.
+17. In another query, paste in [`supabase/route-options.sql`](supabase/route-options.sql) and press **Run**, then run [`supabase/worldflight.sql`](supabase/worldflight.sql) again (or re-run `supabase/schedule.sql`) so the alternatives are read in. This is the handful of sectors WorldFlight publishes two ways round, with a button for an admin to choose which way the team flies. It is optional; without it the app shows the published route only.
+18. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
+19. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
+20. Push the change to GitHub.
+21. Open the app and **create your own account first**. The first account becomes the admin.
 
 Nobody signs themselves up. An admin makes each account in **Admin → People
 and roles → Add a team member**: a name, a role, and a password to pass on. The
@@ -178,6 +179,47 @@ Nothing is applied to the database on its own, so a change to the official progr
 The Schedule page says when the site was last read ("Read from the WorldFlight site 36m ago"), and if a check fails it says so and why, rather than going quiet — the copy it read before that is kept and used. If WorldFlight ever rebuilds the page, the check fails loudly in that line instead of writing nonsense into the table.
 
 Until that SQL is run, the app compares against the copy it was built with (`js/data/schedule.js`), which is rebuilt by `tools/build_schedule.py`. To read the site by hand at any time, run `select public.refresh_official_schedule();` in the SQL Editor.
+
+### Sectors with two routes
+
+A few sectors each year are published twice: the same departure window and the
+same block time, but two ways round, and each team flies one of them. In 2026
+there are two such runs:
+
+| | Route A | Route B |
+| --- | --- | --- |
+| WF2619–WF2621 | SKBO → TBPB → GVAC → DNMM | SKBO → TTPP → GVSV → DNMM |
+| WF2631–WF2632 | EINN → EGSS → EHAM | EINN → EGKB → EHAM |
+
+Both routes live on the one sector, rather than as a second set of sectors, and
+that is the whole trick: **the crew is rostered on the sector, so whoever is
+rostered flies it whichever way round the team goes.** Switching a run over
+keeps every roster entry, report time, note and handover exactly where it is —
+the aeroplane is simply going somewhere else.
+
+On the **WF Schedule** a card shows both routes with the one being flown marked
+**FLYING**, and each affected sector in the list carries a `ROUTE A` or
+`ROUTE B` badge. An admin or dispatcher presses **Fly route B** (or A) and the
+whole run goes over at once, after a confirmation naming the airports. It has to
+be the whole run: flying WF2619 to TTPP and then WF2620 out of TBPB would leave
+the aeroplane in the wrong ocean, so the app works out which sectors belong to a
+run — by following where both routes join up — and the database moves them
+together or not at all.
+
+Switching does drop any **imported flight plan** on the sectors that moved: it
+was built for the other route's airports, so leaving it there would brief a
+crew on a flight they are no longer making. The confirmation says how many will
+go, and they are one press to import again. Nothing else in the briefing is
+touched.
+
+Everybody else sees which way the team is going: the sector's briefing says
+"Route B of two" and names the other way round. The congestion forecast
+re-checks itself against the new destination.
+
+Editing one of these sectors by hand edits **route A**; route B is
+WorldFlight's own and is read from their site. Switching the route is the
+button, not the form.
+
 
 ### Giving a sector away
 
@@ -362,6 +404,7 @@ The **Briefings** tab opens the briefing for the next sector (pick any other fro
 - **Official WorldFlight briefings** – the pilot briefing published by the team controlling each end of the sector, and the aerodrome and parking charts they draw for the event, listed for the departure and the arrival side by side and opened straight from the WorldFlight site. See below.
 - **Destination congestion forecast** – see above.
 - **Flight plan (OFP)** – imported from SimBrief and saved for the whole team. An admin or dispatcher sets the team's one SimBrief username or Pilot ID on the briefing page; until then each person imports from their own account in Settings. A plan for a different sector is refused.
+- **Which route**, for the few sectors WorldFlight publishes two ways round: the briefing says which one the team is flying and what the other way is. See above.
 - **Aircraft status** – open and deferred defects from the tech log, with their restrictions.
 - **Handover** – what the previous sector's crew left for this one, and a box for this crew to leave theirs.
 - **Team notes**, and **WorldFlight's page and briefing notes** for the sector (paste the address and their notes).
@@ -454,6 +497,6 @@ Then open `http://localhost:8000`. (Opening `index.html` by double-clicking will
 - Weather: VATSIM's METAR service.
 - Airport briefings and charts: the official [WorldFlight planning site](https://planning.worldflight.center/), as each controlling team publishes them. Linked, never copied.
 - Flight plans: SimBrief's "latest OFP" service for your username.
-- Schedule: the official [WorldFlight planning site](https://planning.worldflight.center/schedule), as published on 12 October 2026.
+- Schedule: the official [WorldFlight planning site](https://planning.worldflight.center/schedule), as published on 26 October 2026, including the alternative routes for the sectors offering two.
 - Airports and runways: [OurAirports](https://ourairports.com/data/) (public domain). Rebuild with `tools/build_airports.py`.
 - Charts are not embedded; Navigraph's licence does not allow that, so the app links out to the official sites.

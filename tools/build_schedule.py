@@ -27,14 +27,15 @@ def minutes(hhmm):
 
 
 sectors = []
+alternatives = {}
 prev_std = None
 for row in re.findall(r"<tr class=\"[^\"]*\">(.*?)</tr>", page, re.S):
-    # A sector with an alternative (two routes a pilot can choose between)
-    # lists a second row suffixed ".A"/".B", e.g. "WF2619.B" - left out of the
-    # character class on purpose, so only the page's own default (unsuffixed)
-    # choice is read, the same one sector number the team actually flies.
+    # A sector with an alternative - two ways round the same pair of airports,
+    # of which a team flies one - is published twice: the unsuffixed row, and a
+    # second one suffixed ".B", e.g. "WF2619.B". Both are read; the ".B" one
+    # becomes that sector's option B, so the app can offer the team the choice.
     btn = re.search(
-        r'data-from="(\w{4})" data-to="(\w{4})" data-wf="(\w+)" data-date="([^"]+)" data-dep="(\d\d:\d\d)" data-block="(\d\d:\d\d)"',
+        r'data-from="(\w{4})" data-to="(\w{4})" data-wf="([\w.]+)" data-date="([^"]+)" data-dep="(\d\d:\d\d)" data-block="(\d\d:\d\d)"',
         row,
     )
     if not btn:
@@ -46,6 +47,21 @@ for row in re.findall(r"<tr class=\"[^\"]*\">(.*?)</tr>", page, re.S):
     start, end = re.search(r'data-kind="window" data-utc="(\d\d:\d\d)\D(\d\d:\d\d)"', row).groups()
     length = (minutes(end) - minutes(start)) % 1440
 
+    route = ""
+    link = re.search(r'dispatch\.simbrief\.com/options/custom\?([^"]+)"', row)
+    if link:
+        route = urllib.parse.parse_qs(html.unescape(link.group(1))).get("route", [""])[0]
+
+    # "WF2619.B" is option B of WF2619; a page that labelled the first choice
+    # ".A" rather than leaving it bare is read the same way. Option B departs at
+    # the same time and blocks the same, so only where it goes and how it gets
+    # there is worth keeping.
+    if wf.endswith(".B"):
+        alternatives[wf[:-2]] = {"alt_dep": dep, "alt_arr": arr, "alt_route": route}
+        continue
+    if wf.endswith(".A"):
+        wf = wf[:-2]
+
     # data-date and data-dep describe the middle of the window (the visible Date
     # column shows the day the window opens, which can be the day before).
     middle = datetime(year, MONTHS.index(month) + 1, int(day), tzinfo=timezone.utc) + timedelta(minutes=minutes(dep_time))
@@ -53,11 +69,6 @@ for row in re.findall(r"<tr class=\"[^\"]*\">(.*?)</tr>", page, re.S):
     assert std.strftime("%H:%M") == start, (wf, std, start)
     assert prev_std is None or std > prev_std, (wf, std, prev_std)
     prev_std = std
-
-    route = ""
-    link = re.search(r'dispatch\.simbrief\.com/options/custom\?([^"]+)"', row)
-    if link:
-        route = urllib.parse.parse_qs(html.unescape(link.group(1))).get("route", [""])[0]
 
     sectors.append(
         {
@@ -70,6 +81,12 @@ for row in re.findall(r"<tr class=\"[^\"]*\">(.*?)</tr>", page, re.S):
             "route": route,
         }
     )
+
+for sector in sectors:
+    alt = alternatives.pop(sector["flight"], None)
+    if alt:
+        sector.update(alt)
+assert not alternatives, "alternative with no sector of its own: %s" % sorted(alternatives)
 
 with open(out_path, "w", encoding="utf-8") as f:
     f.write("// Official WorldFlight %d schedule, from https://planning.worldflight.center/schedule\n" % year)
@@ -85,11 +102,17 @@ if len(sys.argv) > 4:
     with open(sys.argv[4], "w", encoding="utf-8") as f:
         f.write("-- Official WorldFlight %d schedule. Run after schema.sql in the Supabase SQL Editor.\n" % year)
         f.write("-- Safe to run again: it updates times and routes and keeps the roster.\n\n")
-        f.write("insert into public.sectors (flight, dep, arr, std, sta, dep_window_min, route) values\n")
+        f.write("-- The alternative routes need supabase/route-options.sql to have been run first.\n\n")
+        f.write("insert into public.sectors\n  (flight, dep, arr, std, sta, dep_window_min, route, alt_dep, alt_arr, alt_route) values\n")
+        maybe = lambda v: q(v) if v else "null"
         f.write(",\n".join(
-            "  (%s, %s, %s, %s, %s, %d, %s)" % (q(s["flight"]), q(s["dep"]), q(s["arr"]), q(s["std"]), q(s["sta"]), s["window"], q(s["route"]))
+            "  (%s, %s, %s, %s, %s, %d, %s, %s, %s, %s)" % (
+                q(s["flight"]), q(s["dep"]), q(s["arr"]), q(s["std"]), q(s["sta"]), s["window"], q(s["route"]),
+                maybe(s.get("alt_dep")), maybe(s.get("alt_arr")), q(s.get("alt_route", "")),
+            )
             for s in sectors
         ))
-        f.write("\non conflict (flight) do update set\n  dep = excluded.dep, arr = excluded.arr, std = excluded.std, sta = excluded.sta,\n  dep_window_min = excluded.dep_window_min, route = excluded.route;\n")
+        f.write("\non conflict (flight) do update set\n  dep = excluded.dep, arr = excluded.arr, std = excluded.std, sta = excluded.sta,\n  dep_window_min = excluded.dep_window_min, route = excluded.route,\n  alt_dep = excluded.alt_dep, alt_arr = excluded.alt_arr, alt_route = excluded.alt_route;\n")
 
-print(len(sectors), "sectors", sectors[0]["std"], "->", sectors[-1]["sta"])
+print(len(sectors), "sectors", sectors[0]["std"], "->", sectors[-1]["sta"],
+      "|", sum(1 for s in sectors if s.get("alt_dep")), "with an alternative route")

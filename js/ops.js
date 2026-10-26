@@ -9,6 +9,9 @@ import {
   saveSettings,
   fetchTaf,
   fetchAirportDocs,
+  withRouteOptions,
+  hasRouteOptions,
+  setRouteLeg,
   fetchChecklistStatus,
   putNormalChecklists,
   fetchOpsChat,
@@ -58,13 +61,17 @@ export function sortedSectors() {
   return [...state.sectors].sort(byStd);
 }
 
+// The bundled copy, put into the same shape the database rows come back in, so
+// the alternative routes read the same whichever source the schedule came from.
+const BUNDLED = OFFICIAL_SCHEDULE.map((s) => withRouteOptions({ ...s, leg: 'A' }));
+
 // The official WorldFlight schedule. The database re-reads
 // planning.worldflight.center every six hours and keeps a copy (see
 // supabase/worldflight.sql), so the app follows the real programme without
 // anyone running anything. Until that is set up, the copy the app ships with
 // is used instead. Nothing is applied to the team's schedule automatically: an
 // admin sees what differs and presses the button.
-export const officialSchedule = () => (state.official?.length ? state.official : OFFICIAL_SCHEDULE);
+export const officialSchedule = () => (state.official?.length ? state.official : BUNDLED);
 
 // When the database last read the WorldFlight site, and whether it worked.
 // null when this database is not watching it.
@@ -86,19 +93,85 @@ export function scheduleDrift() {
       continue;
     }
     const fields = [];
-    if (s.dep !== o.dep) fields.push({ what: 'Departure airport', was: s.dep, now: o.dep });
-    if (s.arr !== o.arr) fields.push({ what: 'Arrival airport', was: s.arr, now: o.arr });
+    // Compared option by option, never against whichever one the team has
+    // chosen to fly: WorldFlight publishes both, so flying B is not a change
+    // to put right.
+    if (s.optA.dep !== o.optA.dep) fields.push({ what: 'Departure airport', was: s.optA.dep, now: o.optA.dep });
+    if (s.optA.arr !== o.optA.arr) fields.push({ what: 'Arrival airport', was: s.optA.arr, now: o.optA.arr });
+    if ((s.optA.route || '') !== (o.optA.route || '')) {
+      fields.push({ what: 'Route', was: s.optA.route || 'none', now: o.optA.route || 'none', long: true });
+    }
+    // Only where the database can hold an alternative; otherwise it could
+    // never be applied and the schedule would read as changed for ever.
+    if (hasRouteOptions()) {
+      const altWas = s.optB ? `${s.optB.dep} → ${s.optB.arr}` : 'none';
+      const altNow = o.optB ? `${o.optB.dep} → ${o.optB.arr}` : 'none';
+      if (altWas !== altNow) fields.push({ what: 'Alternative route', was: altWas, now: altNow });
+      else if (s.optB && (s.optB.route || '') !== (o.optB.route || '')) {
+        fields.push({ what: 'Alternative route', was: s.optB.route || 'none', now: o.optB.route || 'none', long: true });
+      }
+    }
     if (!sameTime(s.std, o.std)) fields.push({ what: 'Departs', was: s.std, now: o.std, time: true });
     if (!sameTime(s.sta, o.sta)) fields.push({ what: 'Arrives', was: s.sta, now: o.sta, time: true });
     if ((s.window || 0) !== (o.window || 0)) {
       fields.push({ what: 'Departure window', was: `${s.window || 0} min`, now: `${o.window || 0} min` });
     }
-    if ((s.route || '') !== (o.route || '')) fields.push({ what: 'Route', was: s.route || 'none', now: o.route || 'none', long: true });
     if (fields.length) changed.push({ sector: s, official: o, fields });
   }
   // Sectors the team has added themselves are left alone, only pointed out.
   const extra = state.sectors.filter((s) => !official.has(s.flight));
   return { added, changed, extra, total: added.length + changed.length };
+}
+
+// ---- Alternative routes ----
+
+// The runs of sectors WorldFlight publishes two ways round, and which way the
+// team is flying each of them. In 2026 there are two: SKBO to DNMM either via
+// TBPB and GVAC or via TTPP and GVSV, and EINN to EHAM either via EGSS or EGKB.
+//
+// A run has to be flown one way or the other all through. Taking WF2619 to
+// TTPP and then WF2620 out of TBPB would leave the aeroplane in the wrong
+// ocean, so sectors are gathered into a run while both ways round still join
+// up end to end, and the choice is made for the run rather than the sector.
+export function routeOptions() {
+  const runs = [];
+  let run = null;
+  for (const s of sortedSectors()) {
+    if (!s.optB) {
+      run = null;
+      continue;
+    }
+    const prev = run?.at(-1);
+    if (prev && prev.optA.arr === s.optA.dep && prev.optB.arr === s.optB.dep) {
+      run.push(s);
+      continue;
+    }
+    run = [s];
+    runs.push(run);
+  }
+  return runs.map((sectors) => {
+    const path = (key) => [sectors[0][key].dep, ...sectors.map((s) => s[key].arr)];
+    const legs = new Set(sectors.map((s) => s.leg));
+    return {
+      id: sectors[0].flight,
+      flights: sectors.map((s) => s.flight),
+      sectors,
+      // 'mixed' should not happen - the whole run goes over in one call - but
+      // it is shown rather than hidden if something ever leaves it half done.
+      leg: legs.size === 1 ? [...legs][0] : 'mixed',
+      A: path('optA'),
+      B: path('optB'),
+    };
+  });
+}
+
+// Switching a run over. The database moves every sector of it at once and
+// clears any flight plan imported for the route being left behind; the crew,
+// the report times and the rest of each briefing stay where they are.
+export async function chooseRouteLeg(flights, leg) {
+  const moved = await setRouteLeg(flights, leg);
+  await syncTeam();
+  return moved;
 }
 
 // ---- Accounts and roster ----

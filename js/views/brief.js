@@ -445,6 +445,15 @@ export function render(args) {
         ${kv('Block time', span(new Date(s.sta) - new Date(s.std)))}
         ${kv('Sim local', esc(simLocal(s.std)))}
       </div>
+      ${
+        s.optB
+          ? `<p class="note"><strong>Route ${esc(s.leg)} of two.</strong> WorldFlight publishes this sector two ways round and the team is flying ${esc(
+              `${s.dep} → ${s.arr}`,
+            )}. The other way is ${esc(
+              s.leg === 'B' ? `${s.optA.dep} → ${s.optA.arr}` : `${s.optB.dep} → ${s.optB.arr}`,
+            )}; an admin or dispatcher chooses on the WF Schedule.</p>`
+          : ''
+      }
       <p class="note"><strong>Crew:</strong> ${esc(crewLabel(s))}</p>
       ${s.route ? `<pre class="metar">${esc(s.route)}</pre>` : ''}
       ${s.notes ? `<p class="note"><strong>Sector notes:</strong> ${esc(s.notes)}</p>` : ''}
@@ -589,7 +598,10 @@ export function mounted(root, args) {
   const s = sectorFor(args);
   if (!s) return;
   const cached = delayOf(s.id);
-  if (!delayLoading && (!cached || Date.now() - cached.at > 5 * 60000)) loadDelay(s);
+  // A forecast worked out for the other way round this sector is about the
+  // wrong airport, so it is re-checked however fresh it is.
+  const stale = cached && cached.dest !== s.arr;
+  if (!delayLoading && (!cached || stale || Date.now() - cached.at > 5 * 60000)) loadDelay(s);
   loadWx(s);
   loadDocs(s);
 }

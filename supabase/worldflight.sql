@@ -26,6 +26,14 @@ create table if not exists public.official_schedule (
   route          text not null default ''
 );
 
+-- Some sectors are published twice: WorldFlight offers two ways round and the
+-- team flies one of them. The unsuffixed row is option A and goes in the
+-- columns above; the ".B" row beside it is option B and goes in these. Null
+-- means that sector has only one route. See supabase/route-options.sql.
+alter table public.official_schedule add column if not exists alt_dep text;
+alter table public.official_schedule add column if not exists alt_arr text;
+alter table public.official_schedule add column if not exists alt_route text not null default '';
+
 -- One row saying when the check last ran and whether it worked, so the app can
 -- say "checked 20 minutes ago" and show a problem rather than going quiet.
 create table if not exists public.official_schedule_check (
@@ -90,6 +98,8 @@ declare
   sector  text[];
   window_ text[];
   link    text[];
+  flight_ text;     -- the sector number with any ".A"/".B" suffix taken off
+  variant text;     -- 'A' (the row as published) or 'B' (the alternative)
   year_   integer;
   month_  integer;
   open_   integer;   -- minutes past midnight the departure window opens
@@ -112,17 +122,24 @@ begin
   drop table if exists pg_temp.wf_new;
   create temporary table pg_temp.wf_new (like public.official_schedule including all) on commit drop;
 
+  -- The ".B" rows, held aside and attached to their own sector after the loop,
+  -- so the order the page happens to list them in does not matter.
+  drop table if exists pg_temp.wf_alt;
+  create temporary table pg_temp.wf_alt (
+    flight text primary key, dep text, arr text, route text
+  ) on commit drop;
+
   -- One table row per sector; everything needed is in the details button and
   -- the departure window beside it.
   foreach chunk in array string_to_array(page, '<tr ')
   loop
-    -- A sector with an alternative (two routes a pilot can choose between)
-    -- lists a second row suffixed ".A"/".B", e.g. "WF2619.B" - left out of the
-    -- character class on purpose, so only the page's own default (unsuffixed)
-    -- choice is read, the same one sector number the team actually flies.
+    -- A sector with an alternative (two ways round the same pair of airports)
+    -- is published twice: the unsuffixed row, and a second suffixed ".B", e.g.
+    -- "WF2619.B". Both are read - the suffix is in the character class - and
+    -- the ".B" one is kept aside below as that sector's option B.
     sector := regexp_match(
       chunk,
-      'data-from="([A-Z0-9]{4})" data-to="([A-Z0-9]{4})" data-wf="([A-Za-z0-9]+)" ' ||
+      'data-from="([A-Z0-9]{4})" data-to="([A-Z0-9]{4})" data-wf="([A-Za-z0-9.]+)" ' ||
       'data-date="[A-Za-z]+ ([0-9]{1,2})[a-z]* ([A-Za-z]{3})" ' ||
       'data-dep="([0-9]{2}):([0-9]{2})" data-block="([0-9]{2}):([0-9]{2})"'
     );
@@ -136,6 +153,17 @@ begin
     month_ := array_position(months, initcap(sector[5]));
     continue when month_ is null;
 
+    -- "WF2619.B" is option B of WF2619. A page that ever labelled the first
+    -- choice ".A" rather than leaving it bare is read the same way.
+    flight_ := sector[3];
+    variant := 'A';
+    if flight_ ~ '\.B$' then
+      variant := 'B';
+      flight_ := left(flight_, -2);
+    elsif flight_ ~ '\.A$' then
+      flight_ := left(flight_, -2);
+    end if;
+
     -- The page publishes a window rather than a departure time, and data-dep
     -- is the middle of it, so the window opens half its length earlier.
     open_ := window_[1]::integer * 60 + window_[2]::integer;
@@ -146,9 +174,18 @@ begin
 
     link := regexp_match(chunk, 'simbrief\.com/options/custom\?[^"]*route=([^&"]*)');
 
+    -- Option B flies between different airports at the same times, so only
+    -- where it goes and how it gets there is worth keeping.
+    if variant = 'B' then
+      insert into pg_temp.wf_alt (flight, dep, arr, route)
+      values (flight_, sector[1], sector[2], coalesce(public.url_decode(link[1]), ''))
+      on conflict (flight) do nothing;
+      continue;
+    end if;
+
     insert into pg_temp.wf_new (flight, dep, arr, std, sta, dep_window_min, route)
     values (
-      sector[3], sector[1], sector[2], std_,
+      flight_, sector[1], sector[2], std_,
       std_ + make_interval(hours => sector[8]::integer, mins => sector[9]::integer),
       nullif(wide, 0),
       coalesce(public.url_decode(link[1]), '')
@@ -156,16 +193,24 @@ begin
     on conflict (flight) do nothing;
   end loop;
 
+  update pg_temp.wf_new n
+  set alt_dep = a.dep, alt_arr = a.arr, alt_route = a.route
+  from pg_temp.wf_alt a
+  where a.flight = n.flight;
+
   select count(*) into found from pg_temp.wf_new;
   if found = 0 then
     raise exception 'no sectors found on the page; it may have been rebuilt';
   end if;
 
-  insert into public.official_schedule as o (flight, dep, arr, std, sta, dep_window_min, route)
-  select flight, dep, arr, std, sta, dep_window_min, route from pg_temp.wf_new
+  insert into public.official_schedule as o
+    (flight, dep, arr, std, sta, dep_window_min, route, alt_dep, alt_arr, alt_route)
+  select flight, dep, arr, std, sta, dep_window_min, route, alt_dep, alt_arr, alt_route
+  from pg_temp.wf_new
   on conflict (flight) do update set
     dep = excluded.dep, arr = excluded.arr, std = excluded.std, sta = excluded.sta,
-    dep_window_min = excluded.dep_window_min, route = excluded.route;
+    dep_window_min = excluded.dep_window_min, route = excluded.route,
+    alt_dep = excluded.alt_dep, alt_arr = excluded.alt_arr, alt_route = excluded.alt_route;
   delete from public.official_schedule where flight not in (select flight from pg_temp.wf_new);
 
   update public.official_schedule_check

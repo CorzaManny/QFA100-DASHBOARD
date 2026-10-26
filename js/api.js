@@ -201,17 +201,51 @@ async function rest(method, path, body, prefer) {
 
 const id = (v) => encodeURIComponent(v);
 
-const toSector = (r) => ({
-  id: r.id,
-  flight: r.flight,
-  dep: r.dep,
-  arr: r.arr,
-  std: r.std,
-  sta: r.sta,
-  window: r.dep_window_min || 0,
-  route: r.route || '',
-  notes: r.notes || '',
-});
+// False until a sectors row arrives carrying the alternative-route columns,
+// which is how the app knows supabase/route-options.sql has been run. Until
+// then those columns are left off anything written back, so a database that
+// has not had the file still takes official schedule changes.
+let routeColumns = false;
+export const hasRouteOptions = () => routeColumns;
+
+// A few sectors are published two ways round and the team flies one of them
+// (see supabase/route-options.sql). Both live on the one row: dep/arr/route is
+// option A, alt_dep/alt_arr/alt_route is option B, and leg says which is being
+// flown. The app wants that decided, so dep/arr/route here are the route the
+// aeroplane is actually taking, with both options kept alongside for the
+// schedule editor and for comparing against WorldFlight's own programme.
+//
+// Everything downstream - the roster, the briefing, the weather, the congestion
+// forecast - therefore needs to know nothing about any of this.
+export function withRouteOptions(r) {
+  const optA = { dep: r.dep, arr: r.arr, route: r.route || '' };
+  const optB = r.alt_dep && r.alt_arr ? { dep: r.alt_dep, arr: r.alt_arr, route: r.alt_route || '' } : null;
+  const leg = optB && r.leg === 'B' ? 'B' : 'A';
+  const flying = leg === 'B' ? optB : optA;
+  return { ...r, dep: flying.dep, arr: flying.arr, route: flying.route, leg, optA, optB };
+}
+
+const ALT_FIELDS = ['alt_dep', 'alt_arr', 'alt_route', 'leg'];
+
+const toSector = (r) => {
+  if ('alt_dep' in r) routeColumns = true;
+  return withRouteOptions({
+    id: r.id,
+    flight: r.flight,
+    dep: r.dep,
+    arr: r.arr,
+    std: r.std,
+    sta: r.sta,
+    window: r.dep_window_min || 0,
+    route: r.route || '',
+    notes: r.notes || '',
+    // null and 'A' for a database that has not been given route-options.sql yet.
+    alt_dep: r.alt_dep || null,
+    alt_arr: r.alt_arr || null,
+    alt_route: r.alt_route || '',
+    leg: r.leg || 'A',
+  });
+};
 
 // A tech log entry as the app uses it, and as the database stores it.
 const toDefect = (r) => ({
@@ -336,14 +370,28 @@ export const releaseOpsDesk = () => rest('POST', 'rpc/release_ops_desk', {});
 // the app shut, which cannot be rung any other way.
 export const ringOps = (callId) => rest('POST', 'rpc/ring_ops', { call_id: callId });
 
-// fields: { flight, dep, arr, std, sta, route, notes }
+// fields: { flight, dep, arr, std, sta, route, notes }, and the alternative
+// route's { alt_dep, alt_arr, alt_route } where the caller knows it. The
+// alternatives are dropped on a database that has no columns for them, so the
+// rest of the sector still saves.
 export function saveSector(fields, sectorId) {
+  let body = fields;
+  if (!routeColumns && ALT_FIELDS.some((f) => f in fields)) {
+    body = Object.fromEntries(Object.entries(fields).filter(([k]) => !ALT_FIELDS.includes(k)));
+  }
   return sectorId
-    ? rest('PATCH', `sectors?id=eq.${id(sectorId)}`, fields)
-    : rest('POST', 'sectors', fields);
+    ? rest('PATCH', `sectors?id=eq.${id(sectorId)}`, body)
+    : rest('POST', 'sectors', body);
 }
 
 export const deleteSector = (sectorId) => rest('DELETE', `sectors?id=eq.${id(sectorId)}`);
+
+// Which way round a run of alternative sectors is flown, from
+// supabase/route-options.sql. The whole run goes over at once - A and B depart
+// from different airports, so half a run would strand the aeroplane - and the
+// database clears any flight plan imported for the route being left behind.
+// Hands back how many sectors are now on the chosen route.
+export const setRouteLeg = (flights, leg) => rest('POST', 'rpc/set_route_leg', { flights, new_leg: leg });
 
 // Giving a sector away. Each of these checks for itself who is allowed to do
 // it, so the app only ever reads the swaps table.

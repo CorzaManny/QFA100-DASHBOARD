@@ -1,7 +1,7 @@
 // All app data lives in this one object, saved to the device's localStorage.
 
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
-import { configured } from './api.js';
+import { configured, withRouteOptions } from './api.js';
 
 const KEY = 'qfa100-ops.v1';
 
@@ -12,7 +12,7 @@ export function uid() {
 // The schedule bundled with the app. Used until the team database has been
 // read, and on its own when no database is connected (preview mode).
 export function officialSectors() {
-  return OFFICIAL_SCHEDULE.map((s) => ({ id: s.flight, ...s, notes: '' }));
+  return OFFICIAL_SCHEDULE.map((s) => withRouteOptions({ id: s.flight, ...s, notes: '', leg: 'A' }));
 }
 
 function defaults() {

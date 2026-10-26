@@ -1729,6 +1729,39 @@ button:focus-visible {
 .chevron-btn.open .icon {
   transform: rotate(90deg);
 }
+/* ---- Sectors published two ways round (route A / route B) ---- */
+
+.opt-card {
+  border-left: 3px solid var(--info);
+}
+.opt-card.mixed {
+  border-left-color: var(--bad);
+}
+.opt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--hair);
+}
+.opt-row .row-t {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.opt-row .icon {
+  flex: none;
+  opacity: 0.6;
+}
+.opt-row.on .icon {
+  opacity: 1;
+  color: var(--ok);
+}
+.opt-row.on .row-t {
+  font-weight: 700;
+}
+
 .wx-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

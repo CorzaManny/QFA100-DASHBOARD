@@ -5,12 +5,15 @@
 import { state } from '../store.js';
 import { saveSector, deleteSector, clearActuals } from '../api.js';
 import { esc, zulu, zdate, span, ago, depWindow, simLocal, isoDate, isoTime, icao, icon, rerender } from '../ui.js';
-import { sortedSectors, currentSector, isMine, canEdit, crewLabel, simbriefPlanUrl, delayOf, syncTeam, scheduleDrift, officialCheck, watchingSchedule, running, canLog, actualOf, rules } from '../ops.js';
+import { sortedSectors, currentSector, isMine, canEdit, crewLabel, simbriefPlanUrl, delayOf, syncTeam, scheduleDrift, officialCheck, watchingSchedule, running, canLog, actualOf, rules, routeOptions, chooseRouteLeg, briefingOf } from '../ops.js';
 import { round5 } from '../running.js';
 import { saveActual } from '../api.js';
 
 let applying = '';
 let applyError = '';
+// The run whose route is being switched over, by its id, and what went wrong.
+let choosing = '';
+let chooseError = '';
 
 // What WorldFlight has changed since the team's schedule was set. The app
 // checks on its own; applying it is still a decision someone makes.
@@ -79,6 +82,59 @@ function officialChanges() {
     </section>`;
 }
 
+// The sectors WorldFlight publishes two ways round. Everyone sees which way
+// the team is going; an admin or dispatcher presses the other one to switch
+// the whole run over. The crew is rostered on the sector, not on the route, so
+// whoever is flying it flies it either way - which is the point of doing it
+// this way rather than as a second set of sectors.
+function routeOptionCards() {
+  const runs = routeOptions();
+  if (!runs.length) return '';
+  const admin = canEdit();
+  const option = (run, leg) => {
+    const on = run.leg === leg;
+    const path = run[leg];
+    const via = path.slice(1, -1);
+    return `
+      <div class="opt-row${on ? ' on' : ''}">
+        <div class="row-main">
+          <div class="row-t">${icon(on ? 'check' : 'plane')} Route ${leg} · ${esc(path.join(' → '))}</div>
+          <div class="sub">${via.length ? `via ${esc(via.join(' and '))}` : 'direct'}</div>
+        </div>
+        <div class="right">${
+          on
+            ? '<span class="badge ok">FLYING</span>'
+            : admin
+              ? `<button class="btn ghost" data-act="chooseLeg" data-run="${esc(run.id)}" data-leg="${leg}" ${
+                  choosing ? 'disabled' : ''
+                }>${choosing === run.id ? 'Switching…' : `Fly route ${leg}`}</button>`
+              : ''
+        }</div>
+      </div>`;
+  };
+  return runs
+    .map(
+      (run) => `
+    <section class="card list opt-card${run.leg === 'mixed' ? ' mixed' : ''}">
+      <div class="card-head"><div class="tiny">TWO WAYS ROUND · ${esc(run.flights.join(', '))}</div>
+        <span class="badge ${run.leg === 'mixed' ? 'bad' : 'info'}">${
+          run.leg === 'mixed' ? 'HALF SWITCHED' : `ROUTE ${run.leg}`
+        }</span></div>
+      <p class="note">WorldFlight publishes ${run.sectors.length} sector${run.sectors.length === 1 ? '' : 's'} here two ways round, at the same departure times either way, and the team flies one of them.${
+        admin ? ' The crew already rostered on each sector flies whichever is chosen; an imported flight plan for the route being left behind is dropped.' : ''
+      }</p>
+      ${option(run, 'A')}
+      ${option(run, 'B')}
+      ${
+        run.leg === 'mixed'
+          ? `<p class="note warn">${icon('alert')} These sectors are not all on the same route, so the aeroplane cannot fly them as they stand. Press one of the two above to put the whole run on it.</p>`
+          : ''
+      }
+    </section>`,
+    )
+    .join('');
+}
+
 // A one-line pointer, in view mode, to official changes waiting in edit mode.
 function changesHint() {
   if (!canEdit() || !state.sectors.length) return '';
@@ -114,8 +170,8 @@ function list(editing) {
         <a class="row ${new Date(s.sta) < now && s !== cur ? 'past' : ''}" href="${editing ? `#/schedule/${esc(s.id)}/edit` : `#/brief/${esc(s.id)}`}">
           <div class="row-main">
             <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${status}${
-              row?.off ? ` <span class="badge mute">OFF ${zulu(row.off)}</span>` : ''
-            }</div>
+              s.optB ? ` <span class="badge info">ROUTE ${esc(s.leg)}</span>` : ''
+            }${row?.off ? ` <span class="badge mute">OFF ${zulu(row.off)}</span>` : ''}</div>
             <div class="sub">${esc(s.flight)} · ${simLocal(s.std)}</div>
             <div class="sub">${esc(crewLabel(s))}</div>
           </div>
@@ -141,7 +197,10 @@ function list(editing) {
             ? '<a class="btn ghost" href="#/schedule/edit">Edit</a>'
             : ''
       }</div>
-    ${editing ? `${officialChanges()}<p class="tiny center">Tap a sector to change it.</p>` : changesHint()}
+    ${editing ? officialChanges() : changesHint()}
+    ${chooseError ? `<p class="note warn">${icon('alert')} ${esc(chooseError)}</p>` : ''}
+    ${routeOptionCards()}
+    ${editing ? '<p class="tiny center">Tap a sector to change it.</p>' : ''}
     <section class="card list">${rows || '<p class="note">No sectors in the schedule yet.</p>'}</section>
     <p class="tiny center">Times are Zulu, with sim local (Sydney) time under each sector. WorldFlight sectors show when the departure window opens, then the window and block time.${
       run.trusted && run.late ? ' A second time under a departure is what it is really expected to be, worked out from the times stamped on the flight deck.' : ''
@@ -220,6 +279,21 @@ function view(s) {
       ${s.route ? `<h3>Route</h3><p class="mel-text">${esc(s.route)}</p>` : ''}
       ${s.notes ? `<h3>Notes</h3><p class="mel-text">${esc(s.notes)}</p>` : ''}
     </section>
+    ${
+      s.optB
+        ? `<section class="card">
+            <div class="card-head"><h2>Two ways round</h2><span class="badge info">ROUTE ${esc(s.leg)}</span></div>
+            <p class="note">WorldFlight publishes this sector twice, at the same departure time either way. The team is flying route ${esc(
+              s.leg,
+            )}, ${esc(s.leg === 'B' ? `${s.optB.dep} → ${s.optB.arr}` : `${s.optA.dep} → ${s.optA.arr}`)}. The crew below flies it whichever route is chosen.</p>
+            <div class="kvs">
+              ${kv('Route A', esc(`${s.optA.dep} → ${s.optA.arr}`))}
+              ${kv('Route B', esc(`${s.optB.dep} → ${s.optB.arr}`))}
+            </div>
+            ${canEdit() ? '<a class="btn ghost" href="#/schedule/edit">Choose the route on the schedule</a>' : ''}
+          </section>`
+        : ''
+    }
     ${actualsCard(s)}
     <section class="card">
       <h2>Crew</h2>
@@ -253,16 +327,27 @@ function detail(id, mode) {
   const std = existing?.std || (last ? new Date(new Date(last.sta).getTime() + rules().turnaroundMinutes * 60000) : new Date());
   const sta = existing?.sta || new Date(new Date(std).getTime() + 2 * 3600000);
   const s = existing || { flight: '', dep: last?.arr || '', arr: '', route: '', notes: '' };
+  // A sector with an alternative is edited as route A, which is where the
+  // boxes below are saved. Route B is WorldFlight's own and is not edited by
+  // hand; which of the two is flown is the button on the schedule.
+  const base = s.optA || s;
 
   return `
     <div class="page-head"><a class="back" href="#/schedule/edit">${icon('back')} Edit WF Schedule</a></div>
     <form class="card form" data-form="sector">
       <h2>${existing ? `${esc(s.dep)} → ${esc(s.arr)}` : 'New sector'}</h2>
       ${existing?.window ? `<p class="note">Official departure window <strong>${depWindow(s)}</strong>. The time below is when it opens.</p>` : ''}
+      ${
+        s.optB
+          ? `<p class="note">This sector has two routes. The boxes below are <strong>route A</strong>. Route B is ${esc(
+              `${s.optB.dep} → ${s.optB.arr}`,
+            )} and comes from WorldFlight; the team is flying route ${esc(s.leg)}, which is chosen with the button on the schedule, not here.</p>`
+          : ''
+      }
       <fieldset>
         <div class="grid2">
-          <label class="field">Departure (ICAO)<input name="dep" required maxlength="4" autocapitalize="characters" value="${esc(s.dep)}" placeholder="YSSY"></label>
-          <label class="field">Arrival (ICAO)<input name="arr" required maxlength="4" autocapitalize="characters" value="${esc(s.arr)}" placeholder="YBBN"></label>
+          <label class="field">Departure (ICAO)<input name="dep" required maxlength="4" autocapitalize="characters" value="${esc(base.dep)}" placeholder="YSSY"></label>
+          <label class="field">Arrival (ICAO)<input name="arr" required maxlength="4" autocapitalize="characters" value="${esc(base.arr)}" placeholder="YBBN"></label>
         </div>
         <label class="field">Sector / flight number<input name="flight" required value="${esc(s.flight)}" placeholder="WF2644"></label>
         <div class="grid2">
@@ -271,7 +356,7 @@ function detail(id, mode) {
           <label class="field">Arrival date (UTC)<input type="date" name="staDate" required value="${isoDate(sta)}"></label>
           <label class="field">Arrival time (UTC)<input type="time" name="staTime" required value="${isoTime(sta)}"></label>
         </div>
-        <label class="field">Route<textarea name="route" rows="2" autocapitalize="characters" placeholder="Optional. Sent to SimBrief when you plan the sector.">${esc(s.route)}</textarea></label>
+        <label class="field">${s.optB ? 'Route A' : 'Route'}<textarea name="route" rows="2" autocapitalize="characters" placeholder="Optional. Sent to SimBrief when you plan the sector.">${esc(base.route)}</textarea></label>
         <label class="field">Sector notes<textarea name="notes" rows="3" placeholder="Shown on the Dashboard and the sector's briefing">${esc(s.notes)}</textarea></label>
       </fieldset>
       <p class="form-error" hidden></p>
@@ -382,14 +467,19 @@ export const actions = {
     applying = 'Updating…';
     applyError = '';
     rerender();
+    // Option A and option B as WorldFlight publishes them, not whichever the
+    // team is flying: leg is the team's own choice and is left alone.
     const fields = (o) => ({
       flight: o.flight,
-      dep: o.dep,
-      arr: o.arr,
+      dep: o.optA.dep,
+      arr: o.optA.arr,
       std: o.std,
       sta: o.sta,
       dep_window_min: o.window || null,
-      route: o.route || '',
+      route: o.optA.route || '',
+      alt_dep: o.optB?.dep || null,
+      alt_arr: o.optB?.arr || null,
+      alt_route: o.optB?.route || '',
     });
     try {
       for (const c of changed) await saveSector(fields(c.official), c.sector.id);
@@ -399,6 +489,33 @@ export const actions = {
       applyError = `Could not update: ${err.message}`;
     }
     applying = '';
+    rerender();
+  },
+  // Put a whole run of alternative sectors on route A or route B.
+  async chooseLeg(el) {
+    const run = routeOptions().find((r) => r.id === el.dataset.run);
+    const leg = el.dataset.leg;
+    if (!run || choosing) return;
+    const path = run[leg].join(' → ');
+    const planned = run.sectors.filter((s) => briefingOf(s.id).ofp).length;
+    if (
+      !confirm(
+        `Fly ${run.flights.join(', ')} as route ${leg}, ${path}?\n\nThe crew rostered on each sector stays as it is.${
+          planned ? `\n\n${planned} imported flight plan${planned === 1 ? '' : 's'} for the other route will be dropped, to be imported again.` : ''
+        }`,
+      )
+    ) {
+      return;
+    }
+    choosing = run.id;
+    chooseError = '';
+    rerender();
+    try {
+      await chooseRouteLeg(run.flights, leg);
+    } catch (err) {
+      chooseError = `Could not switch to route ${leg}: ${err.message}. Run supabase/route-options.sql if this database has not had it yet.`;
+    }
+    choosing = '';
     rerender();
   },
   async remove(el) {
