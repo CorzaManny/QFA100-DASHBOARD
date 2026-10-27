@@ -123,7 +123,7 @@ select cron.schedule('autostamp-tick', '30 seconds', $job$ select public.autosta
 -- Run it once now and see what it says.
 select public.autostamp_tick() as stamped_now;
 
--- ---------- Checking it ----------
+-- ---------- Looking at it ----------
 --
 --   What the bridge currently makes of the aeroplane:
 -- select updated_at, status -> 'blocks' as blocks from public.sim_status where id = 1;
@@ -142,3 +142,63 @@ select public.autostamp_tick() as stamped_now;
 -- join public.sector_running() run on run.sector_id = s.id
 -- where a.on_blocks is null and not coalesce(a.skipped, false)
 -- order by s.std;
+
+-- ---------- Testing it before the event ----------
+--
+-- This cannot be tried on the real schedule while the event is still days
+-- away, and the reason is worth knowing: every sector's expected departure is
+-- in the future, so a departure old enough to be past the three minute grace
+-- can never be within two hours of one. Both halves are working as intended
+-- and together they match nothing.
+--
+-- So the test uses a sector of its own, sitting in the past, and deletes it
+-- afterwards. sector_actuals and roster both cascade from sectors, so the
+-- delete at step 6 takes the whole test with it. Run each step on its own and
+-- do not leave step 2 in place with the bridge running - it will overwrite
+-- sim_status within a couple of seconds, which is the bridge doing its job.
+--
+--   1. A sector that was expected away an hour ago. Being the earliest in the
+--      schedule, nothing chains into it, so its expected departure is its std.
+-- insert into public.sectors (flight, dep, arr, std, sta)
+-- values ('ZZTEST', 'YSSY', 'NZAA', now() - interval '1 hour', now() + interval '1 hour');
+--
+--   2. Stand in for the bridge: the aeroplane went when that sector was due
+--      and arrived ten minutes ago, both old enough to be past the grace.
+-- update public.sim_status
+-- set status = coalesce(status, '{}'::jsonb) || jsonb_build_object('blocks', jsonb_build_object(
+--       'out', to_char(now() - interval '1 hour', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+--       'off', to_char(now() - interval '50 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+--       'on',  to_char(now() - interval '15 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+--       'in',  to_char(now() - interval '10 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+--       'touchdownFpm', 138)),
+--     updated_at = now()
+-- where id = 1;
+--
+--   3. Take them. Answers 2 - one for each time written.
+-- select public.autostamp_tick() as stamped;
+--
+--   4. And they should be against ZZTEST, said to be the simulator's.
+-- select s.flight, a.off_blocks, a.on_blocks, a.by_name
+-- from public.sectors s join public.sector_actuals a on a.sector_id = s.id
+-- where s.flight = 'ZZTEST';
+--
+--   5. The rule that matters: a stamp of somebody's own is never overwritten.
+--      This throws away what step 3 took, puts a departure in by hand five
+--      minutes off the simulator's, and runs it again. It answers 1, not 2:
+--      off blocks is left exactly as it was put in, by_name still says
+--      'A Pilot', and only on blocks is filled in beside it.
+-- delete from public.sector_actuals
+-- where sector_id = (select id from public.sectors where flight = 'ZZTEST');
+-- insert into public.sector_actuals (sector_id, off_blocks, by_name)
+-- select id, now() - interval '55 minutes', 'A Pilot'
+-- from public.sectors where flight = 'ZZTEST';
+-- select public.autostamp_tick() as stamped;
+-- select a.off_blocks, a.on_blocks, a.by_name
+-- from public.sector_actuals a
+-- join public.sectors s on s.id = a.sector_id
+-- where s.flight = 'ZZTEST';
+--
+--   6. Put everything back. The sector takes its actuals with it, and
+--      clearing the blocks stops the next tick acting on a made-up arrival.
+-- delete from public.sectors where flight = 'ZZTEST';
+-- update public.sim_status set status = status - 'blocks', updated_at = now() where id = 1;
