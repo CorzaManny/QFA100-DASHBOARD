@@ -109,13 +109,24 @@ declare
   -- So the table is left-aligned and the paper keeps some white on the right,
   -- while the heading and the footer below still span the full width to frame
   -- it. That is how a printed form looks.
-  lcol   constant integer := 8;
+  lcol   constant integer := 10;
   wcol   constant integer := 10;
   mcol   constant integer := 10;
+  -- The names block below is its own thing: a label and a word, both left,
+  -- because a name or an ICAO code read right-aligned against nothing looks
+  -- like a mistake. The figures stay as they are.
+  ncol   constant integer := 12;
   rule   text;
   sheet  text;
   over   text := '';
   tof    numeric;
+  captain text;
+  -- Who is actually on board. The flight crew are whoever is rostered to the
+  -- sector; the cabin crew are the four the duty report invents, so this is
+  -- the one figure on the sheet that is not read from anywhere - see
+  -- CABIN_SEATS in js/data/cabin.js, which is four to a crew.
+  flightcrew integer;
+  cabincrew constant integer := 4;
 begin
   select sec.flight, sec.dep, sec.arr, sec.std, b.ofp, coalesce(l.edno, 1) as edno
     into plan
@@ -139,6 +150,18 @@ begin
   where pr.id = 1;
   cols := coalesce(cols, 42);
   rule := repeat('-', cols);
+
+  -- In charge of the aeroplane, and how many are on the crew. A sector with
+  -- nobody rostered to it yet prints a dash and a crew of 0, which is honest:
+  -- the sheet is as finished as the roster is.
+  select upper(p.display_name) into captain
+  from public.roster r
+  join public.profiles p on p.id = r.user_id
+  where r.sector_id = target and r.duty = 'Captain'
+  order by r.report_at
+  limit 1;
+
+  select count(*) into flightcrew from public.roster where sector_id = target;
 
   -- Takeoff fuel is the ramp fuel less what is burnt getting to the runway,
   -- which is the figure that goes in the box - not the block fuel.
@@ -176,21 +199,41 @@ begin
       coalesce(nullif(ofp ->> 'reg', ''), 'REG N/A')),
     rule,
     rpad('', lcol) || lpad('WEIGHT', wcol) || lpad('MAX', mcol),
-    rpad('ZFW', lcol)   || public.loadsheet_num(nullif(ofp ->> 'zfw', '')::numeric, wcol)
-                        || public.loadsheet_num(nullif(ofp ->> 'maxZfw', '')::numeric, mcol),
-    rpad('TOF', lcol)   || public.loadsheet_num(tof, wcol),
-    rpad('TOW', lcol)   || public.loadsheet_num(nullif(ofp ->> 'tow', '')::numeric, wcol)
-                        || public.loadsheet_num(nullif(ofp ->> 'maxTow', '')::numeric, mcol),
-    rpad('TRIP', lcol)  || public.loadsheet_num(nullif(ofp ->> 'tripFuel', '')::numeric, wcol),
-    rpad('LDW', lcol)   || public.loadsheet_num(nullif(ofp ->> 'ldw', '')::numeric, wcol)
-                        || public.loadsheet_num(nullif(ofp ->> 'maxLdw', '')::numeric, mcol),
+    -- Worked down the way a loadsheet is read: the aeroplane empty, what went
+    -- on it, and what that comes to against each limit in turn.
+    rpad('DOW', lcol)     || public.loadsheet_num(nullif(ofp ->> 'dow', '')::numeric, wcol),
+    rpad('PAYLOAD', lcol) || public.loadsheet_num(nullif(ofp ->> 'payload', '')::numeric, wcol),
+    rpad('ZFW', lcol)     || public.loadsheet_num(nullif(ofp ->> 'zfw', '')::numeric, wcol)
+                          || public.loadsheet_num(nullif(ofp ->> 'maxZfw', '')::numeric, mcol),
+    rpad('TOF', lcol)     || public.loadsheet_num(tof, wcol),
+    rpad('TOW', lcol)     || public.loadsheet_num(nullif(ofp ->> 'tow', '')::numeric, wcol)
+                          || public.loadsheet_num(nullif(ofp ->> 'maxTow', '')::numeric, mcol),
+    rpad('TRIP', lcol)    || public.loadsheet_num(nullif(ofp ->> 'tripFuel', '')::numeric, wcol),
+    rpad('LDW', lcol)     || public.loadsheet_num(nullif(ofp ->> 'ldw', '')::numeric, wcol)
+                          || public.loadsheet_num(nullif(ofp ->> 'maxLdw', '')::numeric, mcol),
+    -- What is left before the heaviest limit bites. The figure a crew wants
+    -- when somebody asks whether another half tonne can go on.
+    rpad('UNDERLOAD', lcol) || public.loadsheet_num(
+      nullif(ofp ->> 'maxTow', '')::numeric - nullif(ofp ->> 'tow', '')::numeric, wcol),
     rule,
-    rpad('PAX', lcol)   || public.loadsheet_num(nullif(ofp ->> 'pax', '')::numeric, wcol),
-    rpad('CARGO', lcol) || public.loadsheet_num(nullif(ofp ->> 'cargo', '')::numeric, wcol),
-    rpad('TAXI', lcol)  || public.loadsheet_num(nullif(ofp ->> 'taxiFuel', '')::numeric, wcol),
-    rpad('RESV', lcol)  || public.loadsheet_num(nullif(ofp ->> 'reserveFuel', '')::numeric, wcol),
+    rpad('PAX', lcol)     || public.loadsheet_num(nullif(ofp ->> 'pax', '')::numeric, wcol),
+    rpad('CARGO', lcol)   || public.loadsheet_num(nullif(ofp ->> 'cargo', '')::numeric, wcol),
+    rpad('BLOCK', lcol)   || public.loadsheet_num(nullif(ofp ->> 'blockFuel', '')::numeric, wcol),
+    rpad('TAXI', lcol)    || public.loadsheet_num(nullif(ofp ->> 'taxiFuel', '')::numeric, wcol),
+    rpad('RESV', lcol)    || public.loadsheet_num(nullif(ofp ->> 'reserveFuel', '')::numeric, wcol),
+    rpad('ALTN', lcol)    || public.loadsheet_num(nullif(ofp ->> 'altnFuel', '')::numeric, wcol),
+    rule,
+    -- Cockpit over cabin, the way a loadsheet counts a crew: 2/4 is two
+    -- pilots and four in the back.
+    rpad('CREW', ncol) || flightcrew::text || '/' || cabincrew::text,
+    rpad('CAPTAIN', ncol) || left(coalesce(nullif(captain, ''), '-'), greatest(cols - ncol, 8)),
+    rpad('ALTN AD', ncol) || coalesce(nullif(ofp ->> 'altn', ''), '-'),
     rule,
     'ALL WEIGHTS IN ' || units,
+    -- Last minute changes, which is a line to write on. A loadsheet is
+    -- finished when it is printed and the aeroplane is not, so there is
+    -- somewhere to put the bag that turned up late.
+    'LMC ' || repeat('.', greatest(cols - 4, 8)),
     rpad('PREPARED ' || to_char(now(), 'HH24:MI') || 'Z', cols - 12) || lpad('LOAD CONTROL', 12)
   );
 

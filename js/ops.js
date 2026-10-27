@@ -1452,6 +1452,10 @@ export async function fetchOfp(id) {
     altnFuel: num(d.fuel?.alternate_burn),
     pax: num(d.weights?.pax_count),
     cargo: num(d.weights?.cargo),
+    // The aeroplane empty and crewed, and everything put on top of it. A
+    // loadsheet works down from one to the other, so both go on it.
+    dow: num(d.weights?.oew),
+    payload: num(d.weights?.payload),
     zfw: num(d.weights?.est_zfw),
     tow: num(d.weights?.est_tow),
     ldw: num(d.weights?.est_ldw),
