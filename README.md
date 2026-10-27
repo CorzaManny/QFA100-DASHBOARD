@@ -253,15 +253,14 @@ rostered flies it whichever way round the team goes.** Switching a run over
 keeps every roster entry, report time, note and handover exactly where it is —
 the aeroplane is simply going somewhere else.
 
-On the **WF Schedule** each affected sector carries a `ROUTE A` or `ROUTE B`
-badge. Open one and its own page shows both routes, with the one being flown
-marked **FLYING**; an admin or dispatcher presses **Fly route B** (or A) there
-and the whole run goes over at once, after a confirmation naming the airports.
-It has to be the whole run: flying WF2619 to TTPP and then WF2620 out of TBPB
-would leave the aeroplane in the wrong ocean, so the app works out which
-sectors belong to a run — by following where both routes join up — and the
-database moves them together or not at all. Choosing from any sector of a run
-moves all of them, so there is nothing to repeat on the other two.
+On the **WF Schedule** a card shows both routes with the one being flown marked
+**FLYING**, and each affected sector in the list carries a `ROUTE A` or
+`ROUTE B` badge. An admin or dispatcher presses **Fly route B** (or A) and the
+whole run goes over at once, after a confirmation naming the airports. It has to
+be the whole run: flying WF2619 to TTPP and then WF2620 out of TBPB would leave
+the aeroplane in the wrong ocean, so the app works out which sectors belong to a
+run — by following where both routes join up — and the database moves them
+together or not at all.
 
 Switching does drop any **imported flight plan** on the sectors that moved: it
 was built for the other route's airports, so leaving it there would brief a
