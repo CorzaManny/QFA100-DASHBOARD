@@ -201,6 +201,10 @@ create policy "the flight deck reads ACARS" on public.acars_messages
 -- This is the one place the code leaves the database, and it goes straight
 -- down the link to the bridge that owns the EFB. It is never returned to a
 -- browser.
+-- It also carries the crew, which has nothing to do with the logon code and
+-- everything to do with this being the one channel from the database to the
+-- bridge. The bridge prints a slip at the end of each sector and wants the
+-- names on it; it cannot know them, because only the roster does.
 create or replace function public.acars_bridge_config()
 returns jsonb language sql security definer set search_path = public as $$
   select jsonb_build_object(
@@ -208,7 +212,30 @@ returns jsonb language sql security definer set search_path = public as $$
       'logon', coalesce(s.hoppie_code, ''),
       'callsign', coalesce(s.callsign, ''),
       'enabled', s.enabled
-    ))
+    ),
+    -- Whoever is rostered to the sector being flown: the earliest one that
+    -- has not arrived yet, which at the moment a slip prints is the sector
+    -- that has just finished. In seat order, not alphabetical.
+    'crew', coalesce(
+      (select jsonb_agg(
+                jsonb_build_object('duty', r.duty, 'name', p.display_name)
+                order by case r.duty
+                           when 'Captain' then 1
+                           when 'First Officer' then 2
+                           when 'Relief Pilot' then 3
+                           else 4
+                         end, p.display_name)
+       from public.roster r
+       join public.profiles p on p.id = r.user_id
+       where r.sector_id = (
+         select flying.id
+         from public.sectors flying
+         left join public.sector_actuals done on done.sector_id = flying.id
+         where done.on_blocks is null and not coalesce(done.skipped, false)
+         order by flying.std
+         limit 1)),
+      '[]'::jsonb)
+  )
   from public.acars_secret s
   where s.id = 1;
 $$;

@@ -45,6 +45,11 @@ When departure or arrival is missing, the Dashboard checks the callsign's VATSIM
 | `progress.distanceRemainingNm` | number | no | Nautical miles to go along the route. Straight-line distance is used if missing. |
 | `progress.eta` | string | no | Estimated arrival, ISO 8601 UTC (ideally the FMC's). Estimated from ground speed if missing. |
 | `fuel.onBoardKg` | number | no | Fuel on board in kilograms. |
+| `blocks.out` | string | no | Off blocks, ISO 8601 UTC: when the aircraft first moved. Null until it has. |
+| `blocks.off` | string | no | Airborne: when it left the ground. |
+| `blocks.on` | string | no | Landed: when it was next on the ground. |
+| `blocks.touchdownFpm` | number | no | Rate of descent at touchdown, feet per minute down. The simulator's own recorded touchdown figure where it has one, else the last vertical speed read before the wheels were on. Absent until it has landed. |
+| `blocks.in` | string | no | On blocks: when it stopped, reported once it is plainly parked rather than held short - engines shut down, or the park brake set and five minutes without moving. The time given is when it stopped, not when that was established. |
 
 ### Flight phases
 
@@ -74,7 +79,8 @@ See [`api/status.example.json`](../api/status.example.json).
     "onGround": false
   },
   "progress": { "distanceFlownNm": 1840, "distanceRemainingNm": 1065, "eta": "2026-11-01T03:34:00Z" },
-  "fuel": { "onBoardKg": 9450 }
+  "fuel": { "onBoardKg": 9450 },
+  "blocks": { "out": "2026-11-01T00:12:00Z", "off": "2026-11-01T00:26:00Z", "on": null, "in": null }
 }
 ```
 
