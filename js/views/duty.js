@@ -11,7 +11,7 @@ import { configured } from '../api.js';
 import { esc, zdate, zulu, span, simLocal, icon, rerender } from '../ui.js';
 import {
   me, person, crewOf, openSeats, briefingOf, canEdit, isDraft, DUTIES,
-  teamCallsign, teamAircraft, teamRego, airport,
+  teamCallsign, teamAircraft, teamRego, airport, cabinCrew,
 } from '../ops.js';
 
 // Which duty period is on the sheet, by the id of the sector it starts with.
@@ -128,6 +128,27 @@ function aircraft(sector) {
   return { type: ofp?.acft || teamAircraft(), rego: ofp?.reg || teamRego() };
 }
 
+// The cabin crew beside the flight crew. Nobody is ever rostered into these
+// seats - there is no cabin crew at WorldFlight - so they are invented, and
+// the sheet says so in the heading rather than leaving a pilot to work out
+// why there is a name here they have never heard of. See cabinCrew() in
+// ops.js: the same four people appear on everybody's sheet for a sector.
+function cabinList(sector) {
+  const rows = cabinCrew(sector)
+    .map(
+      (c) => `<div class="duty-seat">
+        <span class="duty-seat-duty">${esc(c.duty)}</span>
+        <span class="duty-seat-name">${esc(c.name)}</span>
+      </div>`,
+    )
+    .join('');
+  if (!rows) return '';
+  return `<div class="duty-cabin">
+    <div class="duty-cabin-head">CABIN CREW <span class="duty-fake">SIMULATED</span></div>
+    <div class="duty-cabin-list">${rows}</div>
+  </div>`;
+}
+
 // The block at the top: every sector of the duty on one line, the way the
 // roster hands it over.
 function summary(period) {
@@ -174,11 +195,13 @@ function sectorBox(leg, base, myId) {
       <div class="duty-f"><span class="duty-f-k">DEP</span><span class="duty-f-v">${apt(s.dep)}</span></div>
       <div class="duty-f"><span class="duty-f-k">ARR</span><span class="duty-f-v">${apt(s.arr)}</span></div>
       <div class="duty-f"><span class="duty-f-k">ETA</span><span class="duty-f-v">${at(s.sta, base)}</span><span class="duty-f-local">${esc(local(s.sta))}</span></div>
+      <div class="duty-f"><span class="duty-f-k">BLK</span><span class="duty-f-v">${esc(span(new Date(s.sta) - new Date(s.std)))}</span></div>
       <div class="duty-f"><span class="duty-f-k">A/C</span><span class="duty-f-v">${esc(ac.type)}</span></div>
       <div class="duty-f"><span class="duty-f-k">REGO</span><span class="duty-f-v">${esc(ac.rego)}</span></div>
     </div>
     <div class="duty-box-body">
       <div class="duty-crew">${crew}</div>
+      ${cabinList(s)}
     </div>
   </section>`;
 }
@@ -188,7 +211,7 @@ function sheet(period) {
   const myId = me()?.id;
   const on = signOn(period);
   const off = signOff(period);
-  return `<div class="duty-sheet">
+  return `<div class="duty-sheet" data-sectors="${period.length}">
     <header class="duty-sheet-head">
       <div>
         <div class="duty-title">DUTY REPORT</div>
@@ -207,6 +230,7 @@ function sheet(period) {
     </div>
     ${summary(period)}
     ${period.map((leg) => sectorBox(leg, base, myId)).join('')}
+    <p class="duty-foot">Cabin crew names are simulated. WorldFlight is flown by the pilots in the room and nobody is rostered to those seats; the flight crew above is the real roster.</p>
   </div>`;
 }
 

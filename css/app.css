@@ -4540,11 +4540,29 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
   page-break-inside: avoid;
 }
 
+/* The boxes take whatever is left of the A4 page after the heading, the
+   summary strip and the footnote, split between however many sectors are on
+   the sheet - so one sector gets a page-deep box to write in and three share
+   the page rather than running onto a second one. Four or more falls back to
+   the 46mm above and is allowed to spill over; it is not a duty anybody is
+   rostered, and break-inside keeps a box whole wherever it lands. */
+.duty-sheet[data-sectors='1'] .duty-box {
+  min-height: 210mm;
+}
+
+.duty-sheet[data-sectors='2'] .duty-box {
+  min-height: 104mm;
+}
+
+.duty-sheet[data-sectors='3'] .duty-box {
+  min-height: 67mm;
+}
+
 /* The figures across the top of the box, each under its own heading so the
    box still reads as a form when it is half covered in handwriting. */
 .duty-box-head {
   display: grid;
-  grid-template-columns: 1.1fr 1fr 1.5fr 1.5fr 1fr 0.7fr 0.9fr;
+  grid-template-columns: 1.1fr 1fr 1.5fr 1.5fr 1fr 0.7fr 0.7fr 0.9fr;
   gap: 8px;
   border-bottom: 1px solid #c8c8c8;
   padding-bottom: 5px;
@@ -4591,6 +4609,65 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
   gap: 2px;
   width: 58%;
   max-width: 320px;
+}
+
+/* The invented cabin crew, under the real crew and visibly lesser than it:
+   smaller and grey, so a glance down the list never takes one of these for
+   a rostered name. */
+.duty-cabin {
+  width: 58%;
+  max-width: 320px;
+  margin-top: 6px;
+  color: #6a6a6a;
+}
+
+.duty-cabin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.duty-cabin .duty-seat {
+  font-size: 9px;
+}
+
+.duty-cabin .duty-seat-name {
+  min-height: 1.2em;
+  font-weight: 400;
+}
+
+.duty-cabin-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  margin-bottom: 2px;
+}
+
+/* Says the names under it are made up, wherever they are printed. */
+.duty-fake {
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  border: 1px solid #9a9a9a;
+  border-radius: 2px;
+  padding: 0 3px;
+  font-size: 8px;
+}
+
+/* The line at the foot of the sheet, saying which names on it are invented.
+   Small, because it is a disclaimer and not part of the briefing. */
+.duty-foot {
+  margin: 10px 0 0;
+  font-size: 8.5px;
+  line-height: 1.35;
+  color: #555;
+}
+
+/* A cabin name is not a line to write on - nobody signs for these seats. */
+.duty-cabin .duty-seat-name:empty {
+  border-bottom: 0;
 }
 
 .duty-seat {

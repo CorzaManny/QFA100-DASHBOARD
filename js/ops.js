@@ -21,6 +21,7 @@ import {
 import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
 import { CTWO_DEFAULTS } from './data/ctwo.js';
+import { CABIN_NAMES } from './data/cabin.js';
 import { DEFAULT_NORMAL_CHECKLISTS } from './data/checklists.js';
 import { running as runningOf, reportAt as reportAtOf } from './running.js';
 
@@ -1449,6 +1450,66 @@ export async function fetchOfp(id) {
     ldw: num(d.weights?.est_ldw),
     pdf: str(d.files?.directory) && str(d.files?.pdf?.link) ? d.files.directory + d.files.pdf.link : '',
   };
+}
+
+// ---- Cabin crew ----
+
+// There is no cabin crew to roster, so the duty sheet invents one. Which crew
+// a sector gets has to be worked out the same way on every pilot's device,
+// with nothing stored and nothing agreed between them: it is a pure function
+// of where the sector sits in the schedule, so everyone's sheet names the same
+// four people for the same sector. See js/data/cabin.js for the crews.
+
+// A cheap stable hash (FNV-1a). Only used to vary the pattern below, so what
+// matters is that it gives the same answer everywhere, not that it is good.
+function hash32(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// A crew works two or three sectors together and then hands over. Which of
+// the two it is comes out of the hash, so the handovers do not fall on a tidy
+// every-second-sector rhythm, but they fall in the same place for everybody.
+// It reads bit 7 rather than the low bit: FNV-1a barely changes its bottom
+// bit across inputs this alike, and taking it gave a 3,2,3,2 alternation.
+const crewTour = (block) => 2 + ((hash32(`cabin-${block}`) >>> 7) & 1);
+
+// How many crews have come and gone before the sector at this index - so the
+// sector's own crew is this many handovers into the week.
+function cabinBlock(index) {
+  let at = 0;
+  for (let block = 0; ; block++) {
+    at += crewTour(block);
+    if (index < at) return block;
+  }
+}
+
+// Four names out of the pool, drawn by stepping through it from a hashed
+// starting point at a hashed stride. The pool's length is prime, so every
+// stride is coprime with it and the four never land on the same name twice.
+const CABIN_SEATS = ['CSM', 'FA', 'FA', 'FA'];
+function drawCrew(block) {
+  const n = CABIN_NAMES.length;
+  const first = hash32(`cabin-first-${block}`) % n;
+  const stride = 1 + (hash32(`cabin-stride-${block}`) % (n - 1));
+  return CABIN_SEATS.map((duty, k) => ({ duty, name: CABIN_NAMES[(first + k * stride) % n] }));
+}
+
+// The cabin crew on a sector: four invented people out of the pool, the same
+// four on every pilot's sheet, and the same four for the two or three sectors
+// of a tour before the next lot are drawn. Names recur across the week in
+// different company, the way a pool works, rather than the same team coming
+// back around together. Adding or removing a sector shifts the ones after it
+// onto a different draw, which is harmless - nothing depends on who was in
+// the cabin.
+export function cabinCrew(sector) {
+  const index = sortedSectors().findIndex((s) => s.id === sector.id);
+  if (index < 0) return [];
+  return drawCrew(cabinBlock(index));
 }
 
 // ---- Briefings ----
