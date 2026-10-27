@@ -52,6 +52,12 @@ declare
   in_at  timestamptz;
   target uuid;
   made   integer := 0;
+  -- Fuel at each end of the sector, as the simulator had it. Kilograms:
+  -- SimConnect is asked for kilograms and the sector's own OFP decides what
+  -- the crew are shown, so this converts rather than assuming they match.
+  fuel_out numeric;
+  fuel_in  numeric;
+  per_kg   numeric;
 begin
   select status -> 'blocks', updated_at into blocks, fresh
   from public.sim_status where id = 1;
@@ -80,6 +86,15 @@ begin
 
   if target is null then return 0; end if;
 
+  fuel_out := nullif(blocks ->> 'fuelOutKg', '')::numeric;
+  fuel_in  := nullif(blocks ->> 'fuelInKg', '')::numeric;
+  -- Pounds if that is what the sector was planned in, kilograms otherwise.
+  select case when lower(coalesce(b.ofp ->> 'units', 'kgs')) like 'lb%'
+              then 2.20462 else 1 end
+    into per_kg
+  from public.briefings b where b.sector_id = target;
+  per_kg := coalesce(per_kg, 1);
+
   -- Off blocks. The `where` on the conflict is what makes a human stamp
   -- untouchable: with a time already there the update matches nothing.
   if now() - out_at > grace then
@@ -106,6 +121,24 @@ begin
                          else sector_actuals.by_name end,
           updated_at = now()
       where sector_actuals.on_blocks is null;
+    if found then made := made + 1; end if;
+  end if;
+
+  -- The fuel figures, for the Finish sector form to open with. Only ever
+  -- filled in where nobody has typed anything and the sector has not been
+  -- finished: after that the numbers are the crew's and are left alone, which
+  -- is the same rule the two times above follow.
+  if fuel_in is not null then
+    update public.sector_actuals
+    set fuel_remaining = coalesce(fuel_remaining, round(fuel_in * per_kg)),
+        fuel_used = coalesce(
+          fuel_used,
+          case when fuel_out is not null and fuel_out >= fuel_in
+               then round((fuel_out - fuel_in) * per_kg) end),
+        updated_at = now()
+    where sector_id = target
+      and completed_at is null
+      and (fuel_remaining is null or fuel_used is null);
     if found then made := made + 1; end if;
   end if;
 

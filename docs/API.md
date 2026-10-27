@@ -49,6 +49,8 @@ When departure or arrival is missing, the Dashboard checks the callsign's VATSIM
 | `blocks.off` | string | no | Airborne: when it left the ground. |
 | `blocks.on` | string | no | Landed: when it was next on the ground. |
 | `blocks.touchdownFpm` | number | no | Rate of descent at touchdown, feet per minute down. The simulator's own recorded touchdown figure where it has one, else the last vertical speed read before the wheels were on. Absent until it has landed. |
+| `blocks.fuelOutKg` | number | no | Fuel on board in kilograms when it went off blocks. Absent until it has. |
+| `blocks.fuelInKg` | number | no | Fuel on board in kilograms when it came on blocks, so what it burnt is the difference. |
 | `blocks.in` | string | no | On blocks: when it stopped, reported once it is plainly parked rather than held short - engines shut down, or the park brake set and five minutes without moving. The time given is when it stopped, not when that was established. |
 
 ### Flight phases

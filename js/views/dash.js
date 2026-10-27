@@ -454,6 +454,14 @@ function finishModal(s) {
             a.fuel_used ?? ''
           }" required></label>
         </div>
+        ${
+          // Filled in from the simulator's own fuel at off blocks and on
+          // blocks, where the bridge was running. Said out loud because a
+          // figure that appears by itself is one nobody checks.
+          a.fuel_remaining != null || a.fuel_used != null
+            ? '<p class="tiny">Taken from the simulator at off blocks and on blocks. Change either if it looks wrong.</p>'
+            : ''
+        }
         <label class="field">Handover to the next crew<textarea name="handover" rows="4" placeholder="e.g. Parked gate 54, APU running, 6.2 t on board">${esc(
           handover,
         )}</textarea></label>
