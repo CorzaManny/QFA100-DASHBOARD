@@ -26,6 +26,7 @@ import * as opschat from './opschat.js';
 import * as scratch from './scratch.js';
 import * as login from './views/login.js';
 import * as roster from './views/roster.js';
+import * as duty from './views/duty.js';
 import * as admin from './views/admin.js';
 import * as availability from './views/availability.js';
 import * as dash from './views/dash.js';
@@ -42,7 +43,7 @@ import * as stream from './views/stream.js';
 import * as vpilot from './views/vpilot.js';
 import * as acars from './views/acars.js';
 
-const ROUTES = { dashboard: dash, checklists, schedule, roster, techlog, airports, brief, dispatch: brief, ctwo, settings, admin, availability, progress, ops: opsboard, stream, vpilot, acars };
+const ROUTES = { dashboard: dash, checklists, schedule, roster, duty, techlog, airports, brief, dispatch: brief, ctwo, settings, admin, availability, progress, ops: opsboard, stream, vpilot, acars };
 const root = document.getElementById('view');
 const clock = document.getElementById('clock');
 const clockSim = document.getElementById('clock-sim');

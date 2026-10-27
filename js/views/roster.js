@@ -262,6 +262,7 @@ function list() {
       ${isDraft() ? '<span class="badge warn">DRAFT · NOT VISIBLE TO PILOTS</span>' : ''}</div>
     <div class="btn-row">
       ${isEfb() || isOps() ? '' : '<a class="btn ghost" href="#/availability">My availability</a>'}
+      ${isEfb() || isOps() ? '' : '<a class="btn ghost" href="#/duty">Duty report</a>'}
       ${canEdit() ? '<a class="btn primary" href="#/admin">Edit roster</a>' : ''}
       ${tzToggle()}
     </div>
