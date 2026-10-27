@@ -71,11 +71,13 @@ export const isoDate = (t) => new Date(t).toISOString().slice(0, 10);
 export const isoTime = (t) => new Date(t).toISOString().slice(11, 16);
 
 // "2000Z–2200Z" for sectors that have a departure window rather than a fixed
-// time. The window opens at std.
+// time. std is the middle of the window, so it runs half its length either
+// side of the time the team is planning to go.
 export function depWindow(sector) {
   if (!sector.window) return '';
   const t = new Date(sector.std).getTime();
-  return `${zulu(t)}–${zulu(t + sector.window * 60000)}`;
+  const half = (sector.window * 60000) / 2;
+  return `${zulu(t - half)}–${zulu(t + half)}`;
 }
 
 export function span(ms) {

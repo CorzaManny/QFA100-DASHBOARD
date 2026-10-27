@@ -165,12 +165,12 @@ begin
     end if;
 
     -- The page publishes a window rather than a departure time, and data-dep
-    -- is the middle of it, so the window opens half its length earlier.
+    -- is the middle of it. The middle is what the team plans against, so it is
+    -- std, and the window runs half its length either side.
     open_ := window_[1]::integer * 60 + window_[2]::integer;
     shut_ := window_[3]::integer * 60 + window_[4]::integer;
     wide := mod(shut_ - open_ + 1440, 1440);
-    std_ := make_timestamptz(year_, month_, sector[4]::integer, sector[6]::integer, sector[7]::integer, 0, 'UTC')
-            - make_interval(mins => wide / 2);
+    std_ := make_timestamptz(year_, month_, sector[4]::integer, sector[6]::integer, sector[7]::integer, 0, 'UTC');
 
     link := regexp_match(chunk, 'simbrief\.com/options/custom\?[^"]*route=([^&"]*)');
 

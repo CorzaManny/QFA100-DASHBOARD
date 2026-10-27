@@ -713,7 +713,7 @@ function rulesPage() {
       <p class="tiny">A sector is back of clock if any of it is flown in that window. A night runs midday to midday, sim local time. "In a row" looks within one duty; "one every X days" is the gap between separate back-of-clock duties.</p>
       <h3>Report time</h3>
       <div class="grid2">
-        ${num('reportLeadMinutes', 'Minutes before departure', 'Before the window opens', 5)}
+        ${num('reportLeadMinutes', 'Minutes before departure', 'Before the middle of the window', 5)}
         ${num('firstReportLeadMinutes', 'First sector of the event', 'Minutes before departure', 5)}
       </div>
       <label class="check"><input type="checkbox" name="unmarkedAvailable" ${r.unmarkedAvailable ? 'checked' : ''}> Everyone is available unless they say otherwise</label>

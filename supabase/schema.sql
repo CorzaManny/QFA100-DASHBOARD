@@ -43,7 +43,7 @@ create table if not exists public.sectors (
   arr            text not null check (arr ~ '^[A-Z0-9]{4}$'),
   std            timestamptz not null,
   sta            timestamptz not null check (sta > std),
-  dep_window_min integer,          -- how long after std the departure window stays open
+  dep_window_min integer,          -- the whole departure window in minutes, centred on std
   route          text not null default '',
   notes          text not null default ''
 );

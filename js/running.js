@@ -32,8 +32,9 @@ function liveArrival(sector, track, now, rules) {
 //   basis         'actual' | 'live' | 'plan' - the strongest thing behind it
 //   state         'done' | 'airborne' | 'next' | 'later' | 'skipped'
 //
-// The chain: a sector cannot leave before its window opens, and cannot leave
-// until the aeroplane is back on the ground and turned round. Slack in the
+// The chain: a sector is not expected away before its planned time - the
+// middle of its window, with half of it still in hand either side - and
+// cannot leave until the aeroplane is back on the ground and turned round. Slack in the
 // schedule therefore absorbs a delay instead of passing it on, which is the
 // whole reason this is worked out sector by sector rather than as one number.
 export function runningTimes({ sectors, actuals, track, rules, now = Date.now() }) {

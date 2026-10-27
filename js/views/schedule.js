@@ -321,7 +321,7 @@ function detail(id, mode) {
     <div class="page-head"><a class="back" href="#/schedule/edit">${icon('back')} Edit WF Schedule</a></div>
     <form class="card form" data-form="sector">
       <h2>${existing ? `${esc(s.dep)} → ${esc(s.arr)}` : 'New sector'}</h2>
-      ${existing?.window ? `<p class="note">Official departure window <strong>${depWindow(s)}</strong>. The time below is when it opens.</p>` : ''}
+      ${existing?.window ? `<p class="note">Official departure window <strong>${depWindow(s)}</strong>. The time below is the middle of it.</p>` : ''}
       ${
         s.optB
           ? `<p class="note">This sector has two routes. The boxes below are <strong>route A</strong>. Route B is ${esc(
