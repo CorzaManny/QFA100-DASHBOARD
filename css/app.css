@@ -4739,3 +4739,8 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
     border-radius: 0;
   }
 }
+.team-member { border-bottom: 1px solid var(--line, #384152); padding: 1rem 0; }
+.team-form { display: grid; gap: .75rem; margin: 1rem 0; }
+.team-form label { display: grid; gap: .35rem; }
+.team-photo { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; }
+.team-handle { cursor: grab; }

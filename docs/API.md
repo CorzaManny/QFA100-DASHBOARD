@@ -94,3 +94,22 @@ See [`api/status.example.json`](../api/status.example.json).
 - **Unreachable or invalid:** the Dashboard falls back to VATSIM and shows what went wrong.
 
 The publisher should therefore refresh the document at least every 30 seconds while the simulator is running, and always set `updatedAt` to the time the data was read from the simulator, not the time of the request.
+# Public team directory
+
+Run `supabase/team.sql` after `supabase/schema.sql` to enable **Admin → Team**.
+Admins can add, edit and delete public members, upload photos, and drag members
+to reorder them. The arrow buttons provide keyboard and touch reordering.
+Public roles are free text and have no connection to account permissions.
+
+The public website can fetch `GET /rest/v1/team_members?select=*&order=position.asc,id.asc`
+on the configured Supabase project with its public anon/publishable API key in
+the `apikey` header. No user sign-in is required. Never use a service role key
+in a public website. Each row contains `id`, `name`, `role`, `description`,
+`photo_url` (a public image URL), and `position` (zero-based display order).
+Treat names, roles and descriptions as plain text when rendering them.
+
+Photos accept JPEG, PNG and WebP up to 5 MB in the public `team-photos` bucket.
+Replacing or deleting a member leaves previous photos in Storage so existing
+public links keep working; unused photos can be removed manually in Supabase.
+Only admins can write directory records or upload photos. Reordering is saved
+atomically through `reorder_team_members(member_ids uuid[])`.

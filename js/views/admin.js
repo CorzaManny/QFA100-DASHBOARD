@@ -82,6 +82,7 @@ import {
 } from '../ops.js';
 import { renderRoster, mountedRoster, rosterActions, rosterChanges } from './liveroster.js';
 import { pushEnabled, pushProblem } from '../push.js';
+import { teamPage, mountTeam } from './team.js';
 
 let error = '';
 let result = '';
@@ -127,6 +128,7 @@ function tabs(active) {
       ${canSetSimbrief() ? tab('simbrief', '#/admin/simbrief', 'SimBrief') : ''}
       ${isAdmin() ? tab('rules', '#/admin/rules', 'Settings') : ''}
       ${isAdmin() ? tab('people', '#/admin/people', `People${waiting ? ` (${waiting})` : ''}`) : ''}
+      ${isAdmin() ? tab('team', '#/admin/team', 'Team') : ''}
     </nav>
     ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
     ${result ? `<p class="note ok">${esc(result)}</p>` : ''}`;
@@ -1237,7 +1239,8 @@ export function render(args) {
   if (!canEdit()) {
     out = `<div class="page-head"><h1>Admin</h1></div>
       <section class="card"><p class="note">This section is for team admins and dispatchers. Ask an admin if you need access.</p></section>`;
-  } else if (args[0] === 'people') out = people();
+  } else if (args[0] === 'team') out = tabs('team') + (isAdmin() ? teamPage() : '<p class="note">Only admins can manage the public team.</p>');
+  else if (args[0] === 'people') out = people();
   else if (args[0] === 'auto') out = rosterEditor();
   else if (args[0] === 'balance') out = balancePage();
   else if (args[0] === 'opsdesk') out = opsDeskPage();
@@ -1710,6 +1713,7 @@ function deskPushNote(root) {
 }
 
 export function mounted(root, args = []) {
+  if (args[0] === 'team' && isAdmin()) mountTeam(root);
   if (rosterView === 'timeline' && (!args[0] || args[0] === 'auto')) mountedRoster(root);
   if (args[0] === 'opsdesk') deskPushNote(root);
   // Read vPilot once on the way in and draw again. Not a watcher: app.js has

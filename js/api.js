@@ -201,6 +201,28 @@ async function rest(method, path, body, prefer) {
 
 const id = (v) => encodeURIComponent(v);
 
+export const fetchPublicTeam = () => rest('GET', 'team_members?select=*&order=position.asc,id.asc');
+export const savePublicTeamMember = (fields, memberId) => memberId
+  ? rest('PATCH', `team_members?id=eq.${id(memberId)}`, fields)
+  : rest('POST', 'team_members', fields);
+export const deletePublicTeamMember = (memberId) => rest('DELETE', `team_members?id=eq.${id(memberId)}`);
+export const reorderPublicTeam = (ids) => rest('POST', 'rpc/reorder_team_members', { member_ids: ids });
+
+export async function uploadTeamPhoto(file) {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024)
+    throw new Error('Choose a JPEG, PNG or WebP photo up to 5 MB.');
+  await keepSignedIn();
+  if (!session) throw new Error('Not signed in');
+  const path = `${crypto.randomUUID()}.${{ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[file.type]}`;
+  const res = await fetch(`${BASE}/storage/v1/object/team-photos/${path}`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access}`, 'Content-Type': file.type },
+    body: file,
+  });
+  if (!res.ok) throw new Error(message(await res.json().catch(() => null), res.status));
+  return `${BASE}/storage/v1/object/public/team-photos/${path}`;
+}
+
 // False until a sectors row arrives carrying the alternative-route columns,
 // which is how the app knows supabase/route-options.sql has been run. Until
 // then those columns are left off anything written back, so a database that
