@@ -143,62 +143,53 @@ select public.autostamp_tick() as stamped_now;
 -- where a.on_blocks is null and not coalesce(a.skipped, false)
 -- order by s.std;
 
--- ---------- Testing it before the event ----------
+-- ---------- Testing it ----------
 --
--- This cannot be tried on the real schedule while the event is still days
--- away, and the reason is worth knowing: every sector's expected departure is
--- in the future, so a departure old enough to be past the three minute grace
--- can never be within two hours of one. Both halves are working as intended
--- and together they match nothing.
+-- Two blocks. Paste the first one in, press Run, look at the row it gives
+-- back. Paste the second one in to tidy up. Nothing else to do.
 --
--- So the test uses a sector of its own, sitting in the past, and deletes it
--- afterwards. sector_actuals and roster both cascade from sectors, so the
--- delete at step 6 takes the whole test with it. Run each step on its own and
--- do not leave step 2 in place with the bridge running - it will overwrite
--- sim_status within a couple of seconds, which is the bridge doing its job.
+-- It needs a sector of its own because the real ones are all still in the
+-- future, and this only ever stamps a sector the aeroplane has already flown.
 --
---   1. A sector that was expected away an hour ago. Being the earliest in the
---      schedule, nothing chains into it, so its expected departure is its std.
+-- Do not leave the first block sitting there with the bridge running: it
+-- overwrites sim_status within seconds, which is the bridge doing its job.
+--
+-- ---- 1. Run this ----
+--
 -- insert into public.sectors (flight, dep, arr, std, sta)
 -- values ('ZZTEST', 'YSSY', 'NZAA', now() - interval '1 hour', now() + interval '1 hour');
 --
---   2. Stand in for the bridge: the aeroplane went when that sector was due
---      and arrived ten minutes ago, both old enough to be past the grace.
 -- update public.sim_status
 -- set status = coalesce(status, '{}'::jsonb) || jsonb_build_object('blocks', jsonb_build_object(
 --       'out', to_char(now() - interval '1 hour', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
---       'off', to_char(now() - interval '50 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
---       'on',  to_char(now() - interval '15 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
---       'in',  to_char(now() - interval '10 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
---       'touchdownFpm', 138)),
+--       'in',  to_char(now() - interval '10 minutes', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))),
 --     updated_at = now()
 -- where id = 1;
 --
---   3. Take them. Answers 2 - one for each time written.
--- select public.autostamp_tick() as stamped;
+-- select public.autostamp_tick() as times_taken;
 --
---   4. And they should be against ZZTEST, said to be the simulator's.
--- select s.flight, a.off_blocks, a.on_blocks, a.by_name
--- from public.sectors s join public.sector_actuals a on a.sector_id = s.id
--- where s.flight = 'ZZTEST';
---
---   5. The rule that matters: a stamp of somebody's own is never overwritten.
---      This throws away what step 3 took, puts a departure in by hand five
---      minutes off the simulator's, and runs it again. It answers 1, not 2:
---      off blocks is left exactly as it was put in, by_name still says
---      'A Pilot', and only on blocks is filled in beside it.
--- delete from public.sector_actuals
--- where sector_id = (select id from public.sectors where flight = 'ZZTEST');
--- insert into public.sector_actuals (sector_id, off_blocks, by_name)
--- select id, now() - interval '55 minutes', 'A Pilot'
--- from public.sectors where flight = 'ZZTEST';
--- select public.autostamp_tick() as stamped;
 -- select a.off_blocks, a.on_blocks, a.by_name
 -- from public.sector_actuals a
 -- join public.sectors s on s.id = a.sector_id
 -- where s.flight = 'ZZTEST';
 --
---   6. Put everything back. The sector takes its actuals with it, and
---      clearing the blocks stops the next tick acting on a made-up arrival.
+-- You should get one row, with both times filled in and by_name reading
+-- Simulator. That is the whole thing working.
+--
+-- ---- 2. Then run this ----
+--
 -- delete from public.sectors where flight = 'ZZTEST';
 -- update public.sim_status set status = status - 'blocks', updated_at = now() where id = 1;
+--
+-- ---- If you want to see a pilot's own stamp survive ----
+--
+-- Between the two blocks, run this. It puts a departure in by hand, five
+-- minutes off the simulator's, and asks again. off_blocks keeps your time and
+-- by_name keeps your name; only on_blocks is filled in.
+--
+-- update public.sector_actuals set off_blocks = now() - interval '55 minutes',
+--                                 on_blocks = null, by_name = 'A Pilot'
+-- where sector_id = (select id from public.sectors where flight = 'ZZTEST');
+-- select public.autostamp_tick();
+-- select off_blocks, on_blocks, by_name from public.sector_actuals
+-- where sector_id = (select id from public.sectors where flight = 'ZZTEST');
