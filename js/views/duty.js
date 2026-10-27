@@ -35,6 +35,15 @@ function at(t, base) {
   return `${hhmm(t)}${off > 0 ? `<sup>+${off}</sup>` : ''}`;
 }
 
+// The same moment in the sim's own local time, for the line under a Zulu
+// figure. Everything is planned and flown in Zulu, so Zulu stays the figure
+// and this is only so nobody has to work out in their head what an 1850Z
+// push is in the room they are sitting in. The weekday comes with it: Sydney
+// is eleven hours ahead, so a sector that pushes on Sunday Zulu is often
+// already Monday in the room, and the Zulu day mark on the figure above says
+// nothing about that.
+const local = (t) => simLocal(t);
+
 // My sectors, split into duty periods. A real break - time between being
 // released at the end of one sector and signing on for the next - starts a
 // new period; sectors flown back-to-back inside the same duty stay together.
@@ -161,10 +170,10 @@ function sectorBox(leg, base, myId) {
   return `<section class="duty-box">
     <div class="duty-box-head">
       <div class="duty-f"><span class="duty-f-k">FLT NUMBER</span><span class="duty-f-v">${esc(s.flight)}</span></div>
-      <div class="duty-f"><span class="duty-f-k">ETD</span><span class="duty-f-v">${at(s.std, base)}</span></div>
+      <div class="duty-f"><span class="duty-f-k">ETD</span><span class="duty-f-v">${at(s.std, base)}</span><span class="duty-f-local">${esc(local(s.std))}</span></div>
       <div class="duty-f"><span class="duty-f-k">DEP</span><span class="duty-f-v">${apt(s.dep)}</span></div>
       <div class="duty-f"><span class="duty-f-k">ARR</span><span class="duty-f-v">${apt(s.arr)}</span></div>
-      <div class="duty-f"><span class="duty-f-k">ETA</span><span class="duty-f-v">${at(s.sta, base)}</span></div>
+      <div class="duty-f"><span class="duty-f-k">ETA</span><span class="duty-f-v">${at(s.sta, base)}</span><span class="duty-f-local">${esc(local(s.sta))}</span></div>
       <div class="duty-f"><span class="duty-f-k">A/C</span><span class="duty-f-v">${esc(ac.type)}</span></div>
       <div class="duty-f"><span class="duty-f-k">REGO</span><span class="duty-f-v">${esc(ac.rego)}</span></div>
     </div>
@@ -183,7 +192,7 @@ function sheet(period) {
     <header class="duty-sheet-head">
       <div>
         <div class="duty-title">DUTY REPORT</div>
-        <div class="duty-sub">${esc(teamCallsign())} · WORLDFLIGHT · ALL TIMES ZULU</div>
+        <div class="duty-sub">${esc(teamCallsign())} · WORLDFLIGHT · TIMES ZULU · SIM LOCAL BELOW</div>
       </div>
       <div class="duty-who">
         <div class="duty-who-name">${esc(me()?.display_name || '')}</div>
@@ -191,8 +200,8 @@ function sheet(period) {
       </div>
     </header>
     <div class="duty-signline">
-      <span>SIGN ON <strong>${hhmm(on)}</strong></span>
-      <span>SIGN OFF <strong>${at(off, base)}</strong></span>
+      <span>SIGN ON <strong>${hhmm(on)}</strong> <em>${esc(local(on))}</em></span>
+      <span>SIGN OFF <strong>${at(off, base)}</strong> <em>${esc(local(off))}</em></span>
       <span>DUTY <strong>${span(off - on)}</strong></span>
       <span>SECTORS <strong>${period.length}</strong></span>
     </div>

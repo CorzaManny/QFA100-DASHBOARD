@@ -4473,6 +4473,14 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
   font-size: 13px;
 }
 
+/* The sim's own local time, beside the Zulu figure it translates. Lighter and
+   smaller than the figure, so the sheet still reads as a Zulu document. */
+.duty-signline em {
+  font-style: normal;
+  font-size: 10px;
+  color: #333;
+}
+
 .duty-summary {
   width: 100%;
   border-collapse: collapse;
@@ -4536,7 +4544,7 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
    box still reads as a form when it is half covered in handwriting. */
 .duty-box-head {
   display: grid;
-  grid-template-columns: 1.4fr 0.8fr 1.7fr 1.7fr 0.8fr 0.9fr 1.1fr;
+  grid-template-columns: 1.1fr 1fr 1.5fr 1.5fr 1fr 0.7fr 0.9fr;
   gap: 8px;
   border-bottom: 1px solid #c8c8c8;
   padding-bottom: 5px;
@@ -4559,6 +4567,14 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
   font-size: 13px;
   font-weight: 700;
   min-height: 1.3em;
+}
+
+.duty-f-local {
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 1.2;
+  color: #333;
+  white-space: nowrap;
 }
 
 .duty-box-body {
