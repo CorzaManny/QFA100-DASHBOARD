@@ -71,20 +71,34 @@ create policy "the team reads loadsheets" on public.loadsheets
 -- column. A null becomes dashes rather than a zero, because a figure the OFP
 -- did not carry and a figure that is actually zero are not the same thing to
 -- a crew reading it.
-create or replace function public.loadsheet_num(value numeric, width integer default 8)
+create or replace function public.loadsheet_num(value numeric, width integer default 12)
 returns text language sql immutable as $fn$
   select lpad(case when value is null then '-----' else round(value)::bigint::text end, width);
 $fn$;
 
--- The printed loadsheet, as one strip of paper. Kept inside 32 columns so it
--- prints whole on a 58mm roll as well as an 80mm one.
+-- The printed loadsheet, as one strip of paper.
+--
+-- Laid out for an 80mm roll, which is 48 columns in the usual Font A. Every
+-- figure on the sheet sits in the same column as every other, whether it is a
+-- weight, a fuel or a headcount, so the eye can run straight down it - a
+-- loadsheet is read in a hurry, with a hand already on the FMC.
+--
+-- The three widths come off one constant. A 58mm roll is 32 columns and some
+-- 80mm printers are 42, so changing `cols` re-lays the whole sheet out rather
+-- than needing every line edited.
 create or replace function public.loadsheet_body(target uuid)
 returns text language plpgsql stable set search_path = public as $fn$
 declare
   plan   record;
   ofp    jsonb;
   units  text;
-  rule   constant text := repeat('-', 32);
+  -- 80mm roll, Font A.
+  cols   constant integer := 48;
+  -- The figures column and the maximum beside it; the label takes the rest.
+  wcol   constant integer := 12;
+  mcol   constant integer := 12;
+  lcol   constant integer := cols - wcol - mcol;
+  rule   constant text := repeat('-', cols);
   sheet  text;
   over   text := '';
   tof    numeric;
@@ -109,45 +123,48 @@ begin
 
   -- A plan can come back over a structural limit; SimBrief will produce one
   -- without complaint. Saying so is the whole reason for printing the maximum
-  -- beside the weight.
+  -- beside the weight. Centred, because it is the one line meant to be seen
+  -- before the sheet is read.
   if nullif(ofp ->> 'tow', '')::numeric > nullif(ofp ->> 'maxTow', '')::numeric then
-    over := E'\n** TOW EXCEEDS MAX - CHECK **';
+    over := 'TOW EXCEEDS MAX';
   elsif nullif(ofp ->> 'zfw', '')::numeric > nullif(ofp ->> 'maxZfw', '')::numeric then
-    over := E'\n** ZFW EXCEEDS MAX - CHECK **';
+    over := 'ZFW EXCEEDS MAX';
   elsif nullif(ofp ->> 'ldw', '')::numeric > nullif(ofp ->> 'maxLdw', '')::numeric then
-    over := E'\n** LDW EXCEEDS MAX - CHECK **';
+    over := 'LDW EXCEEDS MAX';
+  end if;
+  if over <> '' then
+    over := '** ' || over || ' - CHECK **';
+    over := E'
+' || lpad(over, (cols + length(over)) / 2);
   end if;
 
-  sheet := concat_ws(E'\n',
-    'LOADSHEET            EDNO ' || plan.edno::text,
-    format('%s  %s/%s  %s',
-           coalesce(nullif(plan.flight, ''), '-'),
-           coalesce(nullif(plan.dep, ''), '----'),
-           coalesce(nullif(plan.arr, ''), '----'),
-           upper(to_char(plan.std, 'DDMon'))),
-    format('%s  %s',
-           coalesce(nullif(ofp ->> 'acft', ''), '----'),
-           coalesce(nullif(ofp ->> 'reg', ''), 'REG N/A')),
+  sheet := concat_ws(E'
+',
+    rpad('LOADSHEET', cols - 10) || lpad('EDNO ' || plan.edno::text, 10),
+    concat_ws('  ',
+      coalesce(nullif(plan.flight, ''), '-'),
+      coalesce(nullif(plan.dep, ''), '----') || '/' || coalesce(nullif(plan.arr, ''), '----'),
+      upper(to_char(plan.std, 'DDMon')),
+      coalesce(nullif(ofp ->> 'acft', ''), '----'),
+      coalesce(nullif(ofp ->> 'reg', ''), 'REG N/A')),
     rule,
-    rpad('', 13) || lpad('WEIGHT', 9) || lpad('MAX', 10),
-    rpad('ZFW', 13) || public.loadsheet_num(nullif(ofp ->> 'zfw', '')::numeric, 9)
-                     || public.loadsheet_num(nullif(ofp ->> 'maxZfw', '')::numeric, 10),
-    rpad('TAKEOFF FUEL', 13) || public.loadsheet_num(tof, 9),
-    rpad('TOW', 13) || public.loadsheet_num(nullif(ofp ->> 'tow', '')::numeric, 9)
-                     || public.loadsheet_num(nullif(ofp ->> 'maxTow', '')::numeric, 10),
-    rpad('TRIP FUEL', 13) || public.loadsheet_num(nullif(ofp ->> 'tripFuel', '')::numeric, 9),
-    rpad('LDW', 13) || public.loadsheet_num(nullif(ofp ->> 'ldw', '')::numeric, 9)
-                     || public.loadsheet_num(nullif(ofp ->> 'maxLdw', '')::numeric, 10),
+    rpad('', lcol) || lpad('WEIGHT', wcol) || lpad('MAX', mcol),
+    rpad('ZERO FUEL', lcol)    || public.loadsheet_num(nullif(ofp ->> 'zfw', '')::numeric, wcol)
+                               || public.loadsheet_num(nullif(ofp ->> 'maxZfw', '')::numeric, mcol),
+    rpad('TAKEOFF FUEL', lcol) || public.loadsheet_num(tof, wcol),
+    rpad('TAKEOFF', lcol)      || public.loadsheet_num(nullif(ofp ->> 'tow', '')::numeric, wcol)
+                               || public.loadsheet_num(nullif(ofp ->> 'maxTow', '')::numeric, mcol),
+    rpad('TRIP FUEL', lcol)    || public.loadsheet_num(nullif(ofp ->> 'tripFuel', '')::numeric, wcol),
+    rpad('LANDING', lcol)      || public.loadsheet_num(nullif(ofp ->> 'ldw', '')::numeric, wcol)
+                               || public.loadsheet_num(nullif(ofp ->> 'maxLdw', '')::numeric, mcol),
     rule,
-    format('PAX %s    CARGO %s',
-           coalesce(nullif(ofp ->> 'pax', ''), '-'),
-           coalesce(round(nullif(ofp ->> 'cargo', '')::numeric)::bigint::text, '-')),
-    format('TAXI %s    RESERVE %s',
-           coalesce(round(nullif(ofp ->> 'taxiFuel', '')::numeric)::bigint::text, '-'),
-           coalesce(round(nullif(ofp ->> 'reserveFuel', '')::numeric)::bigint::text, '-')),
+    rpad('PASSENGERS', lcol)   || public.loadsheet_num(nullif(ofp ->> 'pax', '')::numeric, wcol),
+    rpad('CARGO', lcol)        || public.loadsheet_num(nullif(ofp ->> 'cargo', '')::numeric, wcol),
+    rpad('TAXI FUEL', lcol)    || public.loadsheet_num(nullif(ofp ->> 'taxiFuel', '')::numeric, wcol),
+    rpad('RESERVE FUEL', lcol) || public.loadsheet_num(nullif(ofp ->> 'reserveFuel', '')::numeric, wcol),
+    rule,
     'ALL WEIGHTS IN ' || units,
-    rule,
-    'PREPARED ' || to_char(now(), 'HH24:MI') || 'Z  LOAD CONTROL'
+    rpad('PREPARED ' || to_char(now(), 'HH24:MI') || 'Z', cols - 12) || lpad('LOAD CONTROL', 12)
   );
 
   return sheet || over;
@@ -451,6 +468,24 @@ select public.loadsheet_tick() as sent_now;
 --   6. And it should now be in the ACARS window and on the printer:
 -- select at, reference, from_station, printed, print_error
 -- from public.acars_messages where source = 'loadsheet' order by at desc;
+--
+-- ---------- If the MAX column prints as dashes ----------
+--
+-- The limits are not on the sheet because they are not in the stored OFP. The
+-- app only started reading max_zfw, max_tow and max_ldw out of SimBrief when
+-- the loadsheet was built, so any plan imported before that was saved without
+-- them, and no amount of re-running this file puts them there. Import the
+-- plan again on the sector's Briefing page and they appear.
+--
+-- This says which it is: `parsed` false means the key is absent, so the OFP
+-- predates the change and wants re-importing. True with an empty value means
+-- SimBrief itself did not give a limit for that airframe. The CARGO line came
+-- in at the same time, so it is the other tell - dashes in both is a stale
+-- import rather than anything wrong with the sheet.
+-- select s.flight, b.ofp ? 'maxTow' as parsed, b.ofp ->> 'maxTow' as value,
+--        b.ofp ? 'cargo' as cargo_parsed, b.ofp_at
+-- from public.briefings b join public.sectors s on s.id = b.sector_id
+-- where b.ofp is not null order by s.std;
 --
 -- To go round again on the same sector, clear the send and let it re-schedule:
 -- update public.loadsheets set sent_at = null, due_at = now() where sector_id = '<id>';
