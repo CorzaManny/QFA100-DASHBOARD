@@ -4540,18 +4540,16 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
   page-break-inside: avoid;
 }
 
-/* The boxes take whatever is left of the A4 page after the heading, the
-   summary strip and the footnote, split between however many sectors are on
-   the sheet - so one sector gets a page-deep box to write in and three share
-   the page rather than running onto a second one. Four or more falls back to
-   the 46mm above and is allowed to spill over; it is not a duty anybody is
-   rostered, and break-inside keeps a box whole wherever it lands. */
-.duty-sheet[data-sectors='1'] .duty-box {
-  min-height: 210mm;
-}
-
+/* A box is the same size whether there are one or two sectors on the sheet,
+   because a box that grew to fill the page would stop looking like a box on
+   a form. Two is as many as anybody is rostered back-to-back, and two of
+   these leave a good margin at the foot of the A4 page. Three only fits if
+   they give some of it back, so they do. Four or more keeps the 46mm above
+   and is allowed to spill onto a second page; break-inside keeps each box
+   whole wherever it lands. */
+.duty-sheet[data-sectors='1'] .duty-box,
 .duty-sheet[data-sectors='2'] .duty-box {
-  min-height: 104mm;
+  min-height: 95mm;
 }
 
 .duty-sheet[data-sectors='3'] .duty-box {
@@ -4611,20 +4609,17 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
   max-width: 320px;
 }
 
-/* The invented cabin crew, under the real crew and visibly lesser than it:
-   smaller and grey, so a glance down the list never takes one of these for
-   a rostered name. */
+/* The invented cabin crew. They carry on down the same list as the pilots,
+   with no heading of their own - smaller and grey is the whole signal, so a
+   glance down the list never takes one of these for a rostered name. */
 .duty-cabin {
-  width: 58%;
-  max-width: 320px;
-  margin-top: 6px;
-  color: #6a6a6a;
-}
-
-.duty-cabin-list {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  width: 58%;
+  max-width: 320px;
+  margin-top: 3px;
+  color: #6a6a6a;
 }
 
 .duty-cabin .duty-seat {
@@ -4634,35 +4629,6 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
 .duty-cabin .duty-seat-name {
   min-height: 1.2em;
   font-weight: 400;
-}
-
-.duty-cabin-head {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 8.5px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  margin-bottom: 2px;
-}
-
-/* Says the names under it are made up, wherever they are printed. */
-.duty-fake {
-  font-weight: 400;
-  letter-spacing: 0.06em;
-  border: 1px solid #9a9a9a;
-  border-radius: 2px;
-  padding: 0 3px;
-  font-size: 8px;
-}
-
-/* The line at the foot of the sheet, saying which names on it are invented.
-   Small, because it is a disclaimer and not part of the briefing. */
-.duty-foot {
-  margin: 10px 0 0;
-  font-size: 8.5px;
-  line-height: 1.35;
-  color: #555;
 }
 
 /* A cabin name is not a line to write on - nobody signs for these seats. */

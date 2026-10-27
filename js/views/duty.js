@@ -128,11 +128,12 @@ function aircraft(sector) {
   return { type: ofp?.acft || teamAircraft(), rego: ofp?.reg || teamRego() };
 }
 
-// The cabin crew beside the flight crew. Nobody is ever rostered into these
-// seats - there is no cabin crew at WorldFlight - so they are invented, and
-// the sheet says so in the heading rather than leaving a pilot to work out
-// why there is a name here they have never heard of. See cabinCrew() in
-// ops.js: the same four people appear on everybody's sheet for a sector.
+// The cabin crew, carrying on down the same list as the pilots rather than
+// under a heading of their own. Nobody is ever rostered into these seats -
+// there is no cabin crew at WorldFlight - so they are invented, and the
+// smaller grey type is the only thing on the sheet that says so. See
+// cabinCrew() in ops.js: the same four people appear on everybody's sheet
+// for a sector.
 function cabinList(sector) {
   const rows = cabinCrew(sector)
     .map(
@@ -142,11 +143,7 @@ function cabinList(sector) {
       </div>`,
     )
     .join('');
-  if (!rows) return '';
-  return `<div class="duty-cabin">
-    <div class="duty-cabin-head">CABIN CREW <span class="duty-fake">SIMULATED</span></div>
-    <div class="duty-cabin-list">${rows}</div>
-  </div>`;
+  return rows ? `<div class="duty-cabin">${rows}</div>` : '';
 }
 
 // The block at the top: every sector of the duty on one line, the way the
@@ -230,7 +227,6 @@ function sheet(period) {
     </div>
     ${summary(period)}
     ${period.map((leg) => sectorBox(leg, base, myId)).join('')}
-    <p class="duty-foot">Cabin crew names are simulated. WorldFlight is flown by the pilots in the room and nobody is rostered to those seats; the flight crew above is the real roster.</p>
   </div>`;
 }
 
