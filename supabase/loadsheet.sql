@@ -3,6 +3,11 @@
 -- Run after supabase/acars.sql and supabase/notifications.sql in the Supabase
 -- SQL Editor. Safe to run again.
 --
+-- notifications.sql is a real dependency, not just an order: the send time is
+-- worked out from sector_running() in that file, which is the same estimate
+-- the crew's report times move with. Without it the tick raises as soon as it
+-- runs, saying that function does not exist.
+--
 -- ---- What this is ----
 --
 -- A real crew does not read the weights off the flight plan. Load control
@@ -22,17 +27,24 @@
 --
 -- ---- When it arrives ----
 --
---   * The first one lands at a random moment between 20 and 7 minutes before
---     the scheduled departure, which is about when a real one turns up: late
---     enough that the figures are current, early enough to enter them without
---     being rushed. The moment is drawn once, when the sheet is scheduled,
---     and then kept - not redrawn on every tick, or it would never settle.
---   * Import a new OFP after that one has printed and a revision follows,
---     between 10 and 5 minutes before departure.
---   * A revision that cannot make that window - a plan imported at six
---     minutes to go, or after the departure time - prints 1 to 2 minutes
---     after the import instead. The sheet never holds the aeroplane: a late
---     revision is late, and still better in the crew's hand than waited for.
+--   * The usual case: 12 to 22 minutes after the aeroplane comes on blocks
+--     from the sector before. Timed from the arrival rather than from the
+--     departure, so an aeroplane that made up an hour in the air has its
+--     figures early in the turnaround and can go as soon as it is ready
+--     rather than waiting on paper timed off a schedule it is ahead of. Late
+--     enough that it is parked with the doors open and loading started.
+--   * The first sector of the event has no arrival to measure from, so that
+--     one lands 20 to 7 minutes before the departure sector_running() expects.
+--   * Import a new OFP after a sheet has printed and a revision follows, 10
+--     to 5 minutes before that expected departure - or 1 to 2 minutes after
+--     the import where that window has already gone by. The sheet never holds
+--     the aeroplane: a late revision is late, and still better in the crew's
+--     hand than waited for.
+--   * Nothing prints while anything is airborne, whatever else is true.
+--
+-- The offsets are drawn once and kept on the row; the time they work out to is
+-- recomputed on every tick, so the sheet follows the aeroplane rather than
+-- whatever the clock said when it was first scheduled.
 --
 -- Nothing is sent for a sector that has already pushed back, and nothing is
 -- sent without an OFP, because there would be no figures to send.
@@ -54,6 +66,24 @@ create table if not exists public.loadsheets (
   ofp_at    timestamptz,
   updated_at timestamptz not null default now()
 );
+
+-- The drawn offsets, kept rather than the absolute time they work out to.
+--
+-- due_at used to be drawn once and kept, which made the arrival stable but
+-- tied it to the scheduled departure for ever: on a day running two hours
+-- late the sheet printed two hours before the aeroplane went. The offsets are
+-- what should be stable - a sheet wants to arrive the same number of minutes
+-- before departure whenever departure turns out to be - so those are stored
+-- and due_at is worked out from them against the current estimate on every
+-- tick. The randomness still only happens once.
+alter table public.loadsheets
+  add column if not exists lead_minutes integer,
+  -- Minutes after the aeroplane came on blocks before a sheet may print at
+  -- all, so one cannot roll out while the crew are still taxiing in.
+  add column if not exists settle_minutes integer,
+  -- A floor under due_at, set when somebody asks for a sheet again: it may
+  -- come sooner than the lead would have it, never later.
+  add column if not exists not_before timestamptz;
 
 alter table public.loadsheets enable row level security;
 revoke all on public.loadsheets from anon;
@@ -243,24 +273,41 @@ $fn$;
 
 -- ---------- Scheduling ----------
 
--- The moment a first edition should print: somewhere in the twenty minutes
--- before departure, and never inside the last seven.
-create or replace function public.loadsheet_first_due(std timestamptz)
-returns timestamptz language sql volatile as $fn$
-  select std - make_interval(secs => 7 * 60 + floor(random() * (13 * 60 + 1))::integer);
+-- How long before departure a first edition prints: somewhere in the twenty
+-- minutes before it, and never inside the last seven.
+drop function if exists public.loadsheet_first_due(timestamptz);
+create or replace function public.loadsheet_first_lead()
+returns integer language sql volatile as $fn$
+  select 7 + floor(random() * 14)::integer;
 $fn$;
 
--- And for a revision. The window is tighter - ten to five minutes out - and
--- when there is no longer room for it the sheet goes a minute or two from now
--- instead. Nothing here is ever allowed to be the reason the aeroplane is
--- late, so a window that has passed is given up on rather than waited for.
-create or replace function public.loadsheet_revision_due(std timestamptz)
-returns timestamptz language sql volatile as $fn$
-  select case
-    when now() < std - interval '11 minutes'
-      then std - make_interval(secs => 5 * 60 + floor(random() * (5 * 60 + 1))::integer)
-    else now() + make_interval(secs => 60 + floor(random() * 61)::integer)
-  end;
+-- A revision is tighter: ten to five minutes out. It cannot be the reason the
+-- aeroplane is late, so if that window has already gone by the time the plan
+-- is imported, not_before below sends it a minute or two from then instead.
+drop function if exists public.loadsheet_revision_due(timestamptz);
+create or replace function public.loadsheet_revision_lead()
+returns integer language sql volatile as $fn$
+  select 5 + floor(random() * 6)::integer;
+$fn$;
+
+-- How long after the aeroplane comes on blocks the sheet for its next sector
+-- prints. This is the usual case, and the one that matters.
+--
+-- The sheet is timed from the arrival rather than from the departure on
+-- purpose. Timed off the departure it could only ever be as good as the
+-- estimate of when that is, and the estimate is floored at the published
+-- window - so an aeroplane that flew a two hour block in one hour got its
+-- sheet at the same time it would have had anyway, and the hour it made up
+-- was spent waiting for paper. Timed off the arrival, the figures are in the
+-- crew's hand early in the turnaround and the aeroplane can go as soon as the
+-- rest of it is ready.
+--
+-- Twelve to twenty-two minutes after on blocks: long enough that it is parked
+-- with the doors open and the loading started, early enough to be no part of
+-- what is holding it up.
+create or replace function public.loadsheet_settle()
+returns integer language sql volatile as $fn$
+  select 12 + floor(random() * 11)::integer;
 $fn$;
 
 -- ---------- Sending one ----------
@@ -336,24 +383,35 @@ declare
   sent integer := 0;
 begin
   -- 1. A sector with an OFP, still on the ground, and no sheet scheduled yet.
-  -- The hour of grace lets a sector that went late still get its sheet.
-  insert into public.loadsheets (sector_id, edno, due_at, ofp_at)
-  select s.id, 1, public.loadsheet_first_due(s.std), b.ofp_at
+  -- The offsets are drawn here, once, and kept on the row.
+  insert into public.loadsheets (sector_id, edno, due_at, ofp_at, lead_minutes, settle_minutes)
+  select s.id, 1,
+         run.est_off - make_interval(mins => drawn.lead),
+         b.ofp_at, drawn.lead, drawn.settle
   from public.sectors s
   join public.briefings b on b.sector_id = s.id
+  join public.sector_running() run on run.sector_id = s.id
   left join public.sector_actuals a on a.sector_id = s.id
+  cross join lateral (
+    select public.loadsheet_first_lead() as lead, public.loadsheet_settle() as settle
+  ) drawn
   where b.ofp is not null
     and a.off_blocks is null
     and not coalesce(a.skipped, false)
-    and s.std > now() - interval '1 hour'
+    -- Measured against the estimate, not the published time, so a sector
+    -- running three hours late is still owed a sheet.
+    and run.est_off > now() - interval '1 hour'
   on conflict (sector_id) do nothing;
 
   -- 2. A sheet that has printed, against a plan since imported again. Re-issue
-  -- it, one edition up, in the revision window.
+  -- it, one edition up, on the tighter revision lead - and not before a minute
+  -- or two from now, because a window that has already gone by is not a reason
+  -- to make anybody wait.
   update public.loadsheets l
   set edno = l.edno + 1,
       sent_at = null,
-      due_at = public.loadsheet_revision_due(s.std),
+      lead_minutes = public.loadsheet_revision_lead(),
+      not_before = now() + make_interval(secs => 60 + floor(random() * 61)::integer),
       ofp_at = b.ofp_at,
       updated_at = now()
   from public.sectors s
@@ -370,7 +428,7 @@ begin
 
   -- 3. A sheet not yet printed, against a plan imported again before it went.
   -- Still the same edition - nobody has seen the old figures - so it keeps the
-  -- send time already drawn for it and is simply built from the newer plan.
+  -- lead already drawn for it and is simply built from the newer plan.
   update public.loadsheets l
   set ofp_at = b.ofp_at, updated_at = now()
   from public.briefings b
@@ -379,7 +437,44 @@ begin
     and b.ofp_at is not null
     and (l.ofp_at is null or b.ofp_at > l.ofp_at);
 
-  -- 4. Send what is due.
+  -- 4. Move every unsent sheet to where the estimate now puts it. This is what
+  -- makes the sheet follow a delay: the lead stays as drawn, the departure it
+  -- is measured from is whatever sector_running() currently thinks, and a row
+  -- that pre-dates these columns gets its offsets filled in on the way past.
+  -- A row written before these columns existed has no offsets. Drawn in a
+  -- statement of its own: both SET expressions below see the row as it was, so
+  -- drawing inside the same statement that uses the value would store one
+  -- number and compute due_at from a different one.
+  update public.loadsheets
+  set lead_minutes = coalesce(lead_minutes, public.loadsheet_first_lead()),
+      settle_minutes = coalesce(settle_minutes, public.loadsheet_settle()),
+      updated_at = now()
+  where sent_at is null
+    and (lead_minutes is null or settle_minutes is null);
+
+  -- Where the sheet is due: the aeroplane's last arrival before this sector
+  -- plus the settle time, or - with nothing to measure from, which is the
+  -- first sector of the event - the old reckoning from the expected departure.
+  -- not_before raises it where somebody has asked for the sheet again.
+  update public.loadsheets l
+  set due_at = greatest(
+        coalesce(
+          (select max(a.on_blocks)
+           from public.sector_actuals a
+           join public.sectors prev on prev.id = a.sector_id
+           where a.on_blocks is not null and prev.std < s.std)
+          + make_interval(mins => l.settle_minutes),
+          run.est_off - make_interval(mins => l.lead_minutes)),
+        coalesce(l.not_before, '-infinity'::timestamptz)),
+      updated_at = now()
+  from public.sectors s
+  join public.sector_running() run on run.sector_id = s.id
+  where s.id = l.sector_id
+    and l.sent_at is null
+    and l.lead_minutes is not null
+    and l.settle_minutes is not null;
+
+  -- 5. Send what is due.
   for due in
     select l.sector_id
     from public.loadsheets l
@@ -388,11 +483,9 @@ begin
       and l.due_at <= now()
       and a.off_blocks is null
       and not coalesce(a.skipped, false)
-      -- On the ground, and that means the aeroplane rather than this sector.
-      -- On a day running late the next sector's sheet can come due while the
-      -- one before it is still airborne, and a loadsheet rolling out of the
-      -- printer in the cruise is no use to anybody. It waits, and goes once
-      -- they are on blocks - late, but in their hand on the ground.
+      -- Never in the cruise. due_at is measured from the arrival now, so this
+      -- is rarely what stops anything - but "no loadsheet in the air" is
+      -- worth being a rule rather than something that happens to be true.
       and not exists (
         select 1 from public.sector_actuals flying
         where flying.off_blocks is not null and flying.on_blocks is null
@@ -424,30 +517,42 @@ revoke all on function public.loadsheet_tick() from public, anon, authenticated;
 create or replace function public.loadsheet_resend(target uuid)
 returns timestamptz language plpgsql security definer set search_path = public as $fn$
 declare
-  std_at timestamptz;
+  lead   integer := public.loadsheet_revision_lead();
+  floor_ timestamptz := now() + make_interval(secs => 60 + floor(random() * 61)::integer);
+  est    timestamptz;
   due    timestamptz;
 begin
   if not public.can_report() then
     raise exception 'You cannot ask for a loadsheet';
   end if;
 
-  select s.std into std_at
+  select run.est_off into est
   from public.sectors s
   join public.briefings b on b.sector_id = s.id
+  join public.sector_running() run on run.sector_id = s.id
   where s.id = target and b.ofp is not null;
 
   if not found then
     raise exception 'No flight plan has been imported for this sector, so there are no figures to put on a loadsheet';
   end if;
 
-  due := public.loadsheet_revision_due(std_at);
+  -- As a revision would go: the tighter lead before the departure the running
+  -- estimate now expects, or a minute or two from now if that has passed.
+  due := greatest(est - make_interval(mins => lead), floor_);
 
-  -- The edition stays as it is: the same figures on the same sheet. Only a
-  -- new OFP makes it a revision, and loadsheet_tick() handles that one.
-  insert into public.loadsheets (sector_id, edno, due_at, ofp_at)
-  values (target, 1, due, (select ofp_at from public.briefings where sector_id = target))
+  -- The edition stays as it is: the same figures on the same sheet. Only a new
+  -- OFP makes it a revision, and loadsheet_tick() handles that one.
+  insert into public.loadsheets
+    (sector_id, edno, due_at, ofp_at, lead_minutes, settle_minutes, not_before)
+  values (target, 1, due, (select ofp_at from public.briefings where sector_id = target),
+          lead, public.loadsheet_settle(), floor_)
   on conflict (sector_id) do update
-    set due_at = due, sent_at = null, updated_at = now();
+    set due_at = due,
+        sent_at = null,
+        lead_minutes = lead,
+        not_before = floor_,
+        settle_minutes = coalesce(loadsheets.settle_minutes, public.loadsheet_settle()),
+        updated_at = now();
 
   return due;
 end;

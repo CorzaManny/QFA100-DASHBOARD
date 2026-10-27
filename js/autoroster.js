@@ -26,6 +26,13 @@ export const DEFAULT_RULES = {
   taxiInMinutes: 5, // from overhead the arrival airport to on blocks, for live estimates
   reportReminderMinutes: 90, // notify this long before someone reports; 0 = never
   delayNoticeMinutes: 20, // notify when a delay moves a report time by this much; 0 = never
+  // One stamped time early in the day moves every report time after it, so
+  // without these two somebody on the last sector hears about every sector
+  // between now and theirs. A report further off than this is not worth
+  // telling anybody about - it will move again before they act on it - and
+  // one notice per sector per spell is enough however much it moves inside.
+  delayNoticeWithinHours: 6, // only tell about a delay this close to reporting; 0 = never
+  delayNoticeEveryMinutes: 45, // and at most one delay notice per sector per this long
   reportLeadMinutes: 45, // report this long before the middle of the departure window
   firstReportLeadMinutes: 60, // ...and this long before the first sector of the event
 

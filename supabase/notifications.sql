@@ -264,6 +264,8 @@ returns integer language plpgsql security definer set search_path = public as $$
 declare
   team_lead  integer;
   team_shift integer;
+  within_    integer;
+  every_     integer;
   lead       integer;
   shift      integer;
   r          record;
@@ -271,10 +273,14 @@ declare
 begin
   if not public.roster_published() then return 0; end if;
   select round(coalesce((rules ->> 'reportReminderMinutes')::numeric, 90))::integer,
-         round(coalesce((rules ->> 'delayNoticeMinutes')::numeric, 20))::integer
-    into team_lead, team_shift from public.settings limit 1;
+         round(coalesce((rules ->> 'delayNoticeMinutes')::numeric, 20))::integer,
+         round(coalesce((rules ->> 'delayNoticeWithinHours')::numeric, 6))::integer,
+         round(coalesce((rules ->> 'delayNoticeEveryMinutes')::numeric, 45))::integer
+    into team_lead, team_shift, within_, every_ from public.settings limit 1;
   team_lead := coalesce(team_lead, 90);
   team_shift := coalesce(team_shift, 20);
+  within_ := coalesce(within_, 6);
+  every_ := coalesce(every_, 45);
 
   for r in
     select rt.*, p.notify
@@ -289,10 +295,30 @@ begin
     if not exists (select 1 from public.notified_report n where n.roster_id = r.roster_id) then
       insert into public.notified_report (roster_id, told_report) values (r.roster_id, r.due_at)
       on conflict (roster_id) do nothing;
-    elsif shift > 0 and exists (
-      select 1 from public.notified_report n
-      where n.roster_id = r.roster_id and abs(extract(epoch from (r.due_at - n.told_report))) >= shift * 60
-    ) then
+    -- A delay worth telling somebody about, and two things that stop it
+    -- being told over and over.
+    --
+    -- The estimate is recomputed from every stamped time, and one stamp early
+    -- in the day moves every report time after it. Without these, somebody
+    -- rostered to the last sector of the night is told their report time has
+    -- moved by every sector between now and then - each move true, none of
+    -- them worth a buzz, and the one that mattered lost among them.
+    --
+    --   within_  the report has to be close enough to be worth knowing about.
+    --            A report eighteen hours away will have moved again several
+    --            times before anybody acts on it.
+    --   every_   and at most one notice per sector per spell, however much
+    --            the estimate moves inside it. told_report is still brought
+    --            up to date each time one goes, so the next one measures from
+    --            what they were actually told.
+    elsif shift > 0
+      and r.due_at <= now() + make_interval(hours => within_)
+      and exists (
+        select 1 from public.notified_report n
+        where n.roster_id = r.roster_id
+          and abs(extract(epoch from (r.due_at - n.told_report))) >= shift * 60
+          and n.updated_at <= now() - make_interval(mins => every_)
+      ) then
       perform public.notify(
         r.user_id,
         'delay',

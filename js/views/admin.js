@@ -697,8 +697,11 @@ function rulesPage() {
       <div class="grid2">
         ${num('reportReminderMinutes', 'Remind before report (minutes)', '0 = no reminder', 5)}
         ${num('delayNoticeMinutes', 'Tell about a delay over (minutes)', 'How far a report time must move', 5)}
+        ${num('delayNoticeWithinHours', 'Only within (hours of reporting)', '0 = never tell about delays')}
+        ${num('delayNoticeEveryMinutes', 'And at most every (minutes)', 'One notice per sector per spell', 5)}
       </div>
       <p class="tiny">Only people who have turned notifications on, on a device, are sent anything. See <a href="#/settings">Settings</a>.</p>
+      <p class="tiny">The last two keep a long day quiet: one stamped time moves every report time after it, so without them somebody on the last sector hears about every sector between now and theirs.</p>
       <h3>Back of the clock (sim local time)</h3>
       <div class="grid2">
         ${num('bocStart', 'Starts at hour', '0 to 23')}
