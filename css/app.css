@@ -4504,15 +4504,8 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
   border-bottom: 1px solid #c8c8c8;
 }
 
-/* The two airport columns are the only ones carrying a name as well as a
-   code, so they are the only ones allowed to take the width for it. */
-.duty-summary-apt {
-  white-space: normal;
-  min-width: 26mm;
-}
-
-/* An airport: the code on its own line, its name small underneath. The same
-   pair is used in the summary table and in each sector box. */
+/* An airport in a sector box: the code on its own line, where it is small
+   underneath. The summary table above shows codes alone. */
 .duty-apt {
   display: flex;
   flex-direction: column;

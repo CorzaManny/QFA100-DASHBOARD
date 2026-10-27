@@ -74,15 +74,26 @@ const signOff = (period) => new Date(period.at(-1).s.sta);
 const periodLabel = (p) =>
   `${zdate(p[0].r.report_at)} · ${p[0].s.dep} → ${p.at(-1).s.arr} · ${p.length} sector${p.length === 1 ? '' : 's'}`;
 
-// An airport the way it goes on the sheet: the code, which is what gets read
-// out and typed into the box, with the field's own name under it so the sheet
-// says where it is going in words as well. The codes come from the roster and
-// the names from js/data/airports.json, which app.js loads at startup and
-// rerenders after - so a code it does not carry simply prints on its own.
+// An airport's name with the words every airport's name ends in taken off
+// it: on a line this narrow "Sydney Kingsford Smith" says more than
+// "Sydney Kingsford Smith International Air" would. A bare "Field" is left
+// alone, because in a name like Love Field it is the name.
+const shortName = (name) =>
+  name.replace(
+    /\s+(?:International|Regional|Municipal|National|Domestic)?\s*(?:Airport|Airfield|Airstrip|Airpark|Aerodrome|Air\s+Base)$/i,
+    '',
+  ) || name;
+
+// An airport the way it goes in a sector box: the code, which is what gets
+// read out and typed in, with where it actually is underneath - the airport
+// short and the country it is in as its two-letter code. The codes come from
+// the roster and the rest from js/data/airports.json, which app.js loads at
+// startup and rerenders after, so a code it does not carry prints on its own.
 function apt(code) {
   const a = airport(code);
+  const where = a && [shortName(a.name), a.country].filter(Boolean).join(' · ');
   return `<span class="duty-apt"><span class="duty-apt-icao">${esc(code)}</span>${
-    a ? `<span class="duty-apt-name">${esc(a.name)}</span>` : ''
+    where ? `<span class="duty-apt-name">${esc(where)}</span>` : ''
   }</span>`;
 }
 
@@ -118,8 +129,8 @@ function summary(period) {
       return `<tr>
         <td class="l">${esc(s.flight)}</td>
         <td>${at(s.std, base)}</td>
-        <td class="duty-summary-apt">${apt(s.dep)}</td>
-        <td class="duty-summary-apt">${apt(s.arr)}</td>
+        <td>${esc(s.dep)}</td>
+        <td>${esc(s.arr)}</td>
         <td>${at(s.sta, base)}</td>
         <td>${esc(ac.type)}</td>
         <td>${esc(ac.rego)}</td>
