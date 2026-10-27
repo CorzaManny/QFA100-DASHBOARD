@@ -119,7 +119,7 @@ atomically through `reorder_team_members(member_ids uuid[])`.
 
 Apply supabase/gsx.sql after vpilot.sql. The bridge connects to Couatl's Remote API on ws://127.0.0.1:8744/ (enable Remote control server in GSX Settings).
 It publishes gsx-state every two seconds with connected, trouble and a flat state model. gsx_status retains the latest snapshot; treat it as stale after 15 seconds.
-The GSX EFB page follows the live menu and supports service/operator/pushback choices through it, plus Reload SimBrief.
+The GSX EFB page always shows illustrated shortcuts for boarding, deboarding, catering, fuel and pushback. A shortcut opens the live menu and selects its matching enabled service using the current menu token. If GSX does not offer that service, the page shows the available choices instead. Operator and pushback follow-up choices remain manual. Raw service and SimBrief payloads are not displayed. More GSX options opens the full menu; Reload SimBrief remains available.
 Commands use vpilot_command: gsx-menu-open, gsx-menu-close, gsx-menu-pick {index, menuToken}, gsx-simbrief. Menu indices are zero based; menuToken is an opaque fingerprint of the rendered menu.
 The bridge rejects changed menus and disabled entries and waits for the GSX result before reporting success. Timeouts have an uncertain outcome; check GSX before retrying.
 Requires a desktop Couatl Remote API server; the CommBus-only WASM transport is not supported by this Windows bridge. Text prompts must currently be completed in the simulator.

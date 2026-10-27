@@ -4749,6 +4749,22 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
 .tabs a[data-tab='gsx'] { display: none; }
 body.efb.vpilot .tabs a[data-tab='gsx'] { display: flex; }
 .gsx-page { display: grid; gap: 16px; }
+.gsx-service-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.gsx-service-card { position: relative; display: flex; align-items: center; gap: 18px; padding: 22px; min-height: 150px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(135deg, var(--card2), var(--card)); color: var(--text); text-align: left; font: inherit; cursor: pointer; transition: border-color .15s, transform .15s; }
+.gsx-service-card:hover:enabled { border-color: #87bdf3; transform: translateY(-2px); }
+.gsx-service-card:focus-visible { outline: 3px solid #87bdf3; outline-offset: 3px; }
+.gsx-service-card:disabled { opacity: .5; cursor: default; }
+.gsx-art { width: 92px; flex: 0 0 92px; color: #87bdf3; }
+.gsx-art svg { display: block; width: 100%; }
+.gsx-art-deboarding { color: #b8a5ed; }
+.gsx-art-catering { color: #f1bd83; }
+.gsx-art-fuel { color: #83cfb3; }
+.gsx-art-pushback { color: #eaa0ab; }
+.gsx-service-copy { display: grid; gap: 7px; }
+.gsx-service-copy strong { font-size: 19px; }
+.gsx-service-copy > span { color: var(--muted, #a4afbe); font-size: 13px; line-height: 1.5; }
+.gsx-service-arrow { position: absolute; top: 14px; right: 16px; color: var(--muted, #a4afbe); }
+@media (prefers-reduced-motion: reduce) { .gsx-service-card { transition: none; } }
 .gsx-page .btn-row { padding: 16px; flex-wrap: wrap; }
 .gsx-menu { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; padding: 16px; }
 .gsx-option { min-height: 60px; white-space: normal; text-align: left; }
