@@ -78,26 +78,32 @@ $fn$;
 
 -- The printed loadsheet, as one strip of paper.
 --
--- Laid out for an 80mm roll, which is 48 columns in the usual Font A. Every
+-- Laid out for the flight deck printer, which is 42 columns across. Every
 -- figure on the sheet sits in the same column as every other, whether it is a
 -- weight, a fuel or a headcount, so the eye can run straight down it - a
 -- loadsheet is read in a hurry, with a hand already on the FMC.
 --
--- The three widths come off one constant. A 58mm roll is 32 columns and some
--- 80mm printers are 42, so changing `cols` re-lays the whole sheet out rather
--- than needing every line edited.
+-- The two figure columns are halves of whatever `cols` leaves after the
+-- labels, so changing that one number re-lays the whole sheet out rather than
+-- needing every line edited. Do not take it below 36: the flight and route
+-- line below is 38 characters and would wrap, and a wrapped line is the one
+-- thing that makes a column of figures unreadable.
 create or replace function public.loadsheet_body(target uuid)
 returns text language plpgsql stable set search_path = public as $fn$
 declare
   plan   record;
   ofp    jsonb;
   units  text;
-  -- 80mm roll, Font A.
-  cols   constant integer := 48;
-  -- The figures column and the maximum beside it; the label takes the rest.
-  wcol   constant integer := 12;
-  mcol   constant integer := 12;
-  lcol   constant integer := cols - wcol - mcol;
+  -- What the flight deck printer fits on a line.
+  cols   constant integer := 42;
+  -- The label column is narrow because the labels are short - ZFW, TOW, LDW,
+  -- the names they are called on the flight deck - and the two figure columns
+  -- take the rest of the paper between them. Every figure on the sheet is
+  -- right-aligned inside one of those two, so they all end on the same column
+  -- whatever their length: that is what makes the sheet readable at a glance.
+  lcol   constant integer := 8;
+  wcol   constant integer := (cols - lcol) / 2;
+  mcol   constant integer := cols - lcol - wcol;
   rule   constant text := repeat('-', cols);
   sheet  text;
   over   text := '';
@@ -149,19 +155,19 @@ begin
       coalesce(nullif(ofp ->> 'reg', ''), 'REG N/A')),
     rule,
     rpad('', lcol) || lpad('WEIGHT', wcol) || lpad('MAX', mcol),
-    rpad('ZERO FUEL', lcol)    || public.loadsheet_num(nullif(ofp ->> 'zfw', '')::numeric, wcol)
-                               || public.loadsheet_num(nullif(ofp ->> 'maxZfw', '')::numeric, mcol),
-    rpad('TAKEOFF FUEL', lcol) || public.loadsheet_num(tof, wcol),
-    rpad('TAKEOFF', lcol)      || public.loadsheet_num(nullif(ofp ->> 'tow', '')::numeric, wcol)
-                               || public.loadsheet_num(nullif(ofp ->> 'maxTow', '')::numeric, mcol),
-    rpad('TRIP FUEL', lcol)    || public.loadsheet_num(nullif(ofp ->> 'tripFuel', '')::numeric, wcol),
-    rpad('LANDING', lcol)      || public.loadsheet_num(nullif(ofp ->> 'ldw', '')::numeric, wcol)
-                               || public.loadsheet_num(nullif(ofp ->> 'maxLdw', '')::numeric, mcol),
+    rpad('ZFW', lcol)   || public.loadsheet_num(nullif(ofp ->> 'zfw', '')::numeric, wcol)
+                        || public.loadsheet_num(nullif(ofp ->> 'maxZfw', '')::numeric, mcol),
+    rpad('TOF', lcol)   || public.loadsheet_num(tof, wcol),
+    rpad('TOW', lcol)   || public.loadsheet_num(nullif(ofp ->> 'tow', '')::numeric, wcol)
+                        || public.loadsheet_num(nullif(ofp ->> 'maxTow', '')::numeric, mcol),
+    rpad('TRIP', lcol)  || public.loadsheet_num(nullif(ofp ->> 'tripFuel', '')::numeric, wcol),
+    rpad('LDW', lcol)   || public.loadsheet_num(nullif(ofp ->> 'ldw', '')::numeric, wcol)
+                        || public.loadsheet_num(nullif(ofp ->> 'maxLdw', '')::numeric, mcol),
     rule,
-    rpad('PASSENGERS', lcol)   || public.loadsheet_num(nullif(ofp ->> 'pax', '')::numeric, wcol),
-    rpad('CARGO', lcol)        || public.loadsheet_num(nullif(ofp ->> 'cargo', '')::numeric, wcol),
-    rpad('TAXI FUEL', lcol)    || public.loadsheet_num(nullif(ofp ->> 'taxiFuel', '')::numeric, wcol),
-    rpad('RESERVE FUEL', lcol) || public.loadsheet_num(nullif(ofp ->> 'reserveFuel', '')::numeric, wcol),
+    rpad('PAX', lcol)   || public.loadsheet_num(nullif(ofp ->> 'pax', '')::numeric, wcol),
+    rpad('CARGO', lcol) || public.loadsheet_num(nullif(ofp ->> 'cargo', '')::numeric, wcol),
+    rpad('TAXI', lcol)  || public.loadsheet_num(nullif(ofp ->> 'taxiFuel', '')::numeric, wcol),
+    rpad('RESV', lcol)  || public.loadsheet_num(nullif(ofp ->> 'reserveFuel', '')::numeric, wcol),
     rule,
     'ALL WEIGHTS IN ' || units,
     rpad('PREPARED ' || to_char(now(), 'HH24:MI') || 'Z', cols - 12) || lpad('LOAD CONTROL', 12)
