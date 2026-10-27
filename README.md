@@ -1,5 +1,12 @@
 # QFA100 Ops
 
+WorldFlight PDFs open inside the app with page navigation, 10–600% zoom,
+fit-to-width/page, pinch zoom and drag to pan. The PDF.js renderer is bundled
+locally in `vendor/pdfjs`; no database migration is needed. Hosts that block
+cross-origin PDF reads can use the basic embedded viewer offered on failure.
+To verify PDF rendering and zoom, serve the repository over HTTP and open
+`tools/test_pdf_viewer.html`; it generates a two-page PDF and reports PASS/FAIL.
+
 A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs in any browser and installs to the home screen on iPhone, iPad and Android like a normal app.
 
 ## What it does

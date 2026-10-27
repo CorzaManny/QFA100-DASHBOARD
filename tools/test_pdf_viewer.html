@@ -1,0 +1,41 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="../css/app.css"><style>html,body{margin:0;height:100%}#host{height:700px;width:900px}</style><div id="host" class="wf-pdf-host"></div><pre id="result">RUNNING</pre>
+<script type="module">
+import { mountPdfViewer } from '../js/pdf-viewer.js';
+const result = document.querySelector('#result');
+const assert = (value, message) => { if (!value) throw new Error(message); };
+const wait = async test => { for(let i=0;i<300;i++){ if(test()) return; await new Promise(r=>setTimeout(r,50)); } throw new Error('Timed out: '+document.querySelector('[role=status]')?.textContent); };
+const objects = ['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1800 1200] /Resources << /Font << /F1 7 0 R >> >> /Contents 4 0 R >>',null,'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 900] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>',null,'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+for (const i of [3,5]) { const text='BT /F1 36 Tf 50 500 Td (Large chart page '+(i===3?1:2)+') Tj ET'; objects[i]='<< /Length '+text.length+' >>\nstream\n'+text+'\nendstream'; }
+let pdf='%PDF-1.4\n', offsets=[0];
+objects.forEach((obj,i)=>{offsets.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+obj+'\nendobj\n';});
+const xref=pdf.length;
+pdf+='xref\n0 8\n0000000000 65535 f \n'+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF';
+const url=URL.createObjectURL(new Blob([pdf],{type:'application/pdf'}));
+const host=document.querySelector('#host');
+const el=key=>host.querySelector('[data-pdf="'+key+'"]');
+let dispose;
+try {
+  dispose=mountPdfViewer(host,url,'Large test chart');
+  await wait(()=>host.querySelector('canvas').width>0);
+  assert(el('pages').textContent==='of 2','Page count');
+  const initial=Number(el('zoom').value);
+  assert(initial<100,'Large page initially fits width');
+  el('in').click();
+  assert(Number(el('zoom').value)>initial,'Zoom in');
+  el('zoom').value='200';el('zoom').dispatchEvent(new Event('change'));
+  await wait(()=>host.querySelector('canvas').width>=3000);
+  assert(host.querySelector('canvas').style.width==='3600px','Zoomed PDF dimensions');
+  assert(host.querySelector('.wf-pdf-viewport').scrollWidth>900,'Zoomed page pans');
+  el('zoom').value='9999';el('zoom').dispatchEvent(new Event('change'));
+  assert(el('zoom').value==='600','Zoom maximum');
+  el('width').click();assert(Number(el('zoom').value)===initial,'Fit width reset');
+  el('next').click();await wait(()=>el('page').value==='2');
+  assert(el('next').disabled,'Last page navigation');
+  el('previous').click();await wait(()=>el('page').value==='1');
+  assert(el('previous').disabled,'First page navigation');
+  el('fit').click();assert(Number(el('zoom').value)<=initial,'Fit page');
+  dispose();
+  assert(host.querySelector('canvas').width===0,'Close releases canvas');
+  result.textContent='PASS: real PDF rendering, fit width/page, zoom controls, pan area, page navigation, zoom bounds and disposal';
+} catch(e) { result.textContent='FAIL: '+e.stack; } finally { URL.revokeObjectURL(url); }
+</script>
