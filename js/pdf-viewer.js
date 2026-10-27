@@ -1,4 +1,5 @@
 import { esc } from './ui.js';
+import { pdfSource } from './pdf-source.js';
 
 const MIN_SCALE = .1;
 const MAX_SCALE = 6;
@@ -11,7 +12,7 @@ async function pdfLibrary() {
   return pdfjs;
 }
 
-export function mountPdfViewer(host, url, title) {
+export function mountPdfViewer(host, url, title, updated = '') {
   host.innerHTML = `<div class="wf-pdf-controls" aria-label="PDF controls">
     <button class="btn ghost" data-pdf="previous" aria-label="Previous page" disabled>←</button>
     <label>Page <input data-pdf="page" type="number" min="1" value="1" aria-label="Page number" disabled></label><span data-pdf="pages">of —</span>
@@ -166,7 +167,9 @@ export function mountPdfViewer(host, url, title) {
       const pdfjs = await pdfLibrary();
       if (dead) return;
       const assets = new URL('../vendor/pdfjs/', import.meta.url).href;
-      loading = pdfjs.getDocument({ url, cMapUrl: `${assets}cmaps/`, cMapPacked: true,
+      const source = await pdfSource(url, updated);
+      if (dead) return;
+      loading = pdfjs.getDocument({ url: source, cMapUrl: `${assets}cmaps/`, cMapPacked: true,
         standardFontDataUrl: `${assets}standard_fonts/`, wasmUrl: `${assets}wasm/`, isEvalSupported: false });
       pdf = await loading.promise;
       if (dead) return;
@@ -174,9 +177,10 @@ export function mountPdfViewer(host, url, title) {
       control('page').max = pdf.numPages;
       control('pages').textContent = `of ${pdf.numPages}`;
       await go(1);
-    } catch {
+    } catch (err) {
       if (dead) return;
-      status.textContent = 'Enhanced zoom could not load this PDF. The document host may restrict access.';
+      console.error('WorldFlight PDF failed to load:', url, err);
+      status.textContent = 'Unable to load the zoomable briefing. Try the basic viewer below.';
       const fallback = document.createElement('button');
       fallback.className = 'btn ghost'; fallback.textContent = 'Use basic in-app viewer';
       status.append(' ', fallback);

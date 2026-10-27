@@ -3,7 +3,11 @@
 WorldFlight PDFs open inside the app with page navigation, 10–600% zoom,
 fit-to-width/page, pinch zoom and drag to pan. The PDF.js renderer is bundled
 locally in `vendor/pdfjs`; no database migration is needed. Hosts that block
-cross-origin PDF reads can use the basic embedded viewer offered on failure.
+cross-origin PDF reads use local copies of the official published PDFs. Refresh
+these with `node tools/cache_worldflight_docs.mjs` (all schedule airports), or
+append ICAO codes to refresh selected airports. Publish the generated PDFs and
+manifest with the app. The viewer matches the source URL and published revision
+before using a local copy; other documents can use the basic embedded viewer.
 To verify PDF rendering and zoom, serve the repository over HTTP and open
 `tools/test_pdf_viewer.html`; it generates a two-page PDF and reports PASS/FAIL.
 
@@ -559,7 +563,7 @@ Then open `http://localhost:8000`. (Opening `index.html` by double-clicking will
 - Accounts, schedule and roster: your Supabase project, refreshed every two minutes and whenever the app is reopened. The last copy is kept on the device for use offline.
 - Aircraft position: the simulator status API if configured, otherwise the public [VATSIM data feed](https://data.vatsim.net/v3/vatsim-data.json), refreshed every minute while the Dashboard is open. Without a simulator ETA, the ETA is a straight-line estimate from ground speed.
 - Weather: VATSIM's METAR service.
-- Airport briefings and charts: the official [WorldFlight planning site](https://planning.worldflight.center/), as each controlling team publishes them. Linked, never copied.
+- Airport briefings and charts: the official [WorldFlight planning site](https://planning.worldflight.center/), as each controlling team publishes them. Published PDFs are cached locally for the in-app zoom viewer; their original source URLs and revisions are recorded in `docs/worldflight/manifest.json`.
 - Flight plans: SimBrief's "latest OFP" service for your username.
 - Schedule: the official [WorldFlight planning site](https://planning.worldflight.center/schedule), as published on 26 October 2026, including the alternative routes for the sectors offering two.
 - Airports and runways: [OurAirports](https://ourairports.com/data/) (public domain). Rebuild with `tools/build_airports.py`.

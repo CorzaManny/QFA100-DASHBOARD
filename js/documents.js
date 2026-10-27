@@ -4,7 +4,7 @@ import { mountPdfViewer } from './pdf-viewer.js';
 // Shared by airport and sector briefings. Keep the viewer outside the page
 // root so live weather/flight updates cannot reload an open document.
 export function documentButton(doc) {
-  return `<button type="button" class="row wf-document-link" data-document-url="${esc(doc.url)}" data-document-name="${esc(doc.name || 'WorldFlight briefing')}" data-document-type="${esc(doc.type || '')}">`;
+  return `<button type="button" class="row wf-document-link" data-document-url="${esc(doc.url)}" data-document-name="${esc(doc.name || 'WorldFlight briefing')}" data-document-type="${esc(doc.type || '')}" data-document-updated="${esc(doc.updated || '')}">`;
 }
 
 let viewer = null;
@@ -46,7 +46,7 @@ document.addEventListener('click', (event) => {
   viewer.querySelector('button').addEventListener('click', closeViewer);
   document.body.classList.add('wf-document-open');
   viewer.showModal();
-  if (!image) disposePdf = mountPdfViewer(viewer.querySelector('.wf-pdf-host'), url.href, title);
+  if (!image) disposePdf = mountPdfViewer(viewer.querySelector('.wf-pdf-host'), url.href, title, button.dataset.documentUpdated || '');
 });
 
 window.addEventListener('hashchange', closeViewer);

@@ -1,0 +1,90 @@
+{
+  "https://planning.worldflight.center/uploads/EINN/EINN%20PILOT%20BRIEFING.PDF": {
+    "file": "EINN-4d0dfcd369241aa099aa.pdf",
+    "updated": "2026-10-16T14:32:02.913Z",
+    "name": "EINN PILOT BRIEFING",
+    "airport": "EINN",
+    "sha256": "4d0dfcd369241aa099aae1fc86684e364f962b7b08e46219d494598d8587ab5d",
+    "checkedAt": "2026-10-27T10:42:18.195Z"
+  },
+  "https://planning.worldflight.center/uploads/OMDB/DUBAI%20AIRPORT%20OVERVIEW.PDF": {
+    "file": "OMDB-055c3c65e308ad001305.pdf",
+    "updated": "2026-10-20T09:57:27.801Z",
+    "name": "DUBAI AIRPORT OVERVIEW",
+    "airport": "OMDB",
+    "sha256": "055c3c65e308ad0013059f44578ed2d7f7251e4c51b309b9c022658628cbd38e",
+    "checkedAt": "2026-10-27T10:42:19.908Z"
+  },
+  "https://planning.worldflight.center/uploads/OMDB/DUBAI%20PILOT%20BRIEF%20ARRIVALS.PDF": {
+    "file": "OMDB-863ec5084f7bd2c57a11.pdf",
+    "updated": "2026-10-20T09:57:18.129Z",
+    "name": "DUBAI PILOT BRIEF ARRIVALS",
+    "airport": "OMDB",
+    "sha256": "863ec5084f7bd2c57a11ec9ff69eb60909d9e8ad2ea92fc26865674d562c0919",
+    "checkedAt": "2026-10-27T10:42:20.282Z"
+  },
+  "https://planning.worldflight.center/uploads/OMDB/DUBAI%20PILOT%20BRIEF%20DEPARTURES.PDF": {
+    "file": "OMDB-9c1d9d7f4528365117e6.pdf",
+    "updated": "2026-10-20T09:57:08.044Z",
+    "name": "DUBAI PILOT BRIEF DEPARTURES",
+    "airport": "OMDB",
+    "sha256": "9c1d9d7f4528365117e65953ec7dbd9798163ab30b03a585a32ccddad5d349ca",
+    "checkedAt": "2026-10-27T10:42:20.788Z"
+  },
+  "https://planning.worldflight.center/uploads/RCTP/VATROC%20RCTP%20PILOT%20BRIEFING%20AH.PDF": {
+    "file": "RCTP-6333ceb8b805e6ad1643.pdf",
+    "updated": "2026-10-25T13:02:02.977Z",
+    "name": "VATROC RCTP PILOT BRIEFING AH",
+    "airport": "RCTP",
+    "sha256": "6333ceb8b805e6ad1643d98a622007bb76f2ff10f4b700872c268e5c46ae3d29",
+    "checkedAt": "2026-10-27T10:42:10.954Z"
+  },
+  "https://planning.worldflight.center/uploads/VHHH/PILOT%20BRIEFING%20VHHH.PDF": {
+    "file": "VHHH-ad1f90ffcdadeeda792b.pdf",
+    "updated": "2026-10-15T11:11:43.673Z",
+    "name": "PILOT BRIEFING VHHH",
+    "airport": "VHHH",
+    "sha256": "ad1f90ffcdadeeda792b3224e984290e83b3508cb792a25141fb78a1c515f425",
+    "checkedAt": "2026-10-27T10:42:10.768Z"
+  },
+  "https://planning.worldflight.center/uploads/VVDN/VVDN%20PILOT%20BRIEFING.PDF": {
+    "file": "VVDN-ae64efb1f0113539ce02.pdf",
+    "updated": "2026-10-15T10:27:06.320Z",
+    "name": "VVDN PILOT BRIEFING",
+    "airport": "VVDN",
+    "sha256": "ae64efb1f0113539ce0249030353dafdf5f1693469c1e7833cff82408475dab9",
+    "checkedAt": "2026-10-27T10:42:09.103Z"
+  },
+  "https://planning.worldflight.center/uploads/VVDN/VVDN%20PILOT%20BRIEFING%202026.PDF": {
+    "file": "VVDN-9d7dda771d330a4c4c4f.pdf",
+    "updated": "2026-10-16T08:07:26.318Z",
+    "name": "VVDN PILOT BRIEFING 2026",
+    "airport": "VVDN",
+    "sha256": "9d7dda771d330a4c4c4f6a126a2c4bfa78fbebcd263a052ef23b50114ac70b14",
+    "checkedAt": "2026-10-27T10:42:08.687Z"
+  },
+  "https://planning.worldflight.center/uploads/WSSS/WSSS%20ARRIVAL%20BRIEF%20V1.5.PDF": {
+    "file": "WSSS-5f119ef341ff6926f17a.pdf",
+    "updated": "2026-10-23T15:55:34.960Z",
+    "name": "WSSS ARRIVAL BRIEF V1.5",
+    "airport": "WSSS",
+    "sha256": "5f119ef341ff6926f17a44381882f22458f2f303a06d175af0071ae3cbe88be7",
+    "checkedAt": "2026-10-27T10:42:09.389Z"
+  },
+  "https://planning.worldflight.center/uploads/ZKPY/ZKPY%20AD%20TEXT%20(SEE%20LAST%20SECTION%20FOR%20REMAINING%20CHARTS).PDF": {
+    "file": "ZKPY-0ba3a860146d3f2e9024.pdf",
+    "updated": "2026-10-12T01:51:28.215Z",
+    "name": "ZKPY AD TEXT (SEE LAST SECTION FOR REMAINING CHARTS)",
+    "airport": "ZKPY",
+    "sha256": "0ba3a860146d3f2e90243c989f17d90829e67d37d026f2409f6050ae449ae8e3",
+    "checkedAt": "2026-10-27T10:42:10.459Z"
+  },
+  "https://planning.worldflight.center/uploads/ZYHB/WF2026%20ZYHB%20PILOT%20BRIEFING.PDF": {
+    "file": "ZYHB-a7195b982a90d151c4cd.pdf",
+    "updated": "2026-10-24T05:47:58.554Z",
+    "name": "WF2026 ZYHB PILOT BRIEFING",
+    "airport": "ZYHB",
+    "sha256": "a7195b982a90d151c4cd1e2d134579274e569f3bcba1d32b1d5b38746b35fcdd",
+    "checkedAt": "2026-10-27T10:42:12.823Z"
+  }
+}

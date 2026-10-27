@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WorldFlight PDF loading regression</title>
+<link rel="stylesheet" href="../css/app.css">
+<style>#host { height: 700px; width: 900px; }</style>
+<div id="host" class="wf-pdf-host"></div><pre id="result">RUNNING</pre>
+<script type="module">
+import { mountPdfViewer } from '../js/pdf-viewer.js';
+import { pdfSource } from '../js/pdf-source.js';
+const host = document.querySelector('#host');
+const result = document.querySelector('#result');
+const assert = (value, message) => { if (!value) throw new Error(message); };
+const wait = async predicate => {
+  for (let i = 0; i < 400; i++) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  throw new Error('Timed out: ' + host.querySelector('[role=status]')?.textContent);
+};
+let dispose;
+try {
+  const manifest = await (await fetch('../docs/worldflight/manifest.json')).json();
+  const passed = [];
+  for (const code of ['VHHH', 'RCTP']) {
+    const [url, entry] = Object.entries(manifest).find(([, entry]) => entry.airport === code);
+    const local = await pdfSource(url, entry.updated);
+    assert(new URL(local).origin === location.origin, code + ' uses same-origin PDF');
+    assert(local.endsWith(entry.file), code + ' uses correct cached file');
+    assert(await pdfSource(url, '2000-01-01T00:00:00Z') === url, 'Reject stale revision');
+    dispose = mountPdfViewer(host, url, entry.name, entry.updated);
+    await wait(() => host.querySelector('canvas')?.width > 0);
+    const zoom = host.querySelector('[data-pdf=zoom]');
+    zoom.value = '200'; zoom.dispatchEvent(new Event('change'));
+    await wait(() => host.querySelector('[role=status]').textContent.startsWith('Drag'));
+    assert(zoom.value === '200', code + ' zooms to 200%');
+    const next = host.querySelector('[data-pdf=next]');
+    if (!next.disabled) {
+      next.click();
+      await wait(() => host.querySelector('[data-pdf=page]').value === '2');
+    }
+    dispose(); dispose = null;
+    assert(host.querySelector('canvas').width === 0, 'Dispose releases canvas');
+    host.replaceChildren();
+    passed.push(code);
+  }
+  const external = 'https://example.com/other.pdf';
+  assert(await pdfSource(external) === external, 'Unrelated sources stay unchanged');
+  result.textContent = 'PASS: ' + passed.join(', ') + ' actual briefing PDFs load, zoom and navigate; stale revisions rejected.';
+} catch (error) { dispose?.(); result.textContent = 'FAIL: ' + error.stack; }
+</script>
