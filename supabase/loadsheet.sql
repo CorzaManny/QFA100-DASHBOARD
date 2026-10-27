@@ -78,24 +78,26 @@ $fn$;
 
 -- The printed loadsheet, as one strip of paper.
 --
--- Laid out for the flight deck printer, which is 42 columns across. Every
--- figure on the sheet sits in the same column as every other, whether it is a
--- weight, a fuel or a headcount, so the eye can run straight down it - a
--- loadsheet is read in a hurry, with a hand already on the FMC.
+-- Laid out to the width of the actual printer, which the bridge reports with
+-- every heartbeat and acars_state.printer carries as `columns` - the same
+-- figure the ACARS page prints beside the printer's name. It is read rather
+-- than assumed on purpose: the sheet is the one thing the bridge prints that
+-- is a table, and a table formatted to a different width than the paper is a
+-- table whose lines wrap, which is the one thing that makes a column of
+-- figures unreadable. Everything else the bridge prints is free text and
+-- never showed it up.
 --
--- The two figure columns are halves of whatever `cols` leaves after the
--- labels, so changing that one number re-lays the whole sheet out rather than
--- needing every line edited. Do not take it below 36: the flight and route
--- line below is 38 characters and would wrap, and a wrapped line is the one
--- thing that makes a column of figures unreadable.
+-- Every figure is right-aligned inside its column, so they all end on the
+-- same column whatever their length - a loadsheet is read in a hurry, with a
+-- hand already on the FMC.
 create or replace function public.loadsheet_body(target uuid)
 returns text language plpgsql stable set search_path = public as $fn$
 declare
   plan   record;
   ofp    jsonb;
   units  text;
-  -- What the flight deck printer fits on a line.
-  cols   constant integer := 42;
+  -- What the flight deck printer fits on a line. Read from the station below.
+  cols   integer;
   -- Every figure is right-aligned inside its column, so they all end on the
   -- same column whatever their length. The two figure columns are deliberately
   -- narrow rather than split across the whole width: a figure column wider
@@ -110,7 +112,7 @@ declare
   lcol   constant integer := 8;
   wcol   constant integer := 10;
   mcol   constant integer := 10;
-  rule   constant text := repeat('-', cols);
+  rule   text;
   sheet  text;
   over   text := '';
   tof    numeric;
@@ -128,6 +130,15 @@ begin
 
   ofp := plan.ofp;
   units := upper(coalesce(nullif(ofp ->> 'units', ''), 'KGS'));
+
+  -- 42 if the station has never reported, which is this printer; never below
+  -- 32, which is the narrowest the table itself fits in.
+  select greatest(coalesce(nullif(pr.printer ->> 'columns', '')::integer, 42), 32)
+    into cols
+  from public.acars_state pr
+  where pr.id = 1;
+  cols := coalesce(cols, 42);
+  rule := repeat('-', cols);
 
   -- Takeoff fuel is the ramp fuel less what is burnt getting to the runway,
   -- which is the figure that goes in the box - not the block fuel.
@@ -153,10 +164,14 @@ begin
   sheet := concat_ws(E'
 ',
     rpad('LOADSHEET', cols - 10) || lpad('EDNO ' || plan.edno::text, 10),
+    -- Two lines rather than one: together they run to 38 characters, which
+    -- wraps on a 32 column roll, and a wrapped line here pushes everything
+    -- below it out of true.
     concat_ws('  ',
       coalesce(nullif(plan.flight, ''), '-'),
       coalesce(nullif(plan.dep, ''), '----') || '/' || coalesce(nullif(plan.arr, ''), '----'),
-      upper(to_char(plan.std, 'DDMon')),
+      upper(to_char(plan.std, 'DDMon'))),
+    concat_ws('  ',
       coalesce(nullif(ofp ->> 'acft', ''), '----'),
       coalesce(nullif(ofp ->> 'reg', ''), 'REG N/A')),
     rule,
