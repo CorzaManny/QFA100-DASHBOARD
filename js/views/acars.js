@@ -233,13 +233,38 @@ const KINDS = {
   ping: 'PING',
   notice: 'BRIDGE',
   company: 'COMPANY',
+  loadsheet: 'LOADSHEET',
 };
 
+// The window is for ATC, and only ATC. A clearance or a CPDLC instruction is
+// worth keeping on screen because it may need reading again or reprinting
+// after a jam; a METAR, a loadsheet and a message from ops have all already
+// come out of the printer, and a window full of them is a window nobody
+// reads the clearance out of.
+//
+// Both the source and the kind are checked. The source is the honest answer -
+// 'wx' for weather the bridge fetched, 'ops' for a company message,
+// 'loadsheet' for a sheet from load control - but weather asked for before
+// the bridge stopped using Hoppie is source 'hoppie' with a weather kind, and
+// those should drop out of the window too.
+const OFF_WINDOW_SOURCES = new Set(['wx', 'ops', 'loadsheet']);
+const OFF_WINDOW_KINDS = new Set([
+  'metar', 'taf', 'shorttaf', 'atis', 'vatatis', 'peatis', 'ivaoatis',
+  'inforeq', 'company', 'loadsheet', 'ping', 'notice',
+]);
+
+const atcOnly = (messages) =>
+  messages.filter(
+    (m) =>
+      !OFF_WINDOW_SOURCES.has(String(m.source || '').toLowerCase())
+      && !OFF_WINDOW_KINDS.has(String(m.kind || '').toLowerCase()),
+  );
+
 function messageWindow() {
-  const { messages } = acarsPicture();
+  const messages = atcOnly(acarsPicture().messages);
   if (!messages.length) {
     return `<p class="acars-empty">${
-      acarsLive() ? 'Nothing sent or received yet.' : 'Nothing to show until the datalink is up.'
+      acarsLive() ? 'Nothing from ATC yet.' : 'Nothing to show until the datalink is up.'
     }</p>`;
   }
   // Newest at the bottom, like every other message window in the app, and

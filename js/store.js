@@ -31,6 +31,9 @@ function defaults() {
     defectSeq: 0,
     briefings: [], // per sector: { sector_id, notes, wf_url, wf_notes, handover, ofp, ofp_by, ofp_at, ctwo }
     actuals: [], // what actually happened: { sector_id, off_blocks, on_blocks, skipped, by_name }
+    // Loadsheets, as load control has them: { sector_id, edno, due_at, sent_at,
+    // ofp_at }. Empty until supabase/loadsheet.sql has been run.
+    loadsheets: [],
     swaps: [], // sectors offered to the team: { id, roster_id, from_user, claimed_by, state, reason }
     official: [], // the official WorldFlight schedule, as the database last read it
     officialCheck: null, // { checked_at, ok, sectors, note } from that check

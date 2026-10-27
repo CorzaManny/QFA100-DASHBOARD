@@ -17,6 +17,8 @@ import {
   fetchOpsChat,
   sendOpsMessage,
   fetchSimStatus,
+  resendLoadsheet,
+  forceLoadsheet,
 } from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
@@ -1445,11 +1447,44 @@ export async function fetchOfp(id) {
     reserveFuel: num(d.fuel?.reserve),
     altnFuel: num(d.fuel?.alternate_burn),
     pax: num(d.weights?.pax_count),
+    cargo: num(d.weights?.cargo),
     zfw: num(d.weights?.est_zfw),
     tow: num(d.weights?.est_tow),
     ldw: num(d.weights?.est_ldw),
+    // The structural limits, for the loadsheet: a loadsheet that gives a
+    // weight without the maximum beside it says nothing a crew can act on.
+    // See supabase/loadsheet.sql, which reads these out of the stored OFP.
+    maxZfw: num(d.weights?.max_zfw),
+    maxTow: num(d.weights?.max_tow),
+    maxLdw: num(d.weights?.max_ldw),
     pdf: str(d.files?.directory) && str(d.files?.pdf?.link) ? d.files.directory + d.files.pdf.link : '',
   };
+}
+
+// ---- Loadsheets ----
+
+// What load control has for a sector, or {} when nothing is scheduled. Every
+// sector reads empty until supabase/loadsheet.sql has been run, which is how
+// the pages that mention a loadsheet know to leave themselves out.
+export const loadsheetOf = (sectorId) =>
+  state.loadsheets.find((l) => l.sector_id === sectorId) || {};
+
+// Whether this database sends loadsheets at all.
+export const loadsheetsOn = () => state.loadsheets.length > 0;
+
+// Ask for it again, on the revision schedule. Answers with when it is now
+// due, so a page can say when to expect it rather than claim it has gone.
+export async function askLoadsheet(sectorId) {
+  const due = await resendLoadsheet(sectorId);
+  await syncTeam();
+  return Array.isArray(due) ? due[0] : due;
+}
+
+// Force it out now, skipping the schedule. Ops and admins only, and the
+// database is what enforces that - not this.
+export async function sendLoadsheetNow(sectorId) {
+  await forceLoadsheet(sectorId);
+  await syncTeam();
 }
 
 // ---- Cabin crew ----

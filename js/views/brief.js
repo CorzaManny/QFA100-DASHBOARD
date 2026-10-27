@@ -23,6 +23,9 @@ import {
   saveBrief,
   simbriefId,
   syncTeam,
+  loadsheetOf,
+  loadsheetsOn,
+  askLoadsheet,
   fetchDocsFor,
   estimateArrivalDelay,
   delayOf,
@@ -178,6 +181,33 @@ export function ofpSummary(o, b) {
     }</div>`;
 }
 
+// Where the sector's loadsheet is up to, and the button to ask for it again.
+//
+// It is in the flight plan card because that is what it is made of: the sheet
+// is the OFP's weights, and a sheet that disagrees with the plan beside it is
+// the thing this is here to settle. Left out entirely where the database has
+// no loadsheets, and where there is no plan to build one from.
+function loadsheetRow(s, b) {
+  if (!loadsheetsOn() || !b.ofp) return '';
+  const sheet = loadsheetOf(s.id);
+  const where = sheet.sent_at
+    ? `Sent ${ago(new Date(sheet.sent_at).getTime())} as edition ${esc(sheet.edno)}.`
+    : sheet.due_at
+      ? `Due ${zulu(sheet.due_at)}, about ${span(new Date(sheet.due_at) - Date.now())} from now.`
+      : 'Not scheduled yet.';
+  return `
+    <div class="brief-loadsheet">
+      <div class="tiny">LOADSHEET · ${where} It prints on the flight deck printer.</div>
+      ${
+        canReport()
+          ? `<button class="btn ghost" data-act="resendLoadsheet" ${busy ? 'disabled' : ''}>${
+              busy ? 'Asking…' : 'Resend loadsheet'
+            }</button>`
+          : ''
+      }
+    </div>`;
+}
+
 function ofpCard(s, b) {
   const id = simbriefId();
   const delay = delayOf(s.id);
@@ -210,6 +240,7 @@ function ofpCard(s, b) {
             </div>`
           : ''
       }
+      ${loadsheetRow(s, b)}
       ${
         id
           ? ''
@@ -675,6 +706,12 @@ export const actions = {
     if (collapsed.has(key)) collapsed.delete(key);
     else collapsed.add(key);
     rerender();
+  },
+  resendLoadsheet() {
+    const id = currentSectorId();
+    // No need to report the time here: askLoadsheet() syncs the team, so the
+    // row above re-renders with the send time the database actually chose.
+    return run(() => askLoadsheet(id), 'Load control has it again. The card above says when it goes.');
   },
   importOfp() {
     const s = sortedSectors().find((x) => x.id === currentSectorId());

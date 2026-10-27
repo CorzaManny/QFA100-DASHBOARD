@@ -290,7 +290,7 @@ const OPS_CHAT = 'ops_messages?select=*&order=sent_at.desc&limit=200';
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus, normalChecklists, opsShifts, opsDesk, opsChat] =
+  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus, normalChecklists, opsShifts, opsDesk, opsChat, loadsheets] =
     await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
@@ -315,6 +315,9 @@ export async function loadAll() {
     rest('GET', 'ops_shifts?select=*&order=starts_at.asc').catch(() => null),
     rest('GET', 'ops_desk?select=*&id=eq.1').catch(() => null),
     rest('GET', OPS_CHAT).catch(() => null),
+    // null: supabase/loadsheet.sql has not been run, so no loadsheet is ever
+    // sent and the pages that mention one leave themselves out.
+    rest('GET', 'loadsheets?select=*').catch(() => null),
   ]);
   return {
     sectors: sectors.map(toSector),
@@ -329,6 +332,7 @@ export async function loadAll() {
     official: official ? official.map(toSector) : null,
     officialCheck: officialCheck?.[0] || null,
     actuals: actuals || [],
+    loadsheets: loadsheets || [],
     swaps: swaps || [],
     // null: supabase/pickups.sql has not been run, so empty seats cannot be asked for.
     pickups,
@@ -619,6 +623,21 @@ export const fetchAcarsLogon = () =>
 export const setAcarsLogon = (args) => rest('POST', 'rpc/acars_set_logon', args);
 
 export const forgetAcarsLogon = () => rest('POST', 'rpc/acars_forget_logon', {});
+
+// ---- Loadsheets ----
+//
+// Both of these are in supabase/loadsheet.sql, and the database decides who
+// may call them: resend is open to anybody who writes briefings, force is ops
+// and admins only.
+
+// Puts the sheet back in the queue on the revision schedule, and answers with
+// when it is now due.
+export const resendLoadsheet = (sectorId) =>
+  rest('POST', 'rpc/loadsheet_resend', { target: sectorId });
+
+// Sends it this second, skipping the schedule and the on-the-ground check.
+export const forceLoadsheet = (sectorId) =>
+  rest('POST', 'rpc/loadsheet_send_now', { target: sectorId });
 
 // A company message from ops to the flight deck. Not a queued command: it is
 // written straight into the message window both sides read, and the printer

@@ -37,6 +37,9 @@ import {
   wouldBreak,
   defaultReport,
   syncTeam,
+  loadsheetOf,
+  loadsheetsOn,
+  sendLoadsheetNow,
 } from '../ops.js';
 import { renderRoster, mountedRoster, rosterActions, rosterChanges } from './liveroster.js';
 import { sendCompany, syncAcars, acarsKnown, acarsReady, acarsOnline, acarsCanPrint, acarsPrinter } from '../acars.js';
@@ -208,6 +211,56 @@ function planning(now) {
         list.every(planned) ? 'ok' : 'warn'
       }">${list.filter(planned).length} OF ${list.length}</span></div>
       ${rows}
+    </section>`;
+}
+
+// Where each upcoming loadsheet is up to, and the button to force one out.
+//
+// Load control sends these on its own, so the board's job is to show that it
+// has - and to be the way round it when it has not. A printer that jammed, a
+// bridge that was down when the sheet went, a crew asking for figures nobody
+// can see: "Send now" skips the send time and the on-the-ground check and
+// puts it on the paper, because somebody has looked and decided.
+function loadsheets(now) {
+  if (!loadsheetsOn()) return '';
+  const list = soon(now).filter(planned);
+  if (!list.length) return '';
+  const rows = list
+    .slice(0, 10)
+    .map((s) => {
+      const sheet = loadsheetOf(s.id);
+      const sent = !!sheet.sent_at;
+      const sending = busy === `ls-${s.id}`;
+      return `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} <span class="badge ${sent ? 'ok' : 'mute'}">${
+            sent ? `SENT · EDNO ${esc(sheet.edno)}` : 'NOT SENT'
+          }</span></div>
+          <div class="sub">${esc(s.flight)} · ${when(s.std)}</div>
+          <div class="sub">${
+            sent
+              ? `Sent ${ago(new Date(sheet.sent_at).getTime())}`
+              : sheet.due_at
+                ? `Due ${when(sheet.due_at)}`
+                : 'Not scheduled yet'
+          }</div>
+        </div>
+        <div class="right">
+          <button class="btn ghost" type="button" data-act="forceLoadsheet" data-id="${esc(s.id)}" ${
+            sending ? 'disabled' : ''
+          }>${sending ? 'Sending…' : sent ? 'Send again' : 'Send now'}</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+  return `
+    <section class="card list">
+      <div class="card-head"><h2>Loadsheets</h2><span class="badge ${
+        list.every((s) => loadsheetOf(s.id).sent_at) ? 'ok' : 'mute'
+      }">${list.filter((s) => loadsheetOf(s.id).sent_at).length} OF ${list.length} SENT</span></div>
+      ${rows}
+      <p class="tiny">Load control sends these by itself, between 20 and 7 minutes before departure. Sending from here skips the wait and prints one now.</p>
     </section>`;
 }
 
@@ -475,6 +528,7 @@ function board(now) {
     ${reports(now)}
     ${crewing(now)}
     ${planning(now)}
+    ${loadsheets(now)}
     ${airports(now)}
     ${defects()}
     <p class="tiny center">Everything here looks ${AHEAD_HOURS} hours ahead, except crewing, which looks at the whole schedule.</p>`;
@@ -523,6 +577,10 @@ export const actions = {
     const why = prompt('Turn this down? You can say why (optional).', '');
     if (why === null) return;
     return settle(id, () => (kind === 'swap' ? decideSwap(id, false, why) : decidePickup(id, false, why)));
+  },
+  forceLoadsheet(el) {
+    const { id } = el.dataset;
+    return settle(`ls-${id}`, () => sendLoadsheetNow(id));
   },
   viewBoard() {
     view = 'board';

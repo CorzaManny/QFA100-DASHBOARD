@@ -1329,6 +1329,20 @@ body.scratch.scratch-open .scratch-toggle {
   align-items: center;
   gap: 10px;
 }
+
+/* Where the sector's loadsheet is up to, at the foot of the flight plan card,
+   with the button to ask for it again beside it. Ruled off above because it
+   is about the sheet rather than the plan the sheet is made from. */
+.brief-loadsheet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
 .btn-row > .btn {
   flex: 1;
 }
