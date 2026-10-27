@@ -1534,6 +1534,22 @@ const SIMBRIEF_FETCH = 'https://www.simbrief.com/api/xml.fetcher.php';
 // of the aircraft type, so one or the other goes in the same field.
 export const teamAirframe = () => (state.settings?.rules?.airframe || '').trim();
 
+// The team's registration. SimBrief keeps it on the airframe, not on the
+// flight, so every OFP the team generates comes back with the same one - and
+// there is no way to ask SimBrief for an airframe on its own, only for a plan
+// made with it. So the rego is read from whichever OFP was imported most
+// recently and then stands for the whole event: import one on any sector and
+// every sector knows the aeroplane. Empty until somebody imports a plan, or
+// if the airframe in SimBrief has no registration set against it.
+export function teamRego() {
+  return (
+    state.briefings
+      .map((b) => b.ofp)
+      .filter((o) => o?.reg)
+      .sort((a, b) => (b.fetchedAt || 0) - (a.fetchedAt || 0))[0]?.reg || ''
+  ).trim().toUpperCase();
+}
+
 // The one VATSIM account the team flies the whole event on, and the SELCAL
 // vPilot connects with. Kept here beside the callsign because they are the
 // same kind of thing - the aeroplane's identity, not a person's - and set in

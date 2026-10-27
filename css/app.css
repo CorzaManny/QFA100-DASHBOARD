@@ -4504,6 +4504,28 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
   border-bottom: 1px solid #c8c8c8;
 }
 
+/* The two airport columns are the only ones carrying a name as well as a
+   code, so they are the only ones allowed to take the width for it. */
+.duty-summary-apt {
+  white-space: normal;
+  min-width: 26mm;
+}
+
+/* An airport: the code on its own line, its name small underneath. The same
+   pair is used in the summary table and in each sector box. */
+.duty-apt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.duty-apt-name {
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 1.2;
+  color: #333;
+}
+
 /* One sector. The box is deliberately bigger than what is printed in it:
    the empty part is the point of the sheet. */
 .duty-box {
@@ -4521,7 +4543,7 @@ body.efb.vpilot .tabs a[data-tab='acars'] {
    box still reads as a form when it is half covered in handwriting. */
 .duty-box-head {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 1fr 1.2fr;
+  grid-template-columns: 1.4fr 0.8fr 1.7fr 1.7fr 0.8fr 0.9fr 1.1fr;
   gap: 8px;
   border-bottom: 1px solid #c8c8c8;
   padding-bottom: 5px;

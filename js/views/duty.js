@@ -11,7 +11,7 @@ import { configured } from '../api.js';
 import { esc, zdate, zulu, span, simLocal, icon, rerender } from '../ui.js';
 import {
   me, person, crewOf, openSeats, briefingOf, canEdit, isDraft, DUTIES,
-  teamCallsign, teamAircraft,
+  teamCallsign, teamAircraft, teamRego, airport,
 } from '../ops.js';
 
 // Which duty period is on the sheet, by the id of the sector it starts with.
@@ -74,6 +74,18 @@ const signOff = (period) => new Date(period.at(-1).s.sta);
 const periodLabel = (p) =>
   `${zdate(p[0].r.report_at)} · ${p[0].s.dep} → ${p.at(-1).s.arr} · ${p.length} sector${p.length === 1 ? '' : 's'}`;
 
+// An airport the way it goes on the sheet: the code, which is what gets read
+// out and typed into the box, with the field's own name under it so the sheet
+// says where it is going in words as well. The codes come from the roster and
+// the names from js/data/airports.json, which app.js loads at startup and
+// rerenders after - so a code it does not carry simply prints on its own.
+function apt(code) {
+  const a = airport(code);
+  return `<span class="duty-apt"><span class="duty-apt-icao">${esc(code)}</span>${
+    a ? `<span class="duty-apt-name">${esc(a.name)}</span>` : ''
+  }</span>`;
+}
+
 const SEAT = { Captain: 'CPT', 'First Officer': 'FO', 'Relief Pilot': 'RP', Observer: 'OBS' };
 
 // Every seat on a sector in seat order, filled or not: an empty one is a line
@@ -86,12 +98,14 @@ function seatRows(sector) {
   return rows.sort((a, b) => DUTIES.indexOf(a.duty) - DUTIES.indexOf(b.duty));
 }
 
-// The aeroplane for a sector. The type and registration come from the OFP
-// once somebody has imported one; until then the team's type stands in and
-// the registration is left blank to be written in.
+// The aeroplane for a sector. The team flies the one aeroplane all week, so
+// the registration is the team's rather than the sector's: this sector's own
+// OFP if it has one, otherwise the rego off whatever OFP has been imported
+// elsewhere, which is the same airframe and so the same aeroplane. It is left
+// blank to be written in only when no plan has been imported at all.
 function aircraft(sector) {
   const ofp = briefingOf(sector.id).ofp;
-  return { type: ofp?.acft || teamAircraft(), rego: ofp?.reg || '' };
+  return { type: ofp?.acft || teamAircraft(), rego: ofp?.reg || teamRego() };
 }
 
 // The block at the top: every sector of the duty on one line, the way the
@@ -104,8 +118,8 @@ function summary(period) {
       return `<tr>
         <td class="l">${esc(s.flight)}</td>
         <td>${at(s.std, base)}</td>
-        <td>${esc(s.dep)}</td>
-        <td>${esc(s.arr)}</td>
+        <td class="duty-summary-apt">${apt(s.dep)}</td>
+        <td class="duty-summary-apt">${apt(s.arr)}</td>
         <td>${at(s.sta, base)}</td>
         <td>${esc(ac.type)}</td>
         <td>${esc(ac.rego)}</td>
@@ -137,8 +151,8 @@ function sectorBox(leg, base, myId) {
     <div class="duty-box-head">
       <div class="duty-f"><span class="duty-f-k">FLT NUMBER</span><span class="duty-f-v">${esc(s.flight)}</span></div>
       <div class="duty-f"><span class="duty-f-k">ETD</span><span class="duty-f-v">${at(s.std, base)}</span></div>
-      <div class="duty-f"><span class="duty-f-k">DEP</span><span class="duty-f-v">${esc(s.dep)}</span></div>
-      <div class="duty-f"><span class="duty-f-k">ARR</span><span class="duty-f-v">${esc(s.arr)}</span></div>
+      <div class="duty-f"><span class="duty-f-k">DEP</span><span class="duty-f-v">${apt(s.dep)}</span></div>
+      <div class="duty-f"><span class="duty-f-k">ARR</span><span class="duty-f-v">${apt(s.arr)}</span></div>
       <div class="duty-f"><span class="duty-f-k">ETA</span><span class="duty-f-v">${at(s.sta, base)}</span></div>
       <div class="duty-f"><span class="duty-f-k">A/C</span><span class="duty-f-v">${esc(ac.type)}</span></div>
       <div class="duty-f"><span class="duty-f-k">REGO</span><span class="duty-f-v">${esc(ac.rego)}</span></div>
