@@ -4757,6 +4757,8 @@ body.efb.vpilot .tabs a[data-tab='gsx'] { display: flex; }
 .gsx-art { width: 92px; flex: 0 0 92px; color: #87bdf3; }
 .gsx-art svg { display: block; width: 100%; }
 .gsx-art-deboarding { color: #b8a5ed; }
+.gsx-art-aerobridge { color: #86d3dc; }
+.gsx-art-stairs { color: #d7c28b; }
 .gsx-art-catering { color: #f1bd83; }
 .gsx-art-fuel { color: #83cfb3; }
 .gsx-art-pushback { color: #eaa0ab; }
