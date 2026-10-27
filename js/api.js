@@ -332,7 +332,10 @@ export async function loadAll() {
     official: official ? official.map(toSector) : null,
     officialCheck: officialCheck?.[0] || null,
     actuals: actuals || [],
-    loadsheets: loadsheets || [],
+    // null: supabase/loadsheet.sql has not been run. Kept apart from an empty
+    // list, which means it has been run and nothing is scheduled yet - the
+    // normal state days before the first sector, and not the same thing.
+    loadsheets,
     swaps: swaps || [],
     // null: supabase/pickups.sql has not been run, so empty seats cannot be asked for.
     pickups,

@@ -413,13 +413,44 @@ select cron.schedule('loadsheet-tick', '30 seconds', $job$ select public.loadshe
 -- Run it once now and see what it says.
 select public.loadsheet_tick() as sent_now;
 
--- ---------- Checking it ----------
+-- ---------- Trying it without waiting for the first sector ----------
 --
---   What is scheduled, when it is due, and how long before departure that is:
+-- Nothing is scheduled for a sector until its OFP has been imported, so days
+-- before the event there is nothing here to look at. This is how to see the
+-- whole thing work today, in order. Run each on its own.
+--
+--   1. Is this file installed at all? An empty table is the right answer
+--      before any OFP has been imported; an error means it is not installed.
+-- select count(*) from public.loadsheets;
+--
+--   2. Import an OFP for a sector in the app first - Briefing -> Flight plan
+--      -> Import latest OFP. The plan in SimBrief has to be that sector's
+--      route or the app refuses it. Then schedule the sheets by hand rather
+--      than waiting up to half a minute for the cron:
+-- select public.loadsheet_tick();
+--
+--   3. What got scheduled, and whether the window is being honoured. The last
+--      column should read between 7 and 20 minutes for a first edition:
 -- select s.flight, s.dep, s.arr, s.std, l.edno, l.due_at, l.sent_at,
 --        s.std - l.due_at as before_departure
 -- from public.loadsheets l join public.sectors s on s.id = l.sector_id
 -- order by s.std;
 --
---   What one looks like before it is sent:
--- select public.loadsheet_body('paste-a-sector-id-here');
+--   4. The paper itself, before anybody sends it. Takes a sector id, which
+--      step 3 can give you:
+-- select public.loadsheet_body((select sector_id from public.loadsheets limit 1));
+--
+--   5. Print one now. Note this calls loadsheet_deliver and NOT
+--      loadsheet_send_now: send_now is what the Ops board button calls, and it
+--      asks can_edit(), which reads auth.uid() - and auth.uid() is null in the
+--      SQL Editor, so it would refuse you here however much of an admin you
+--      are. deliver is the same send without the permission check, which is
+--      why the app is never given it.
+-- select public.loadsheet_deliver((select sector_id from public.loadsheets limit 1));
+--
+--   6. And it should now be in the ACARS window and on the printer:
+-- select at, reference, from_station, printed, print_error
+-- from public.acars_messages where source = 'loadsheet' order by at desc;
+--
+-- To go round again on the same sector, clear the send and let it re-schedule:
+-- update public.loadsheets set sent_at = null, due_at = now() where sector_id = '<id>';

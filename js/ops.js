@@ -389,8 +389,12 @@ const withShortName = (p) => ({ ...p, full_name: p.display_name, display_name: p
 export async function syncTeam() {
   if (!configured || !getSession()) return false;
   try {
-    const { defects, official, opsChat, ...team } = await loadAll();
+    const { defects, official, opsChat, loadsheets, ...team } = await loadAll();
     Object.assign(state, team);
+    // null means this database has no loadsheets table, which is not the same
+    // as having one with nothing in it yet.
+    state.loadsheetsOn = loadsheets !== null;
+    state.loadsheets = loadsheets || [];
     state.people = (state.people || []).map(withShortName);
     // opsShifts and opsDesk stay null when this database has no ops desk, so
     // the panel knows to leave itself out; the thread is a list either way.
@@ -1469,8 +1473,11 @@ export async function fetchOfp(id) {
 export const loadsheetOf = (sectorId) =>
   state.loadsheets.find((l) => l.sector_id === sectorId) || {};
 
-// Whether this database sends loadsheets at all.
-export const loadsheetsOn = () => state.loadsheets.length > 0;
+// Whether this database sends loadsheets at all - that is, whether
+// supabase/loadsheet.sql has been run. Not whether any have been scheduled:
+// days out from the first sector there are none, and the pages still want to
+// say so rather than leave the crew wondering.
+export const loadsheetsOn = () => !!state.loadsheetsOn;
 
 // Ask for it again, on the revision schedule. Answers with when it is now
 // due, so a page can say when to expect it rather than claim it has gone.

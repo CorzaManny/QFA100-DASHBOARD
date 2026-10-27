@@ -223,8 +223,21 @@ function planning(now) {
 // puts it on the paper, because somebody has looked and decided.
 function loadsheets(now) {
   if (!loadsheetsOn()) return '';
-  const list = soon(now).filter(planned);
-  if (!list.length) return '';
+  // The rest of the board looks a day ahead, which is the right window for
+  // something that needs doing. This is not quite that: days before the first
+  // sector there is nothing inside the window, and a card that draws nothing
+  // cannot be told apart from one that is broken - which is exactly how this
+  // was first found. So it falls back to the next sectors that have a plan,
+  // however far out they are, and says that is what it is doing.
+  const due = soon(now).filter(planned);
+  const ahead = due.length ? [] : upcoming(now).filter(planned).slice(0, 3);
+  const list = due.length ? due : ahead;
+  if (!list.length) {
+    return `<section class="card"><h2>Loadsheets</h2>
+      <p class="note">Nothing to send yet. A loadsheet is built from a sector's flight plan, so one is scheduled as soon as an OFP is imported${
+        upcoming(now).length ? '' : ' and there is a sector to fly'
+      }.</p></section>`;
+  }
   const rows = list
     .slice(0, 10)
     .map((s) => {
@@ -260,7 +273,9 @@ function loadsheets(now) {
         list.every((s) => loadsheetOf(s.id).sent_at) ? 'ok' : 'mute'
       }">${list.filter((s) => loadsheetOf(s.id).sent_at).length} OF ${list.length} SENT</span></div>
       ${rows}
-      <p class="tiny">Load control sends these by itself, between 20 and 7 minutes before departure. Sending from here skips the wait and prints one now.</p>
+      <p class="tiny">Load control sends these by itself, between 20 and 7 minutes before departure. Sending from here skips the wait and prints one now.${
+        ahead.length ? ` Nothing is due in the next ${AHEAD_HOURS} hours, so these are the next sectors with a plan.` : ''
+      }</p>
     </section>`;
 }
 
