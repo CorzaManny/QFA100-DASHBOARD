@@ -8,6 +8,10 @@
 // prints what arrives and reports all of it through the vpilot-plugin Edge
 // Function; the acars_* tables are in supabase/acars.sql.
 //
+// Weather is in the bridge too, and is no longer Hoppie's at all: it is
+// fetched from this app's own sources and printed on the same printer. See
+// requestInfo() below.
+//
 // So this module is the app's side of it, and it is deliberately the same
 // shape as js/vpilot.js: it polls while a panel is open, sends commands back,
 // and keeps nothing. A clearance is true for as long as the flight is, and a
@@ -36,8 +40,8 @@ const POLL_MS = 2000;
 // means the sim PC has gone without saying goodbye.
 const STALE_AFTER_MS = 70000;
 // How long to wait for the bridge's own answer to a command. Longer than
-// vPilot's, because a Hoppie request may take its full 15 s timeout before
-// the bridge can say anything.
+// vPilot's, because a Hoppie request - or a weather source being slow - may
+// take its full 15 s timeout before the bridge can say anything.
 const ANSWER_MS = 30000;
 const ANSWER_POLL_MS = 500;
 
@@ -360,19 +364,34 @@ async function run(kind, args = {}) {
 
 const station = (value) => String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-// ---- Telex and weather ----
+// ---- Telex ----
 
 export const sendTelex = (to, message) => run('acars-telex', { to: station(to), message });
 
-// METAR, TAF, short TAF, and the ATIS from whichever network. Hoppie answers
-// these immediately rather than on a poll, so the reply is usually in the
-// window by the time the button finishes.
+// ---- Weather ----
+
+// METAR, TAF, short TAF and the ATIS, fetched by the bridge from the sources
+// this app already uses - VATSIM for the METAR and the ATIS,
+// aviationweather.gov for the TAF, which is the source supabase/weather.sql
+// reads - and printed on the flight deck printer.
+//
+// This used to go to Hoppie, and does not any more. Hoppie's weather was its
+// own cache rather than the source, so a printed METAR could disagree with the
+// one on the airport page in the same hand; and it needed a Hoppie logon code,
+// which meant no weather at all at the briefing, before the datalink is
+// anybody's concern. See WeatherIntegration.cs in the vpilot-plugin
+// repository.
+//
+// The command keeps its old name. Every tablet already sends it, the database
+// already allows it, and the bridge routes it to its own weather station - so
+// nothing had to be renamed to stop using Hoppie. The answer comes back as the
+// same acars-message any uplink does, tagged source "wx".
 export const requestInfo = (request, icao) =>
   run('acars-info', { request: String(request || '').toLowerCase(), icao: station(icao) });
 
 export const requestMetar = (icao) => requestInfo('metar', icao);
 export const requestTaf = (icao) => requestInfo('taf', icao);
-export const requestAtis = (icao) => requestInfo('vatatis', icao);
+export const requestAtis = (icao) => requestInfo('atis', icao);
 
 // A pre-departure clearance. The bridge builds the request in the shape the
 // controller clients expect; pass body to send something else entirely.

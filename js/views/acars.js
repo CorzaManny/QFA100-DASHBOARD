@@ -24,6 +24,7 @@ import {
   acarsReady,
   acarsKnown,
   acarsLive,
+  acarsOnline,
   acarsFault,
   acarsAtcUnit,
   acarsLogonPending,
@@ -223,6 +224,9 @@ const KINDS = {
   metar: 'METAR',
   taf: 'TAF',
   shorttaf: 'TAF',
+  atis: 'ATIS',
+  // Hoppie's three names for the one ATIS, from when the weather came off
+  // Hoppie. Kept so a message already in the window still reads properly.
   vatatis: 'ATIS',
   peatis: 'ATIS',
   ivaoatis: 'ATIS',
@@ -304,6 +308,12 @@ function sendPanel() {
   const unit = acarsAtcUnit();
   const sector = currentSector();
   const ready = acarsLive();
+  // Weather is the one thing on this page that is not Hoppie's any more, so it
+  // is the one thing that does not wait on the datalink: the bridge fetches it
+  // from our own sources and needs no logon code. All it needs is the sim PC
+  // being there to fetch and print it. That matters at the briefing, which is
+  // before anybody has thought about a datalink.
+  const canFetch = acarsOnline();
 
   const tabs = `
     <div class="acars-tabs" role="tablist">
@@ -372,17 +382,21 @@ function sendPanel() {
             ['metar', 'METAR', 'primary'],
             ['taf', 'TAF', ''],
             ['shorttaf', 'Short TAF', ''],
-            ['vatatis', 'ATIS', ''],
+            ['atis', 'ATIS', ''],
           ]
             .map(
               ([request, label, cls]) =>
                 `<button class="btn ${cls}" type="button" data-act="weather" data-request="${request}"
-                  ${!ready || busy === request ? 'disabled' : ''}>${esc(label)}</button>`,
+                  ${!canFetch || busy === request ? 'disabled' : ''}>${esc(label)}</button>`,
             )
             .join('')}
         </div>
       </div>
-      <p class="tiny">Hoppie answers these straight away rather than on a poll, so the reply lands in the window within a second or two.</p>`;
+      <p class="tiny">${
+        canFetch
+          ? 'Fetched by the sim PC from the same sources as the airport pages — VATSIM for the METAR and the ATIS, the US aviation weather service for the TAF — and printed on the flight deck printer. No Hoppie logon needed.'
+          : 'Nothing to fetch with until the sim PC is connected.'
+      }</p>`;
   } else {
     body = `
       <form class="card-form acars-pdc" data-form="pdc">
@@ -474,6 +488,12 @@ const signature = (p) =>
       printer: p.state.printer,
       last_polled_at: p.state.last_polled_at,
     },
+    // Whether the sim PC is there at all, which is what the weather buttons
+    // wait on now that weather is not Hoppie's. Deliberately the worked-out
+    // flag and not state.updated_at: that is stamped on every 20 s heartbeat
+    // and would call every poll a change, which is the whole reason it is
+    // left out above. This turns over at most once per spell of silence.
+    acarsOnline(),
     p.messages.length,
     p.messages[p.messages.length - 1]?.reference ?? null,
   ]);
@@ -592,7 +612,9 @@ export const actions = {
   weather(el) {
     const request = el.dataset.request;
     const icao = draft('wx');
-    doing(request, () => requestInfo(request, icao), 'Asked Hoppie.');
+    // The bridge fetches it, puts it in the window and prints it, so by the
+    // time this answers the paper is already coming out.
+    doing(request, () => requestInfo(request, icao), 'Fetched, and printing.');
   },
 
   // Puts the start of a request in the box for the crew to finish, rather
