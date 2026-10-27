@@ -505,6 +505,11 @@ begin
              result_at = now()
        where seq = public.vpilot_number(e->'id');
 
+    elsif kind = 'gsx-state' then
+      if to_regprocedure('public.gsx_ingest_event(jsonb)') is not null then
+        perform public.gsx_ingest_event(e);
+      end if;
+
     elsif kind like 'acars-%' then
       -- The datalink station, which lives in supabase/acars.sql. Handled
       -- there rather than here so the ACARS events can grow without anybody
@@ -596,6 +601,11 @@ begin
       raise exception 'The bridge does not know "%"', kind;
     end if;
     perform public.acars_check_command(kind, given);
+  elsif kind like 'gsx-%' then
+    if to_regprocedure('public.gsx_check_command(text,jsonb)') is null then
+      raise exception 'GSX is not set up. Apply supabase/gsx.sql';
+    end if;
+    perform public.gsx_check_command(kind, given);
   elsif kind is null or kind not in (
     'connect', 'connect-observer', 'disconnect', 'radio', 'private',
     'metar', 'atis', 'mode-c', 'ident', 'open-chat', 'close-chat')

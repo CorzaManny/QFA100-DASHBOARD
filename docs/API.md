@@ -94,6 +94,7 @@ See [`api/status.example.json`](../api/status.example.json).
 - **Unreachable or invalid:** the Dashboard falls back to VATSIM and shows what went wrong.
 
 The publisher should therefore refresh the document at least every 30 seconds while the simulator is running, and always set `updatedAt` to the time the data was read from the simulator, not the time of the request.
+
 # Public team directory
 
 Run `supabase/team.sql` after `supabase/schema.sql` to enable **Admin → Team**.
@@ -113,3 +114,12 @@ Replacing or deleting a member leaves previous photos in Storage so existing
 public links keep working; unused photos can be removed manually in Supabase.
 Only admins can write directory records or upload photos. Reordering is saved
 atomically through `reorder_team_members(member_ids uuid[])`.
+
+## GSX
+
+Apply supabase/gsx.sql after vpilot.sql. The bridge connects to Couatl's Remote API on ws://127.0.0.1:8744/ (enable Remote control server in GSX Settings).
+It publishes gsx-state every two seconds with connected, trouble and a flat state model. gsx_status retains the latest snapshot; treat it as stale after 15 seconds.
+The GSX EFB page follows the live menu and supports service/operator/pushback choices through it, plus Reload SimBrief.
+Commands use vpilot_command: gsx-menu-open, gsx-menu-close, gsx-menu-pick {index, menuToken}, gsx-simbrief. Menu indices are zero based; menuToken is an opaque fingerprint of the rendered menu.
+The bridge rejects changed menus and disabled entries and waits for the GSX result before reporting success. Timeouts have an uncertain outcome; check GSX before retrying.
+Requires a desktop Couatl Remote API server; the CommBus-only WASM transport is not supported by this Windows bridge. Text prompts must currently be completed in the simulator.

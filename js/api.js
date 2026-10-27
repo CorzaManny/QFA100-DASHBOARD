@@ -669,3 +669,5 @@ export const forceLoadsheet = (sectorId) =>
 // is asked separately, so it works with the simulator PC switched off.
 export const sendAcarsCompany = (message) =>
   rest('POST', 'rpc/acars_send_company', { message });
+
+export const fetchGsx = () => rest('GET', 'gsx_status?select=*&id=eq.1').then(rows => rows?.[0] || null);
