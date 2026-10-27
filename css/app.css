@@ -4774,3 +4774,15 @@ body.efb.vpilot .tabs a[data-tab='gsx'] { display: flex; }
 .gsx-services { margin: 0; padding: 16px; display: grid; gap: 12px; }
 .gsx-services > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 .gsx-services dd { margin: 0; overflow-wrap: anywhere; }
+.wf-document-link { width: 100%; font: inherit; color: inherit; text-align: left; background: transparent; border: 0; cursor: pointer; }
+.wf-document-link:focus-visible { outline: 2px solid #87bdf3; outline-offset: -2px; }
+.wf-document-open { overflow: hidden; }
+.wf-document-viewer { position: fixed; inset: 0; width: 100%; max-width: none; height: 100%; height: 100dvh; max-height: none; padding: 0; margin: 0; border: 0; background: var(--bg); color: var(--text); }
+.wf-document-viewer[open] { display: flex; flex-direction: column; }
+.wf-document-viewer::backdrop { background: #080d13; }
+.wf-document-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left)); border-bottom: 1px solid var(--line); }
+.wf-document-toolbar h2 { margin: 4px 0 0; font-size: 17px; overflow-wrap: anywhere; }
+.wf-document-toolbar .btn { flex-shrink: 0; }
+.wf-document-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; }
+.wf-document-image { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+.wf-document-image img { display: block; max-width: 100%; height: auto; margin: auto; }

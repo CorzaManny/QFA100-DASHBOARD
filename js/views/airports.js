@@ -1,6 +1,7 @@
 // Airport briefings: facts, live METAR, runways, team notes, chart links.
 
 import { state, save } from '../store.js';
+import { documentButton } from '../documents.js';
 import { esc, ago, icao, icon, zulu, zdate, rerender } from '../ui.js';
 import { airport, sortedSectors, upcomingSector, fetchMetar, fetchTafFor, fetchStations, fetchDocsFor } from '../ops.js';
 
@@ -87,15 +88,15 @@ export function docsBlock(code, status, errMessage = '') {
         .filter(Boolean)
         .map((part) => esc(part))
         .join(' · ');
-      return `<a class="row" href="${esc(d.url)}" target="_blank" rel="noopener">
+      return `${documentButton(d)}
         <div class="row-main">
           <div class="row-t">${esc(d.name)}</div>
           ${sub ? `<div class="sub">${sub}</div>` : ''}
         </div>
         <div class="right">${
           d.type ? `<span class="badge ${DOC_BADGE[d.type] || 'mute'}">${esc(d.type)}</span> ` : ''
-        }${icon('external')}</div>
-      </a>`;
+        }${icon('chevron')}</div>
+      </button>`;
     })
     .join('');
   if (rows) return `${rows}<div class="tiny">From the WorldFlight planning site · read ${ago(got.at)}</div>`;
