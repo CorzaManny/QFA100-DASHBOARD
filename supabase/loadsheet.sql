@@ -96,14 +96,20 @@ declare
   units  text;
   -- What the flight deck printer fits on a line.
   cols   constant integer := 42;
-  -- The label column is narrow because the labels are short - ZFW, TOW, LDW,
-  -- the names they are called on the flight deck - and the two figure columns
-  -- take the rest of the paper between them. Every figure on the sheet is
-  -- right-aligned inside one of those two, so they all end on the same column
-  -- whatever their length: that is what makes the sheet readable at a glance.
+  -- Every figure is right-aligned inside its column, so they all end on the
+  -- same column whatever their length. The two figure columns are deliberately
+  -- narrow rather than split across the whole width: a figure column wider
+  -- than the figures in it leaves a gap between WEIGHT and MAX that the short
+  -- headings fall into, and a heading sitting ten spaces off the digits below
+  -- it reads as crooked even when it is exactly aligned. Ten is room for seven
+  -- figures, which is more than any 737 weight in kilos or pounds.
+  --
+  -- So the table is left-aligned and the paper keeps some white on the right,
+  -- while the heading and the footer below still span the full width to frame
+  -- it. That is how a printed form looks.
   lcol   constant integer := 8;
-  wcol   constant integer := (cols - lcol) / 2;
-  mcol   constant integer := cols - lcol - wcol;
+  wcol   constant integer := 10;
+  mcol   constant integer := 10;
   rule   constant text := repeat('-', cols);
   sheet  text;
   over   text := '';
