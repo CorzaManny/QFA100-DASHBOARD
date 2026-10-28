@@ -443,6 +443,19 @@ Everything lands on the quarter hour, nothing is written until you let go, and *
 
 Above the rows is the strip the page is really for: **Desk cover**, green where somebody has the desk and striped red where nobody does, with the open time counted in the margin. A gap at 0300 is what the roster is written to close, and reading that off a list of start and end times was the hard part. Behind the bars, faintly, are the sectors being flown, so the desk can be rostered against the flying rather than against the clock.
 
+### Somebody rostered on the desk while they are flying
+
+An **admin** is the one account that can both fly a sector and take the ops desk, which makes it the one account that can be rostered to answer the flight deck from inside it. Nobody does that on purpose — it happens because the two rosters are built on different pages, days apart.
+
+So the shift timeline draws that person's own duty periods on their own row, hatched in red, report time to on blocks, and flags any shift that lands on one:
+
+- the bar turns red and says which sector they are flying instead of its length;
+- their row is badged **FLYING**, and the card head counts every clash on the whole roster, not just the day showing;
+- dragging a shift onto one asks first, naming the sector — once, and you can roster it anyway;
+- **On the desk now** turns red and says so when the person who has the desk this minute is on a flying duty, with whoever else is rostered on and on the ground.
+
+It is a flag and not a refusal. A controller may know perfectly well that they are rostered as an observer on a sector they can answer the radio through, and the roster is theirs to write. A duty measured against a sector that is running late reaches to where the day is actually going to put it, not to the published arrival.
+
 Overlapping shifts are allowed on purpose — two controllers covering the same hours is a real thing, and whoever started first holds the desk until the other's shift begins. On a touch screen a finger still scrolls the timeline, so drawing a *new* shift by dragging wants a mouse or a stylus; existing bars drag and resize under a finger, and the form at the foot of the page adds one by typing. Needs [`supabase/ops-chat.sql`](supabase/ops-chat.sql).
 
 ## Destination congestion forecast (holding and traffic fuel)

@@ -607,6 +607,28 @@ export const upcomingSector = (now = Date.now()) => nextSector(now, true) || nex
 export const running = (now = Date.now()) =>
   runningOf({ sectors: state.sectors, actuals: state.actuals || [], track: state.track, rules: rules(), now });
 
+// Duty periods somebody is on the flight deck for, between two moments:
+// report time at one end, on blocks at the other. An ops shift that overlaps
+// one of these is a person in two places at once, which is what the ops shift
+// timeline flags - an admin is the one account that can both fly a sector and
+// take the desk, and the whole point of the desk is somebody being there to
+// answer. Pass the running times in and a delayed sector's duty is measured to
+// where it is actually going to land.
+export function flyingBetween(userId, from, to, run = null) {
+  const out = [];
+  for (const entry of state.roster) {
+    if (entry.user_id !== userId) continue;
+    const sector = state.sectors.find((s) => s.id === entry.sector_id);
+    if (!sector) continue;
+    const row = run?.times?.get(sector.id);
+    const starts = new Date(entry.report_at).getTime();
+    // The published arrival, or wherever the day has actually put it.
+    const ends = Math.max(new Date(sector.sta).getTime(), row?.on || 0, row && !row.on ? row.estOn : 0);
+    if (ends > from && starts < to) out.push({ entry, sector, from: starts, to: ends });
+  }
+  return out.sort((a, b) => a.from - b.from);
+}
+
 // ---- Report-time moves ----
 // A delay big enough to matter raises one of these per seat, and the ops
 // controller on shift approves it, puts their own time in, or waves it away.

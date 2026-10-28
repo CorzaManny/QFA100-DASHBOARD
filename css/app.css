@@ -3344,6 +3344,52 @@ body.efb .tabs a[data-tab='ctwo'] {
   color: var(--bad);
 }
 
+/* A shift rostered on somebody who is flying it. Red, named and with the
+   alert icon, because the desk being unanswered at 0300 is not a detail. */
+.os-bar.clash {
+  background: rgba(239, 68, 68, 0.26);
+  border-color: rgba(239, 68, 68, 0.65);
+}
+.os-bar.clash .lr-bar-s {
+  color: var(--bad);
+}
+.os-bar.clash .icon {
+  width: 12px;
+  height: 12px;
+  margin-right: 3px;
+  color: var(--bad);
+  vertical-align: -1px;
+}
+
+/* That controller's own duty periods on their own row: the hours they cannot
+   answer the flight deck in, because they are flying it. Hatched rather than
+   solid so a shift bar drawn over one is still readable, and never in the way
+   of a drag. */
+.os-flying {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  pointer-events: none;
+  border-radius: 3px;
+  border: 1px dashed rgba(239, 68, 68, 0.5);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(239, 68, 68, 0.2) 0 5px,
+    rgba(239, 68, 68, 0.06) 5px 10px
+  );
+  overflow: hidden;
+}
+.os-flying span {
+  position: absolute;
+  bottom: 2px;
+  left: 5px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--bad);
+  white-space: nowrap;
+}
+
 /* The flying, behind the shifts: the reason a shift is shaped the way it is,
    so it reads as a backdrop and is never in the way of a drag. */
 .os-sector {

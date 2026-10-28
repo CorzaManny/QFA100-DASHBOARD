@@ -15,7 +15,7 @@
 import { state } from '../store.js';
 import { saveOpsShift, deleteOpsShift } from '../api.js';
 import { esc, zulu, zdate, simClock, simLocal, isoDate, isoTime, icon, rerender } from '../ui.js';
-import { OPS_DESK_ROLES, person, syncTeam, opsShifts } from '../ops.js';
+import { OPS_DESK_ROLES, person, syncTeam, opsShifts, running, flyingBetween } from '../ops.js';
 import {
   MINUTE,
   HOUR,
@@ -34,6 +34,21 @@ import {
 
 // The shortest shift worth having, and so the smallest a drag can make one.
 const MIN_SHIFT = 30 * MINUTE;
+
+// An admin is the one account that can both fly a sector and take the ops
+// desk, which makes it the one account that can be rostered to answer the
+// flight deck from inside it. Nobody does that deliberately; it happens
+// because the two rosters are built on different pages, days apart. So a shift
+// that lands on one of that person's own duty periods is flagged wherever it
+// is drawn, and dragging one there asks first.
+//
+// It is never refused. A controller may know perfectly well that they are
+// rostered as an observer on a sector they can answer the radio through, and
+// the roster is theirs to write.
+const clashWords = (list) =>
+  list
+    .map(({ sector, entry, from, to }) => `${sector.flight} as ${entry.duty}, ${spanText(from, to)}`)
+    .join('; ');
 
 // Which day is showing, by index into shiftDays(). null means "whichever day
 // 'now' falls in", worked out fresh so it follows the clock until somebody
@@ -180,22 +195,48 @@ function sectorMarks(start, end) {
     .join('');
 }
 
-function bar(shift, start, end) {
+// This controller's own duty periods, on their own row: the hours they cannot
+// answer the flight deck in, because they are flying it. Drawn before the
+// shifts rather than only flagged afterwards, so the roster is written around
+// them in the first place.
+function flyingBlocks(duties, start, end) {
+  return duties
+    .map(
+      (d) =>
+        `<div class="os-flying" style="left:${left(Math.max(d.from, start), start)}px;width:${widthPx(
+          d.from,
+          d.to,
+          start,
+          end,
+        )}px" title="${esc(
+          `Flying ${d.sector.flight} ${d.sector.dep} → ${d.sector.arr} as ${d.entry.duty}, ${spanText(d.from, d.to)}`,
+        )}"><span>${esc(d.sector.flight)} · ${esc(d.entry.duty.toUpperCase())}</span></div>`,
+    )
+    .join('');
+}
+
+function bar(shift, start, end, clash) {
   const from = ms(shift.starts_at);
   const to = ms(shift.ends_at);
   const now = Date.now();
   const kind = to < now ? 'done' : from <= now ? 'live' : 'plan';
-  const title = `${spanText(from, to)} · ${lengthText(from, to)}${shift.notes ? `\n${shift.notes}` : ''}
+  const title = `${spanText(from, to)} · ${lengthText(from, to)}${shift.notes ? `\n${shift.notes}` : ''}${
+    clash.length ? `\n⚠ On the desk while flying ${clashWords(clash)}` : ''
+  }
 Drag the middle to move it, an end to make it longer or shorter, or onto another row to hand it over. Tap for the exact times.`;
-  return `<div class="lr-bar os-bar ${kind}" style="left:${left(Math.max(from, start), start)}px;width:${widthPx(
-    from,
-    to,
+  return `<div class="lr-bar os-bar ${kind}${clash.length ? ' clash' : ''}" style="left:${left(
+    Math.max(from, start),
     start,
-    end,
-  )}px" role="button" tabindex="0" data-shift="${esc(shift.id)}" title="${esc(title)}">
+  )}px;width:${widthPx(from, to, start, end)}px" role="button" tabindex="0" data-shift="${esc(
+    shift.id,
+  )}" title="${esc(title)}">
     <span class="os-handle left" data-edge="start" aria-hidden="true"></span>
-    <span class="lr-bar-t">${esc(spanText(from, to))}</span>
-    <span class="lr-bar-s">${esc(lengthText(from, to))}${shift.notes ? ` · ${esc(shift.notes)}` : ''}</span>
+    <span class="lr-bar-t">${clash.length ? icon('alert') : ''}${esc(spanText(from, to))}</span>
+    <span class="lr-bar-s">${
+      clash.length ? `Flying ${esc(clash[0].sector.flight)}` : `${esc(lengthText(from, to))}${
+        shift.notes ? ` · ${esc(shift.notes)}` : ''
+      }`
+    }</span>
     <span class="os-handle right" data-edge="end" aria-hidden="true"></span>
   </div>`;
 }
@@ -207,16 +248,25 @@ function initials(name) {
   return (words[0][0] + words.at(-1)[0]).toUpperCase();
 }
 
-function row(p, start, end) {
-  const mine = shiftsOf(p.id).filter((s) => ms(s.ends_at) > start && ms(s.starts_at) < end);
-  const hours = mine.reduce((n, s) => n + (Math.min(ms(s.ends_at), end) - Math.max(ms(s.starts_at), start)), 0);
+function row(p, start, end, run) {
+  const mine = shiftsOf(p.id)
+    .filter((s) => ms(s.ends_at) > start && ms(s.starts_at) < end)
+    .map((sh) => ({ sh, clash: flyingBetween(p.id, ms(sh.starts_at), ms(sh.ends_at), run) }));
+  const hours = mine.reduce(
+    (n, { sh }) => n + (Math.min(ms(sh.ends_at), end) - Math.max(ms(sh.starts_at), start)),
+    0,
+  );
+  const duties = flyingBetween(p.id, start, end, run);
+  const clashes = mine.filter(({ clash }) => clash.length).length;
   return `
     <div class="lr-row">
       <div class="lr-name"><span class="lr-avatar">${esc(initials(p.display_name))}</span>${esc(p.display_name)}
+        ${clashes ? '<span class="badge bad" title="On the desk while flying">FLYING</span>' : ''}
         ${hours ? `<span class="tiny os-hours">${esc(lengthText(0, hours))}</span>` : ''}</div>
       <div class="lr-track os-track" style="width:${trackWidth(start, end)}px" data-user="${esc(p.id)}">
         ${sectorMarks(start, end)}
-        ${mine.map((s) => bar(s, start, end)).join('')}
+        ${flyingBlocks(duties, start, end)}
+        ${mine.map(({ sh, clash }) => bar(sh, start, end, clash)).join('')}
       </div>
     </div>`;
 }
@@ -227,6 +277,7 @@ function editor() {
   if (!editingId) return '';
   const shift = opsShifts().find((s) => s.id === editingId);
   if (!shift) return '';
+  const clash = flyingBetween(shift.user_id, ms(shift.starts_at), ms(shift.ends_at), running());
   return `
     <div class="lr-modal-backdrop" data-act="closeShift">
       <div class="lr-modal" data-act="none">
@@ -235,6 +286,15 @@ function editor() {
           <button class="btn ghost small" type="button" data-act="closeShift">${icon('chevron')} Close</button>
         </div>
         ${error ? `<p class="note warn">${icon('alert')} ${esc(error)}</p>` : ''}
+        ${
+          clash.length
+            ? `<p class="note warn">${icon(
+                'alert',
+              )} <strong>${esc(person(shift.user_id)?.display_name || 'They')} is flying this shift.</strong> ${esc(
+                clashWords(clash),
+              )}. Somebody has to answer the flight deck, and it cannot be whoever is in it.</p>`
+            : ''
+        }
         <form class="card-form" data-form="opsShiftEdit">
           <input type="hidden" name="id" value="${esc(shift.id)}">
           <label class="field">Controller<select name="user" required>
@@ -286,6 +346,13 @@ function daySelect(days, idx) {
 export function renderOpsTimeline() {
   const { start, end, days, idx } = windowRange();
   const people = controllers();
+  const run = running();
+  // Every shift anywhere on the roster whose controller is flying it - not
+  // only the ones on the day showing, because a clash two days out is still
+  // the desk unanswered and the day picker is no place to hide it.
+  const clashing = opsShifts().filter(
+    (sh) => flyingBetween(sh.user_id, ms(sh.starts_at), ms(sh.ends_at), run).length,
+  );
   if (!people.length) {
     return `
       <section class="card">
@@ -298,6 +365,11 @@ export function renderOpsTimeline() {
       <div class="card-head os-head">
         <h2>Shift roster</h2>
         <span class="badge mute">${opsShifts().length} ${opsShifts().length === 1 ? 'SHIFT' : 'SHIFTS'}</span>
+        ${
+          clashing.length
+            ? `<span class="badge bad">${clashing.length} ON THE DESK WHILE FLYING</span>`
+            : ''
+        }
       </div>
       <p class="note os-head-note">Who is answering the flight deck, and when. The crew see the name at the top of their ops chat; they never see this page.</p>
       <div class="lr-toolbar">
@@ -312,6 +384,22 @@ export function renderOpsTimeline() {
         </div>
       </div>
       ${error ? `<p class="note warn" style="margin:0 16px 14px">${icon('alert')} ${esc(error)}</p>` : ''}
+      ${
+        clashing.length
+          ? `<p class="note warn" style="margin:0 16px 14px">${icon('alert')} <strong>${
+              clashing.length === 1 ? 'A shift is' : `${clashing.length} shifts are`
+            } rostered on somebody who is flying ${
+              clashing.length === 1 ? 'it' : 'them'
+            }.</strong> ${clashing
+              .map(
+                (sh) =>
+                  `${esc(person(sh.user_id)?.display_name || 'Somebody')} ${esc(
+                    spanText(ms(sh.starts_at), ms(sh.ends_at)),
+                  )} on ${esc(zdate(sh.starts_at))}`,
+              )
+              .join(' · ')}. Marked in red below.</p>`
+          : ''
+      }
       <div class="lr-scroll" id="os-scroll">
         <div class="lr-grid" style="--now-left:${nowLeftVar(start, end)}">
           <div class="lr-headrow">
@@ -319,10 +407,11 @@ export function renderOpsTimeline() {
             ${header(start, end)}
           </div>
           ${coverRow(start, end)}
-          ${people.map((p) => row(p, start, end)).join('')}
+          ${people.map((p) => row(p, start, end, run)).join('')}
         </div>
       </div>
       <p class="tiny">Drag across an empty row to roster a shift, drag either end of a bar to change when it starts or finishes, and drag the middle to move it - onto another row to hand it over. Times land on the quarter hour, Escape gives up on a drag, and tapping a bar opens the exact times, a note and Remove. The faint blocks behind are the sectors being flown, so the desk can be rostered against the flying. On a touch screen a finger still scrolls the timeline, so drawing a new shift by dragging wants a mouse or a stylus - or type it in below.</p>
+      <p class="tiny">A controller who also flies - an admin, usually - has their own duty periods hatched in red on their row, report time to on blocks. A shift drawn across one is flagged, because somebody has to answer the flight deck and it cannot be whoever is in it. It is a flag and not a refusal: you can roster it anyway, and the app will ask once.</p>
     </section>
     ${editor()}`;
 }
@@ -479,6 +568,19 @@ function endDrag(commit, x, y) {
   // drawn, keeps the row it started in however far the pointer wandered up
   // the page while it was doing it.
   const user = (d.kind === 'move' && x != null && rowUnder(x, y)) || d.user;
+  // Putting somebody on the desk while they are flying is asked about at the
+  // moment it is done, rather than only shown in red afterwards.
+  const clash = flyingBetween(user, from, to, running());
+  if (
+    clash.length &&
+    !confirm(
+      `${person(user)?.display_name || 'They'} would be on the desk while flying ${clashWords(
+        clash,
+      )}.\n\nRoster it anyway?`,
+    )
+  ) {
+    return rerender();
+  }
   if (d.kind === 'new') {
     return saveShift({ user_id: user, starts_at: iso(from), ends_at: iso(to), notes: '' });
   }

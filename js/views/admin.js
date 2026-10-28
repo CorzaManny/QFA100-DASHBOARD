@@ -79,6 +79,8 @@ import {
   opsDeskReady,
   opsOnShift,
   nextOpsShift,
+  flyingBetween,
+  running,
 } from '../ops.js';
 import { renderRoster, mountedRoster, rosterActions, rosterChanges } from './liveroster.js';
 import { pushEnabled, pushProblem } from '../push.js';
@@ -503,10 +505,27 @@ function deskNowCard() {
   const on = opsOnShift();
   const next = nextOpsShift();
   const mine = on?.userId === me()?.id;
+  // The worst version of the clash the shift timeline flags: not a shift two
+  // days out, but the person who is supposed to be answering the flight deck
+  // right now being in it.
+  const now = Date.now();
+  const run = running();
+  const flying = on ? flyingBetween(on.userId, now, now + 1, run) : [];
+  // Overlapping shifts are allowed, so somebody else may be rostered on at
+  // the same moment. Worth knowing before telling anybody the desk is empty.
+  const alsoOn = (state.opsShifts || []).filter(
+    (sh) =>
+      sh.user_id !== on?.userId &&
+      new Date(sh.starts_at).getTime() <= now &&
+      now < new Date(sh.ends_at).getTime() &&
+      !flyingBetween(sh.user_id, now, now + 1, run).length,
+  );
   return `
     <section class="card">
       <div class="card-head"><h2>On the desk now</h2>
-        <span class="badge ${on ? 'ok' : 'warn'}">${on ? (mine ? 'YOU' : 'COVERED') : 'NOBODY'}</span></div>
+        <span class="badge ${on ? (flying.length ? 'bad' : 'ok') : 'warn'}">${
+          on ? (flying.length ? 'FLYING' : mine ? 'YOU' : 'COVERED') : 'NOBODY'
+        }</span></div>
       ${
         on
           ? `<p class="big">${name(on.userId)}</p>
@@ -518,6 +537,19 @@ function deskNowCard() {
           : `<p class="note">Nobody is on the desk, so a message from the flight deck has nobody's name on it. ${
               next ? `The next shift is ${name(next.user_id)} at ${when(next.starts_at)}.` : 'Roster a shift below.'
             }</p>`
+      }
+      ${
+        flying.length
+          ? `<p class="note warn">${icon('alert')} <strong>They are on a flying duty right now.</strong> ${esc(
+              flying[0].sector.flight,
+            )} ${esc(flying[0].sector.dep)} → ${esc(flying[0].sector.arr)} as ${esc(
+              flying[0].entry.duty,
+            )}, until about ${when(flying[0].to)}. ${
+              alsoOn.length
+                ? `${name(alsoOn[0].user_id)} is also rostered on and is on the ground, so take the desk below.`
+                : 'Nobody else is rostered on, so take the desk below or roster somebody who is on the ground.'
+            }</p>`
+          : ''
       }
       <p class="note warn" id="desk-push" hidden></p>
       <div class="btn-row">
