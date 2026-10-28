@@ -114,11 +114,9 @@ export function running({ sectors, actuals, track, rules, now = Date.now() }) {
   };
 }
 
-// What a sector's crew should really report, keeping whatever lead each person
-// was given when they were rostered.
-export function reportAt(entry, row) {
-  const planned = ms(entry.report_at);
-  if (!row || row.basis === 'plan') return planned;
-  const lead = ms(row.sector.std) - planned;
-  return round5(row.estOff - lead);
-}
+// There was a reportAt() here that laid the running delay over somebody's
+// published report time, and it was what the app showed them. It is gone, and
+// deliberately not replaced: a delay no longer moves a report time at all. It
+// proposes one for the ops controller on shift to decide, worked out in the
+// database from these same estimates, and the roster's own report_at is what
+// the crew report to until they decide. See supabase/report-shifts.sql.

@@ -7,7 +7,7 @@
 
 import { state } from '../store.js';
 import { decideSwap, decidePickup } from '../api.js';
-import { esc, zulu, zdate, span, ago, simLocal, icon, rerender } from '../ui.js';
+import { esc, zulu, zdate, span, ago, simLocal, isoDate, isoTime, icon, rerender } from '../ui.js';
 import { round5 } from '../running.js';
 import { countdown, poll } from './dash.js';
 import {
@@ -20,7 +20,20 @@ import {
   canEdit,
   briefingOf,
   running,
-  reportAt,
+  rules,
+  reportShiftsOn,
+  pendingReportShifts,
+  shiftFor,
+  approveShift as moveReport,
+  approveShiftsOn as moveReportsOn,
+  dismissShift as leaveReport,
+  dismissShiftsOn as leaveReportsOn,
+  crewChangesOn,
+  crewChanges,
+  myChanges,
+  confirmMyChanges,
+  heldByChanges,
+  me,
   airport,
   fetchMetar,
   teamSimbrief,
@@ -82,25 +95,25 @@ function summary(now) {
   const toPlan = list.filter((s) => !planned(s)).length;
   const requests = claimedSwaps().length + pendingPickups().length;
   const defects = state.defects.filter((d) => d.status !== 'RECTIFIED').length;
+  const times = pendingReportShifts().length;
   return `
     <div class="ops-tiles">
       ${tile(short, short === 1 ? 'SECTOR SHORT' : 'SECTORS SHORT', '#/admin', 'bad')}
+      ${tile(times, times === 1 ? 'REPORT TIME' : 'REPORT TIMES', '#/ops', 'warn')}
       ${tile(toPlan, 'TO PLAN', '#/brief', 'warn')}
       ${tile(requests, requests === 1 ? 'REQUEST' : 'REQUESTS', '#/admin', 'warn')}
       ${tile(defects, defects === 1 ? 'DEFECT' : 'DEFECTS', '#/techlog', 'warn')}
     </div>`;
 }
 
-// Who reports next, with the countdown running against the real time including
-// any delay, not the published one.
+// Who reports next. The countdown runs against the published report time,
+// because that is the one the crew have been given; a delay that would move it
+// is a decision for the card above, not something that quietly happens here.
 function reports(now) {
-  const run = running(now);
   const rows = [];
   for (const s of soon(now)) {
-    const row = run.times.get(s.id);
     for (const r of crewOf(s)) {
-      const at = run.trusted && row ? reportAt(r, row) : new Date(r.report_at).getTime();
-      rows.push({ s, r, at, moved: run.trusted && row && Math.abs(at - new Date(r.report_at)) >= 5 * 60000 });
+      rows.push({ s, r, at: new Date(r.report_at).getTime(), waiting: shiftFor(r.id) });
     }
   }
   rows.sort((a, b) => a.at - b.at);
@@ -111,12 +124,12 @@ function reports(now) {
   const list = rows
     .slice(0, 10)
     .map(
-      ({ s, r, at, moved }) => `
+      ({ s, r, at, waiting }) => `
       <a class="row" href="#/roster/${esc(s.id)}">
         <div class="row-main">
           <div class="row-t">${name(r.user_id)} <span class="badge warn">${esc(r.duty.toUpperCase())}</span></div>
           <div class="sub">${esc(s.flight)} · ${esc(s.dep)} → ${esc(s.arr)} · reports ${zulu(at)}${
-            moved ? ' (moved by the delay)' : ''
+            waiting ? ` · a move to ${zulu(waiting.proposed_at)} is waiting on you` : ''
           }</div>
         </div>
         <div class="right">
@@ -134,7 +147,192 @@ function reports(now) {
     <section class="card list">
       <div class="card-head"><h2>Reporting next</h2><span class="badge info">${rows.length}</span></div>
       ${list}
-      <p class="tiny">Counting down to the real report time, which moves with the running delay.</p>
+      <p class="tiny">Counting down to the published report time. Nothing moves it but you.</p>
+    </section>`;
+}
+
+// ---- Report times ----
+// A delay on the day used to move everybody's report time by itself: the
+// estimate was laid over the published time and that was what the crew saw.
+// Nobody decided it, and nobody could be asked about it.
+//
+// So it asks instead. Anything the running would move by more than the team's
+// threshold lands here, per seat, grouped by the sector the delay is on, and
+// the controller on shift approves it, types their own time over it, or leaves
+// the published time alone. Only approving changes what a pilot reports to -
+// and that, like any other change to their roster, is something they then have
+// to confirm (see confirmations() below).
+
+// The roster entry whose report time is being typed by hand, if any.
+let editing = '';
+
+function shiftRow(shift, entry) {
+  const published = new Date(entry.report_at).getTime();
+  const proposed = new Date(shift.proposed_at).getTime();
+  const later = proposed > published;
+  const waiting = busy === entry.id;
+  if (editing === entry.id) {
+    return `
+      <form class="row shift-row" data-form="ownReport">
+        <input type="hidden" name="entry" value="${esc(entry.id)}">
+        <div class="row-main">
+          <div class="row-t">${name(entry.user_id)} <span class="badge warn">${esc(entry.duty.toUpperCase())}</span></div>
+          <div class="grid2">
+            <label class="field">Report date (UTC)
+              <input type="date" name="date" required value="${isoDate(shift.proposed_at)}"></label>
+            <label class="field">Report time (UTC)
+              <input type="time" name="time" required value="${isoTime(shift.proposed_at)}"></label>
+          </div>
+          <div class="sub">Published ${zdate(published)} ${zulu(published)} · the delay suggests ${zulu(proposed)}</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost small" type="button" data-act="editShift" data-id="">Cancel</button>
+          <button class="btn primary small" type="submit" ${waiting ? 'disabled' : ''}>Set this time</button>
+        </div>
+      </form>`;
+  }
+  return `
+    <div class="row shift-row">
+      <div class="row-main">
+        <div class="row-t">${name(entry.user_id)} <span class="badge warn">${esc(entry.duty.toUpperCase())}</span></div>
+        <div class="sub">Reports <strong>${zulu(published)}</strong> → <strong>${zulu(proposed)}</strong> · ${span(
+          Math.abs(proposed - published),
+        )} ${later ? 'later' : 'earlier'} · ${simLocal(proposed)}</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn ghost small" type="button" data-act="leaveShift" data-id="${esc(entry.id)}" ${
+          waiting ? 'disabled' : ''
+        }>Leave it</button>
+        <button class="btn ghost small" type="button" data-act="editShift" data-id="${esc(entry.id)}">My own time</button>
+        <button class="btn primary small" type="button" data-act="approveShift" data-id="${esc(entry.id)}" ${
+          waiting ? 'disabled' : ''
+        }>${waiting ? 'Moving…' : `Move to ${zulu(proposed)}`}</button>
+      </div>
+    </div>`;
+}
+
+function reportTimes(now) {
+  // null means supabase/report-shifts.sql has not been run. Said plainly
+  // rather than left out: a board with no card at all looks like a day with
+  // nothing to decide, which is the one thing it must never look like.
+  if (!reportShiftsOn()) {
+    return `
+      <section class="card">
+        <div class="card-head"><h2>Report times</h2><span class="badge mute">NOT SET UP</span></div>
+        <p class="note">This database has not been given <code>supabase/report-shifts.sql</code>, so a delay cannot raise a report-time move for you to decide. Report times change only when somebody edits the roster.</p>
+      </section>`;
+  }
+  const r = rules();
+  const how = `A delay of ${r.delayNoticeMinutes} minutes or more, on a sector whose crew report inside the next ${r.delayNoticeWithinHours} hours, is raised here. Report times are never moved on their own.`;
+  const groups = pendingReportShifts();
+  if (!groups.length) {
+    return `
+      <section class="card">
+        <div class="card-head"><h2>Report times</h2><span class="badge ok">AS PUBLISHED</span></div>
+        <p class="note">Nothing waiting. Everybody reports at the time they were given.</p>
+        <p class="tiny">${how}</p>
+      </section>`;
+  }
+  const run = running(now);
+  const seats = groups.reduce((n, g) => n + g.seats.length, 0);
+  const cards = groups
+    .map(({ sector, seats: list }) => {
+      const delay = list[0].shift.delay_minutes;
+      const row = run.times.get(sector.id);
+      const doing = busy === `sector-${sector.id}`;
+      return `
+      <div class="shift-group">
+        <div class="card-head">
+          <h3>${esc(sector.flight)} · ${esc(sector.dep)} → ${esc(sector.arr)}</h3>
+          <span class="badge ${delay > 0 ? 'warn' : 'info'}">${Math.abs(delay)} MIN ${
+            delay > 0 ? 'LATE' : 'EARLY'
+          }</span>
+        </div>
+        <div class="sub">Published off ${when(sector.std)} · now expected about <strong>${
+          row ? zulu(round5(row.estOff)) : '—'
+        }</strong></div>
+        ${list.map(({ shift, entry }) => shiftRow(shift, entry)).join('')}
+        <div class="btn-row">
+          <button class="btn ghost small" type="button" data-act="leaveSector" data-id="${esc(sector.id)}" ${
+            doing ? 'disabled' : ''
+          }>${list.length === 1 ? 'Leave it as published' : 'Leave all as published'}</button>
+          <button class="btn primary small" type="button" data-act="approveSector" data-id="${esc(sector.id)}" ${
+            doing ? 'disabled' : ''
+          }>${doing ? 'Moving…' : list.length === 1 ? 'Move it' : `Move all ${list.length}`}</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+  return `
+    <section class="card list slot-card short">
+      <div class="card-head"><div class="tiny">REPORT TIMES TO DECIDE</div>
+        <span class="badge warn">${seats}</span></div>
+      ${cards}
+      <p class="tiny">Each seat keeps the lead it was rostered with, so moving a whole sector does not put everybody on the same minute. Approving sends the new time to that pilot, who has to confirm it before they can use the app. ${how}</p>
+    </section>`;
+}
+
+// ---- Who has read what ----
+// The other half of a roster that moves: whether the person it moved under
+// knows. Every change writes a row the pilot has to confirm, and they are held
+// at it until they do (js/views/confirm.js). This is that list from the desk's
+// side, so nobody rings a pilot who has not seen the change yet - or worse,
+// assumes one has.
+function confirmations() {
+  if (!crewChangesOn()) return '';
+  const mine = myChanges();
+  const others = crewChanges().filter((c) => c.user_id !== me()?.id);
+  const byPerson = new Map();
+  for (const c of others) {
+    if (!byPerson.has(c.user_id)) byPerson.set(c.user_id, []);
+    byPerson.get(c.user_id).push(c);
+  }
+  if (!byPerson.size && !mine.length) {
+    return `
+      <section class="card">
+        <div class="card-head"><h2>Roster changes</h2><span class="badge ok">ALL CONFIRMED</span></div>
+        <p class="note">Everybody has read every change made to their roster.</p>
+      </section>`;
+  }
+  const mineCard = mine.length
+    ? `
+      <div class="shift-group">
+        <div class="card-head"><h3>Yours</h3><span class="badge warn">${mine.length}</span></div>
+        ${mine
+          .map(
+            (c) => `<div class="row"><div class="row-main">
+              <div class="row-t">${esc(c.headline)}</div>
+              <div class="sub">${esc(c.detail)}</div></div></div>`,
+          )
+          .join('')}
+        <div class="btn-row"><button class="btn primary small" type="button" data-act="confirmMine" ${
+          busy === 'mine' ? 'disabled' : ''
+        }>${busy === 'mine' ? 'Confirming…' : 'I have read these'}</button></div>
+      </div>`
+    : '';
+  const rows = [...byPerson.entries()]
+    .map(([userId, list]) => {
+      const oldest = Math.min(...list.map((c) => new Date(c.created_at).getTime()));
+      const held = heldByChanges(person(userId)?.role);
+      return `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-t">${name(userId)} <span class="badge ${held ? 'warn' : 'mute'}">${
+            held ? 'HELD AT IT' : 'TOLD'
+          }</span></div>
+          <div class="sub">${list.map((c) => esc(c.headline)).join(' · ')}</div>
+          <div class="sub">Waiting ${ago(oldest)}</div>
+        </div>
+      </div>`;
+    })
+    .join('');
+  return `
+    <section class="card list">
+      <div class="card-head"><h2>Roster changes</h2><span class="badge warn">${
+        byPerson.size + (mine.length ? 1 : 0)
+      } TO CONFIRM</span></div>
+      ${mineCard}${rows}
+      <p class="tiny">A pilot cannot use the app until they have read what changed on their roster, so anybody marked HELD AT IT has not opened it yet. Ops staff are told the same way but never held, since that would shut the desk out of the board.</p>
     </section>`;
 }
 
@@ -540,7 +738,9 @@ function board(now) {
     ${aircraft(now)}
     ${company()}
     ${requests()}
+    ${reportTimes(now)}
     ${reports(now)}
+    ${confirmations()}
     ${crewing(now)}
     ${planning(now)}
     ${loadsheets(now)}
@@ -597,6 +797,35 @@ export const actions = {
     const { id } = el.dataset;
     return settle(`ls-${id}`, () => sendLoadsheetNow(id));
   },
+  // Report-time moves. Approving one writes it onto the roster entry, which is
+  // what tells the pilot and holds them until they confirm it.
+  approveShift(el) {
+    const { id } = el.dataset;
+    editing = '';
+    return settle(id, () => moveReport(id));
+  },
+  leaveShift(el) {
+    const { id } = el.dataset;
+    editing = '';
+    return settle(id, () => leaveReport(id));
+  },
+  approveSector(el) {
+    const { id } = el.dataset;
+    editing = '';
+    return settle(`sector-${id}`, () => moveReportsOn(id));
+  },
+  leaveSector(el) {
+    const { id } = el.dataset;
+    editing = '';
+    return settle(`sector-${id}`, () => leaveReportsOn(id));
+  },
+  editShift(el) {
+    editing = el.dataset.id || '';
+    rerender();
+  },
+  confirmMine() {
+    return settle('mine', () => confirmMyChanges());
+  },
   viewBoard() {
     view = 'board';
     rerender();
@@ -616,6 +845,18 @@ export const changes = {
 };
 
 export const forms = {
+  // A controller's own report time, in place of the one the delay suggested.
+  // Typed in Zulu, like every other time in the app.
+  ownReport(data) {
+    const entry = String(data.get('entry') || '');
+    const at = Date.parse(`${data.get('date')}T${data.get('time')}:00Z`);
+    if (!entry || !Number.isFinite(at)) {
+      error = 'Give a report date and time.';
+      return rerender();
+    }
+    editing = '';
+    return settle(entry, () => moveReport(entry, at));
+  },
   company(data) {
     if (busy) return;
     const message = String(data.get('message') || '').trim();

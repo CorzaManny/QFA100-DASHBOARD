@@ -3321,6 +3321,61 @@ body.efb .chat {
   margin-top: 4px;
 }
 
+/* Report-time moves waiting on the ops controller: one block per sector, with
+   the seats on it inside. The group reads as a unit because the delay is one
+   thing and the seats are what it lands on. */
+.shift-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-sm);
+  background: var(--card2);
+}
+.shift-group h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.shift-group .row {
+  padding: 8px 0;
+}
+.shift-group .row:last-of-type {
+  border-bottom: 0;
+}
+.shift-row {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.shift-row .btn-row {
+  flex-wrap: wrap;
+}
+.shift-row .grid2 {
+  margin-top: 6px;
+}
+
+/* The confirmation gate: one column, nothing else on screen. The tabs and the
+   side panels go the same way the sign-in page sends them. */
+.gated .tabs,
+.gated .flightbar,
+.gated .chat-toggle,
+.gated .ops-toggle,
+.gated .scratch-toggle {
+  display: none;
+}
+.gated main {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-bottom: 32px;
+  max-width: 560px;
+}
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 2vh;
+}
+
 /* Asking to be put on the home screen */
 .card.install {
   display: flex;

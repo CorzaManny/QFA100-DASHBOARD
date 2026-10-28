@@ -25,14 +25,16 @@ export const DEFAULT_RULES = {
   turnaroundMinutes: 45, // the least time on the ground between two sectors
   taxiInMinutes: 5, // from overhead the arrival airport to on blocks, for live estimates
   reportReminderMinutes: 90, // notify this long before someone reports; 0 = never
-  delayNoticeMinutes: 20, // notify when a delay moves a report time by this much; 0 = never
+  // When a delay is worth asking an ops controller about. Nothing moves a
+  // report time on its own: a delay this big raises the move on the Ops board
+  // for them to approve, change or leave (supabase/report-shifts.sql).
+  //
   // One stamped time early in the day moves every report time after it, so
-  // without these two somebody on the last sector hears about every sector
-  // between now and theirs. A report further off than this is not worth
-  // telling anybody about - it will move again before they act on it - and
-  // one notice per sector per spell is enough however much it moves inside.
-  delayNoticeWithinHours: 6, // only tell about a delay this close to reporting; 0 = never
-  delayNoticeEveryMinutes: 45, // and at most one delay notice per sector per this long
+  // without the window below the board would fill with questions about
+  // tomorrow night - each one true, none of them answerable yet, and the one
+  // that mattered lost among them.
+  delayNoticeMinutes: 20, // a move this big is worth a decision; 0 = never ask
+  delayNoticeWithinHours: 6, // and only this close to reporting; 0 = never ask
   reportLeadMinutes: 45, // report this long before the middle of the departure window
   firstReportLeadMinutes: 60, // ...and this long before the first sector of the event
 

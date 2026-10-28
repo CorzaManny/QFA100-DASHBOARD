@@ -13,7 +13,7 @@ import {
   nextSector,
   upcomingSector,
   running,
-  reportAt,
+  shiftFor,
   canLog,
   syncTeam,
   refreshTrack,
@@ -231,7 +231,10 @@ function sectorCard(now, run) {
   const duty = mine ? myDuty(mine) : null;
   const row = run.times.get(s.id);
   const moved = run.trusted && row && Math.abs(row.delay) >= 5 * 60000 && !row.on;
-  const report = duty && moved ? reportAt(duty, row) : duty?.report_at;
+  // The published report time, always. A delay does not move it: it asks ops
+  // to, and until they have there is nothing for the crew to work to but this.
+  const report = duty?.report_at;
+  const waiting = duty ? shiftFor(duty.id) : null;
   return `
     <section class="card">
       <div class="card-head">
@@ -254,7 +257,13 @@ function sectorCard(now, run) {
               <span class="badge warn">${esc(duty.duty.toUpperCase())}</span>
               <span><strong>Report ${zdate(report)} ${zulu(report)} · ${simLocal(report)}</strong>
                 <span class="sub" data-until="${esc(new Date(report).toISOString())}" data-verb="Report">${countdown(report, now, 'Report')}</span>
-                ${moved ? `<span class="sub">Moved by the delay. Published report time ${zulu(duty.report_at)}.</span>` : ''}</span>
+                ${
+                  waiting
+                    ? `<span class="sub">The delay suggests ${zulu(
+                        waiting.proposed_at,
+                      )}. Ops have to agree it, so report ${zulu(report)} unless you hear otherwise.</span>`
+                    : ''
+                }</span>
             </div>${duty.notes ? `<p class="note"><strong>Roster note:</strong> ${esc(duty.notes)}</p>` : ''}`
           : ''
       }
@@ -378,8 +387,8 @@ function crewRow(s, now, label, run) {
                 <div class="row-t">${esc(person(r.user_id)?.display_name || 'Unknown')}</div>
                 <div class="sub">${esc(r.duty)}${r.notes ? ` · ${esc(r.notes)}` : ''}</div>
               </div>
-              <div class="right"><div class="sub">report ${zulu(moved ? reportAt(r, row) : r.report_at)}${
-                moved ? ' *' : ''
+              <div class="right"><div class="sub">report ${zulu(r.report_at)}${
+                shiftFor(r.id) ? ' *' : ''
               }</div></div>
             </div>`,
                 )
@@ -387,7 +396,9 @@ function crewRow(s, now, label, run) {
             : '<p class="note">Nobody rostered on this sector yet.</p>'
         }
       </div>
-      <div class="tiny">${moved && crew.length ? 'REPORT TIMES MARKED * ARE MOVED BY THE DELAY · ' : ''}SIM LOCAL ${simLocal(s.std)}${
+      <div class="tiny">${
+        crew.some((r) => shiftFor(r.id)) ? 'REPORT TIMES MARKED * ARE WITH OPS TO BE MOVED · ' : ''
+      }SIM LOCAL ${simLocal(s.std)}${
         s.notes ? ` · ${esc(s.notes)}` : ''
       }</div>
     </section>`;

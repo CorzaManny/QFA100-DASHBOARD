@@ -7,7 +7,7 @@ import { esc, zulu, zdate, span, depWindow, simLocal, simClock, simDateLabel, ic
 import {
   sortedSectors, crewOf, person, me, canEdit, pilotsShort, pilotsNeeded, needsRelief, isDraft,
   MIN_PILOTS, rules, isEfb, isOps, openSwaps, swapFor, swapSector, swapEntry, wouldBreak, syncTeam,
-  canPickUp, openSeats, pendingPickups, workload, prefOf, defaultReport,
+  canPickUp, openSeats, pendingPickups, workload, prefOf, defaultReport, shiftFor,
 } from '../ops.js';
 
 let busy = '';
@@ -227,6 +227,16 @@ function list() {
           <div class="row-t">${esc(s.dep)} → ${esc(s.arr)} ${dutyBadge(r.duty)}</div>
           <div class="sub">${esc(s.flight)} · Report <strong>${stamp(r.report_at)}</strong> · ${other(r.report_at)}</div>
           ${dutyLine(r.report_at, s)}
+          ${
+            // The delay has asked ops to move this one. Until they say so it
+            // is still the time above, and that is deliberately what is in
+            // bold - nobody plans their morning around a proposal.
+            shiftFor(r.id)
+              ? `<div class="sub">The delay suggests ${zulu(
+                  shiftFor(r.id).proposed_at,
+                )}, waiting on the ops desk. Report the time above unless you are told otherwise.</div>`
+              : ''
+          }
           ${r.notes ? `<div class="sub">${esc(r.notes)}</div>` : ''}
         </div>
         <div class="right">

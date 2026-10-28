@@ -1,6 +1,7 @@
 -- Notifications: tells a pilot's phone when the roster is published, when
--- their own sectors change, when a delay moves their report time, and when it
--- is nearly time to report.
+-- their own sectors change, and when it is nearly time to report. It also
+-- tells the ops controllers when a delay has put a report-time move in front
+-- of them to decide (see supabase/report-shifts.sql).
 --
 -- Run this in the SQL Editor after schema.sql, and after deploying the
 -- send-push function (supabase/functions/send-push/index.ts). Three things
@@ -95,20 +96,11 @@ create index if not exists notifications_waiting_idx on public.notifications (cr
 alter table public.notifications add column if not exists tries integer not null default 0;
 alter table public.notifications add column if not exists error text not null default '';
 
--- The report time each person was last told about, so a delay is only
--- mentioned when it has actually moved.
-create table if not exists public.notified_report (
-  roster_id    uuid primary key references public.roster (id) on delete cascade,
-  told_report  timestamptz not null,
-  updated_at   timestamptz not null default now()
-);
-
 alter table public.push_config enable row level security;
 alter table public.push_subscriptions enable row level security;
 alter table public.notifications enable row level security;
-alter table public.notified_report enable row level security;
 
-revoke all on public.push_config, public.notified_report from anon, authenticated;
+revoke all on public.push_config from anon, authenticated;
 grant select, insert, update, delete on public.push_subscriptions to authenticated;
 grant select on public.notifications to authenticated;
 
@@ -161,12 +153,18 @@ begin
 end;
 $$;
 
--- Everyone's real report time: the one they were given, moved by the delay on
--- their sector, keeping whatever lead they were rostered with.
+-- Everyone's report time, beside what the day is actually doing.
+--
+-- due_at is the published report time and nothing else. The app used to move
+-- it by the delay on the sector, which meant the clock a pilot reported to was
+-- set by a stamped time nobody had looked at. A delay now only proposes a new
+-- time, for the ops controller to approve; see supabase/report-shifts.sql.
+-- est_off and delay_minutes are still here because that is what the proposal
+-- is worked out from.
 create or replace view public.report_times with (security_invoker = true) as
   select r.id as roster_id, r.user_id, r.duty, r.report_at, s.id as sector_id, s.flight, s.dep, s.arr, s.std,
          run.est_off, run.delay_minutes,
-         r.report_at + (run.est_off - s.std) as due_at
+         r.report_at as due_at
   from public.roster r
   join public.sectors s on s.id = r.sector_id
   join public.sector_running() run on run.sector_id = s.id;
@@ -257,82 +255,33 @@ drop trigger if exists notify_roster on public.roster;
 create trigger notify_roster after insert or update or delete on public.roster
   for each row execute function public.notify_roster_change();
 
--- Report reminders, and a word when a delay moves somebody's report time.
+-- Report reminders. A delay no longer moves anybody's report time by itself,
+-- so there is nothing to tell a pilot about here beyond the reminder itself:
+-- the ops controller decides a move (supabase/report-shifts.sql) and changing
+-- the roster entry is what tells them.
+--
 -- Called every ten seconds by the job at the bottom.
 create or replace function public.notify_due()
 returns integer language plpgsql security definer set search_path = public as $$
 declare
-  team_lead  integer;
-  team_shift integer;
-  within_    integer;
-  every_     integer;
-  lead       integer;
-  shift      integer;
-  r          record;
-  made       integer := 0;
+  team_lead integer;
+  lead      integer;
+  r         record;
+  made      integer := 0;
 begin
   if not public.roster_published() then return 0; end if;
-  select round(coalesce((rules ->> 'reportReminderMinutes')::numeric, 90))::integer,
-         round(coalesce((rules ->> 'delayNoticeMinutes')::numeric, 20))::integer,
-         round(coalesce((rules ->> 'delayNoticeWithinHours')::numeric, 6))::integer,
-         round(coalesce((rules ->> 'delayNoticeEveryMinutes')::numeric, 45))::integer
-    into team_lead, team_shift, within_, every_ from public.settings limit 1;
+  select round(coalesce((rules ->> 'reportReminderMinutes')::numeric, 90))::integer
+    into team_lead from public.settings limit 1;
   team_lead := coalesce(team_lead, 90);
-  team_shift := coalesce(team_shift, 20);
-  within_ := coalesce(within_, 6);
-  every_ := coalesce(every_, 45);
 
   for r in
     select rt.*, p.notify
     from public.report_times rt
     join public.profiles p on p.id = rt.user_id
-    where rt.due_at between now() - interval '1 hour' and now() + interval '24 hours'
+    where rt.due_at between now() and now() + interval '24 hours'
   loop
     -- Each person may want more or less warning than the team's default.
-    lead  := coalesce(round((r.notify ->> 'reportMinutes')::numeric)::integer, team_lead);
-    shift := coalesce(round((r.notify ->> 'delayMinutes')::numeric)::integer, team_shift);
-    -- A delay that moves the report time by more than the team's threshold.
-    if not exists (select 1 from public.notified_report n where n.roster_id = r.roster_id) then
-      insert into public.notified_report (roster_id, told_report) values (r.roster_id, r.due_at)
-      on conflict (roster_id) do nothing;
-    -- A delay worth telling somebody about, and two things that stop it
-    -- being told over and over.
-    --
-    -- The estimate is recomputed from every stamped time, and one stamp early
-    -- in the day moves every report time after it. Without these, somebody
-    -- rostered to the last sector of the night is told their report time has
-    -- moved by every sector between now and then - each move true, none of
-    -- them worth a buzz, and the one that mattered lost among them.
-    --
-    --   within_  the report has to be close enough to be worth knowing about.
-    --            A report eighteen hours away will have moved again several
-    --            times before anybody acts on it.
-    --   every_   and at most one notice per sector per spell, however much
-    --            the estimate moves inside it. told_report is still brought
-    --            up to date each time one goes, so the next one measures from
-    --            what they were actually told.
-    elsif shift > 0
-      and r.due_at <= now() + make_interval(hours => within_)
-      and exists (
-        select 1 from public.notified_report n
-        where n.roster_id = r.roster_id
-          and abs(extract(epoch from (r.due_at - n.told_report))) >= shift * 60
-          and n.updated_at <= now() - make_interval(mins => every_)
-      ) then
-      perform public.notify(
-        r.user_id,
-        'delay',
-        format('%s is running %s', r.flight, case when r.delay_minutes > 0 then r.delay_minutes || ' min late' else abs(r.delay_minutes) || ' min early' end),
-        format('Report moves to %s. %s to %s.', to_char(r.due_at, 'DD Mon HH24:MI"Z"'), r.dep, r.arr),
-        '#/roster/' || r.sector_id,
-        'delay-' || r.roster_id || '-' || to_char(r.due_at, 'YYYYMMDDHH24MI'),
-        7200
-      );
-      update public.notified_report set told_report = r.due_at, updated_at = now() where roster_id = r.roster_id;
-      made := made + 1;
-    end if;
-
-    -- The reminder itself, once, as the report time comes up.
+    lead := coalesce(round((r.notify ->> 'reportMinutes')::numeric)::integer, team_lead);
     if lead > 0 and r.due_at between now() and now() + make_interval(mins => lead) then
       perform public.notify(
         r.user_id,
@@ -366,6 +315,14 @@ declare
   answer   extensions.http_response;
 begin
   perform public.notify_due();
+  -- The report-time proposals the ops board works from. Its own file, so a
+  -- project that has not been given supabase/report-shifts.sql yet simply
+  -- carries on without them.
+  begin
+    perform public.raise_report_shifts();
+  exception when undefined_function then
+    null;
+  end;
   select count(*) into waiting from public.notifications where sent_at is null;
   if waiting = 0 then return 'nothing waiting'; end if;
 

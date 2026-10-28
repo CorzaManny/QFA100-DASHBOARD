@@ -312,7 +312,7 @@ const OPS_CHAT = 'ops_messages?select=*&order=sent_at.desc&limit=200';
 export async function loadAll() {
   // Settings and availability arrived in a later database version; if the
   // database has not been updated yet, carry on without them.
-  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus, normalChecklists, opsShifts, opsDesk, opsChat, loadsheets] =
+  const [sectors, roster, people, settings, prefs, techlog, history, briefings, official, officialCheck, actuals, swaps, pickups, checklistStatus, normalChecklists, opsShifts, opsDesk, opsChat, loadsheets, reportShifts, crewChanges] =
     await Promise.all([
     rest('GET', 'sectors?select=*&order=std.asc'),
     rest('GET', 'roster?select=*'),
@@ -340,6 +340,12 @@ export async function loadAll() {
     // null: supabase/loadsheet.sql has not been run, so no loadsheet is ever
     // sent and the pages that mention one leave themselves out.
     rest('GET', 'loadsheets?select=*').catch(() => null),
+    // Report-time moves the running delay has put in front of ops, and the
+    // changes each pilot still has to confirm. null for either means its file
+    // has not been run (supabase/report-shifts.sql, supabase/crew-confirm.sql)
+    // and the app leaves that part of itself out.
+    rest('GET', 'report_shifts?select=*&state=eq.pending').catch(() => null),
+    rest('GET', 'crew_changes?select=*&seen_at=is.null&order=created_at.asc').catch(() => null),
   ]);
   return {
     sectors: sectors.map(toSector),
@@ -372,6 +378,11 @@ export async function loadAll() {
     opsShifts,
     opsDesk: opsDesk === null ? null : opsDesk[0] || null,
     opsChat: opsChat && [...opsChat].reverse(),
+    // null: this database cannot hold them yet. Kept apart from an empty list,
+    // which is the normal state - nothing waiting on a decision, nobody
+    // waiting to confirm anything.
+    reportShifts,
+    crewChanges,
   };
 }
 
@@ -460,6 +471,26 @@ export const withdrawPickup = (pickupId) => rest('POST', 'rpc/withdraw_pickup', 
 export const decidePickup = (pickupId, agree, why = '', report = null) =>
   rest('POST', 'rpc/decide_pickup', { pickup: pickupId, agree, why, report });
 export const decideSwap = (swapId, agree, why = '') => rest('POST', 'rpc/decide_swap', { swap: swapId, agree, why });
+
+// Report-time moves: a delay proposes one, ops decide it. Approving writes the
+// time onto the roster entry, which is the only report time the app reads;
+// pass `at` to use the controller's own time instead of the proposal.
+// See supabase/report-shifts.sql.
+export const approveReportShift = (rosterId, at = null) =>
+  rest('POST', 'rpc/approve_report_shift', { entry: rosterId, report: at });
+
+export const approveSectorShifts = (sectorId) =>
+  rest('POST', 'rpc/approve_sector_report_shifts', { sector: sectorId });
+
+export const dismissReportShift = (rosterId) =>
+  rest('POST', 'rpc/dismiss_report_shift', { entry: rosterId });
+
+export const dismissSectorShifts = (sectorId) =>
+  rest('POST', 'rpc/dismiss_sector_report_shifts', { sector: sectorId });
+
+// A pilot reading what has changed on their roster. ids null clears everything
+// waiting on them. See supabase/crew-confirm.sql.
+export const confirmChanges = (ids = null) => rest('POST', 'rpc/confirm_changes', { ids });
 
 // Where this device wants notifications sent. One row per device.
 export const savePushSubscription = (sub) =>

@@ -19,13 +19,18 @@ import {
   fetchSimStatus,
   resendLoadsheet,
   forceLoadsheet,
+  approveReportShift,
+  approveSectorShifts,
+  dismissReportShift,
+  dismissSectorShifts,
+  confirmChanges,
 } from './api.js';
 import { rulesOf, seatsFor, isBoc, blockHours, problems } from './autoroster.js';
 import { OFFICIAL_SCHEDULE } from './data/schedule.js';
 import { CTWO_DEFAULTS } from './data/ctwo.js';
 import { CABIN_NAMES } from './data/cabin.js';
 import { DEFAULT_NORMAL_CHECKLISTS } from './data/checklists.js';
-import { running as runningOf, reportAt as reportAtOf } from './running.js';
+import { running as runningOf } from './running.js';
 
 const VATSIM_FEED = 'https://data.vatsim.net/v3/vatsim-data.json';
 const EARTH_NM = 3440.065;
@@ -220,17 +225,22 @@ export const person = (id) => state.people.find((p) => p.id === id) || null;
 // back to the team's rules, so a new account gets sensible behaviour.
 export const NOTIFY_KINDS = [
   ['roster', 'The roster is published, or my sectors change'],
-  ['delay', 'A delay moves my report time'],
+  ['delay', 'A delay needs a report time moved'],
   ['report', 'A reminder before I report'],
   ['opschat', 'A message in the ops chat from the other side'],
   ['opscall', 'Somebody calls me in the ops chat'],
 ];
 
 // The ops chat lines are only offered to the people who have a thread, so a
-// pilot is not asked about one they cannot read.
+// pilot is not asked about one they cannot read. A report-time move is the
+// same: it is a decision for the desk, and a pilot hears about theirs only
+// once it has been made, as a change to their roster.
 const OPS_CHAT_KINDS = ['opschat', 'opscall'];
+const OPS_ONLY_KINDS = ['delay'];
 export const myNotifyKinds = () =>
-  NOTIFY_KINDS.filter(([key]) => !OPS_CHAT_KINDS.includes(key) || canOpsChat());
+  NOTIFY_KINDS.filter(
+    ([key]) => (!OPS_CHAT_KINDS.includes(key) || canOpsChat()) && (!OPS_ONLY_KINDS.includes(key) || canEdit()),
+  );
 
 export function myNotify() {
   const chosen = me()?.notify || {};
@@ -242,7 +252,6 @@ export function myNotify() {
     opschat: chosen.opschat !== false,
     opscall: chosen.opscall !== false,
     reportMinutes: Number.isFinite(chosen.reportMinutes) ? chosen.reportMinutes : r.reportReminderMinutes,
-    delayMinutes: Number.isFinite(chosen.delayMinutes) ? chosen.delayMinutes : r.delayNoticeMinutes,
   };
 }
 
@@ -368,7 +377,7 @@ export const prefOf = (userId, sectorId) =>
 
 // Forget the team's data on this device when someone signs out.
 export function clearTeam() {
-  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, checklistStatus: [], normalChecklists: null, checkRev: {}, opsShifts: null, opsDesk: null, opsChat: [], chatSeen: 0, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
+  Object.assign(state, { roster: [], people: [], prefs: [], history: [], briefings: [], actuals: [], swaps: [], pickups: null, official: [], officialCheck: null, checklistStatus: [], normalChecklists: null, checkRev: {}, opsShifts: null, opsDesk: null, opsChat: [], chatSeen: 0, reportShifts: null, crewChanges: null, defects: state.defects.filter((d) => !d.shared), sharedLog: false });
   save();
 }
 
@@ -389,7 +398,7 @@ const withShortName = (p) => ({ ...p, full_name: p.display_name, display_name: p
 export async function syncTeam() {
   if (!configured || !getSession()) return false;
   try {
-    const { defects, official, opsChat, loadsheets, ...team } = await loadAll();
+    const { defects, official, opsChat, loadsheets, reportShifts, crewChanges, ...team } = await loadAll();
     Object.assign(state, team);
     // null means this database has no loadsheets table, which is not the same
     // as having one with nothing in it yet.
@@ -402,6 +411,10 @@ export async function syncTeam() {
     // null means the database has no official schedule table; keep the copy
     // the app ships with rather than blanking it.
     state.official = official || [];
+    // These two stay null when their file has not been run, which is how the
+    // board and the confirmation gate know to leave themselves out.
+    state.reportShifts = reportShifts;
+    state.crewChanges = crewChanges;
     if (defects) {
       // Entries written before the tech log was shared stay on this device
       // until someone uploads them from the Tech Log page.
@@ -591,8 +604,65 @@ export const upcomingSector = (now = Date.now()) => nextSector(now, true) || nex
 export const running = (now = Date.now()) =>
   runningOf({ sectors: state.sectors, actuals: state.actuals || [], track: state.track, rules: rules(), now });
 
-// What one sector's crew should really report, given the running.
-export const reportAt = reportAtOf;
+// ---- Report-time moves ----
+// A delay big enough to matter raises one of these per seat, and the ops
+// controller on shift approves it, puts their own time in, or waves it away.
+// See supabase/report-shifts.sql, and reportTimes() on the Ops board.
+
+// null when this database has not been given supabase/report-shifts.sql, so
+// the board can say so rather than showing an empty card for ever.
+export const reportShiftsOn = () => Array.isArray(state.reportShifts);
+export const reportShifts = () => state.reportShifts || [];
+export const shiftFor = (rosterId) => reportShifts().find((sh) => sh.roster_id === rosterId) || null;
+
+// The pending moves grouped the way they actually arrive: one delay, one
+// sector, every seat on it. Soonest sector first.
+export function pendingReportShifts() {
+  const bySector = new Map();
+  for (const sh of reportShifts()) {
+    const sector = state.sectors.find((x) => x.id === sh.sector_id);
+    const entry = state.roster.find((r) => r.id === sh.roster_id);
+    if (!sector || !entry) continue;
+    if (!bySector.has(sector.id)) bySector.set(sector.id, { sector, seats: [] });
+    bySector.get(sector.id).seats.push({ shift: sh, entry });
+  }
+  const out = [...bySector.values()];
+  for (const group of out) group.seats.sort((a, b) => new Date(a.shift.proposed_at) - new Date(b.shift.proposed_at));
+  return out.sort((a, b) => byStd(a.sector, b.sector));
+}
+
+// The four decisions. Each writes and returns; the Ops board syncs the team
+// afterwards, as it does for a swap or a pickup.
+export const approveShift = (rosterId, at = null) =>
+  approveReportShift(rosterId, at ? new Date(at).toISOString() : null);
+export const approveShiftsOn = (sectorId) => approveSectorShifts(sectorId);
+export const dismissShift = (rosterId) => dismissReportShift(rosterId);
+export const dismissShiftsOn = (sectorId) => dismissSectorShifts(sectorId);
+
+// ---- Changes a pilot has to confirm ----
+// Nothing on somebody's roster changes quietly. Every change writes a row they
+// have to read, and the app holds them there until they have. Ops staff are
+// not held - they would be locking themselves out of the board they are
+// working with - but they see who has not confirmed yet.
+// See supabase/crew-confirm.sql.
+
+export const crewChangesOn = () => Array.isArray(state.crewChanges);
+export const crewChanges = () => state.crewChanges || [];
+export const changesFor = (userId) => crewChanges().filter((c) => c.user_id === userId);
+export const myChanges = () => changesFor(getSession()?.userId);
+
+// Who is actually held at the door: the people who fly a roster somebody else
+// builds. A cockpit tablet has no roster of its own, and an ops controller
+// cannot be shut out of the board they are working - they see the same list on
+// it, with everybody else's, and confirm their own from there.
+export const heldByChanges = (role) => ['pilot', 'observer'].includes(role);
+export const mustConfirm = () =>
+  configured && !!getSession() && heldByChanges(me()?.role) && !!myChanges().length;
+
+export async function confirmMyChanges(ids = null) {
+  await confirmChanges(ids);
+  await syncTeam();
+}
 
 // The times stamped for a sector, if any.
 export const actualOf = (sectorId) => (state.actuals || []).find((a) => a.sector_id === sectorId) || null;

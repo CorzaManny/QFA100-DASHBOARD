@@ -13,7 +13,6 @@ import { esc, zulu, zdate, simClock, simLocal, SIM_TZ, icon, rerender } from '..
 import {
   rosterable,
   running,
-  reportAt,
   person,
   crewOf,
   seats,
@@ -168,7 +167,10 @@ function crewRows(start, end) {
     const sector = bySector.get(entry.sector_id);
     if (!sector) continue;
     const row = run.times.get(sector.id);
-    const from = run.trusted && row ? reportAt(entry, row) : new Date(entry.report_at).getTime();
+    // A bar starts at the published report time. The right-hand end follows
+    // the estimate, because that is the aeroplane; the left-hand end is a
+    // promise made to a person and only ops move it.
+    const from = new Date(entry.report_at).getTime();
     const to = run.trusted && row ? row.estOn : new Date(sector.sta).getTime();
     if (to < start || from > end) continue;
     const slot = { entry, sector, from, to, state: row?.state || 'later', conflict: cantFly(entry.user_id, sector.id) };

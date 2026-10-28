@@ -695,15 +695,14 @@ function rulesPage() {
         ${num('taxiInMinutes', 'Taxi in (minutes)', 'Landing to on blocks, for live estimates')}
       </div>
       <p class="tiny">These two work out how a late sector moves the ones after it. The published schedule is never changed.</p>
-      <h3>Notifications</h3>
+      <h3>Notifications and report-time moves</h3>
       <div class="grid2">
         ${num('reportReminderMinutes', 'Remind before report (minutes)', '0 = no reminder', 5)}
-        ${num('delayNoticeMinutes', 'Tell about a delay over (minutes)', 'How far a report time must move', 5)}
-        ${num('delayNoticeWithinHours', 'Only within (hours of reporting)', '0 = never tell about delays')}
-        ${num('delayNoticeEveryMinutes', 'And at most every (minutes)', 'One notice per sector per spell', 5)}
+        ${num('delayNoticeMinutes', 'Ask about a move over (minutes)', 'How far a delay must move a report time', 5)}
+        ${num('delayNoticeWithinHours', 'Only within (hours of reporting)', '0 = never ask')}
       </div>
       <p class="tiny">Only people who have turned notifications on, on a device, are sent anything. See <a href="#/settings">Settings</a>.</p>
-      <p class="tiny">The last two keep a long day quiet: one stamped time moves every report time after it, so without them somebody on the last sector hears about every sector between now and theirs.</p>
+      <p class="tiny">A delay never moves a report time by itself. One that big, on a sector reporting that soon, is raised on the <a href="#/ops">Ops board</a> for the controller on shift to approve, change or leave. The window keeps a long day quiet: one stamped time this morning moves every report time after it, and a report eighteen hours out will have moved again before anybody acts on it.</p>
       <h3>Back of the clock (sim local time)</h3>
       <div class="grid2">
         ${num('bocStart', 'Starts at hour', '0 to 23')}

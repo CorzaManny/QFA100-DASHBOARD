@@ -17,6 +17,7 @@ import {
   currentSector,
   upcomingSector,
   running,
+  mustConfirm,
   airport,
   distNm,
   teamAircraftName,
@@ -25,6 +26,7 @@ import {
 import * as opschat from './opschat.js';
 import * as scratch from './scratch.js';
 import * as login from './views/login.js';
+import * as confirmChanges from './views/confirm.js';
 import * as roster from './views/roster.js';
 import * as duty from './views/duty.js';
 import * as admin from './views/admin.js';
@@ -110,6 +112,12 @@ function parse() {
 // Someone choosing a new password from a reset email stays there until it is done.
 const locked = () =>
   login.resetting() || (configured ? !getSession() || isPending() || needsSetup() : !state.preview);
+
+// Signed in, approved, and still not allowed anywhere: a change to this
+// person's own roster is waiting to be read. Nothing moves a pilot's day
+// quietly, so the app stops on it and goes nowhere else until they have
+// confirmed it - see js/views/confirm.js and supabase/crew-confirm.sql.
+const gated = () => !locked() && mustConfirm();
 
 const flightbar = document.getElementById('flightbar');
 
@@ -217,9 +225,13 @@ function render() {
   // they were; hashchange scrolls to the top itself, after this.
   const wasAt = window.scrollY;
   const gate = locked();
+  // A roster change waiting to be read closes the app down the same way the
+  // sign-in gate does: no tabs, no panels, one page.
+  const confirming = gated();
   document.body.classList.toggle('locked', gate);
+  document.body.classList.toggle('gated', confirming);
   document.body.classList.toggle('editor', !gate && canEdit());
-  const efb = !gate && isEfb();
+  const efb = !gate && !confirming && isEfb();
   document.body.classList.toggle('efb', efb);
   // The vPilot tab, for the accounts the radio is open to. The page itself
   // checks again, and so does the database (can_use_vpilot in
@@ -245,7 +257,11 @@ function render() {
   document.getElementById('who-name').textContent = who?.display_name || '';
   document.getElementById('who-role').textContent = who ? roleName(who.role).toUpperCase() : '';
   document.getElementById('who-admin').hidden = gate || !canEdit();
-  route = gate ? { name: 'login', args: [], view: login } : parse();
+  route = gate
+    ? { name: 'login', args: [], view: login }
+    : confirming
+      ? { name: 'confirm', args: [], view: confirmChanges }
+      : parse();
   // A page can ask for more room than a normal card column gives it - the
   // Live Roster timeline, wherever it is showing, is the only one that does.
   document.body.classList.toggle('wide', !!route.view.wide?.(route.args));
@@ -310,7 +326,7 @@ function tick() {
 // app, not just on the Dashboard or Ops Board, so the live track is read on
 // every page for one of those devices.
 function pollTrack() {
-  if (!(['dashboard', 'ops'].includes(route.name) || isEfb()) || locked() || document.visibilityState !== 'visible') return;
+  if (!(['dashboard', 'ops'].includes(route.name) || isEfb()) || locked() || gated() || document.visibilityState !== 'visible') return;
   dash.poll().then(() => isEfb() && updateFlightBar());
 }
 
@@ -356,6 +372,10 @@ const teamData = () =>
     // An admin rewording a checklist reaches the flight deck the same way
     // anything else does, within a few seconds and without a reload.
     state.normalChecklists,
+    // Report-time moves waiting on the ops desk, and the roster changes people
+    // have still to confirm. Both change what is on screen, so both belong in
+    // what a sync compares.
+    state.reportShifts, state.crewChanges,
     // The ops shift roster and who has the desk, but not the thread itself:
     // the chat panel repaints on its own, and a new message is no reason to
     // redraw the page underneath it.
@@ -371,13 +391,15 @@ async function sync() {
   // Renew the sign-in before asking for data, so coming back to the app after
   // days away does not meet a login page.
   await keepSignedIn();
-  const before = locked();
+  const before = locked() || gated();
   const data = teamData();
   await syncTeam();
   syncing = false;
-  // A sign-in that has ended goes back to the login page, and an account
-  // that has just been approved leaves the waiting page.
-  if (locked() !== before) render();
+  // A sign-in that has ended goes back to the login page, an account that has
+  // just been approved leaves the waiting page, and a change to somebody's
+  // roster puts the confirmation page up under them - or takes it away once
+  // they have confirmed it.
+  if ((locked() || gated()) !== before) render();
   else if (teamData() !== data) quietRender();
 }
 

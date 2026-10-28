@@ -16,7 +16,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 ## What it does
 
 - **Login** – everyone signs in with their own account. The first page is the login page.
-- **Dashboard** – a map of the sector being flown with the aeroplane on it, and shows where the aircraft is, its altitude, ground speed, distance to go and estimated arrival, read from the simulator's status API or from VATSIM. Shows your next rostered sector with your duty, report time and a countdown, and warns when a late arrival will push back the following departure.
+- **Dashboard** – a map of the sector being flown with the aeroplane on it, and shows where the aircraft is, its altitude, ground speed, distance to go and estimated arrival, read from the simulator's status API or from VATSIM. Shows your next rostered sector with your duty, report time and a countdown, and warns when a late arrival will push back the following departure. Your report time is the one you were given: a delay does not move it, it asks ops to (see **Running late**).
 - **737 Checklists** – tap-through checklists in two groups: **Normal** from Preflight to Secure, and **Non-normal**, the extracted QRH. Each group lists its checklists down the side with how far through each one is, and there is a "CHECKLIST COMPLETE" footer and a Next button. Works with no connection and keeps the screen awake. An **admin** can reword the normal checklists in the app and add their own – see below.
 - **Schedule** – the official WorldFlight 2026 schedule. Each sector shows when its departure window opens (UTC), the window, block time and validated route. Tapping a sector opens its briefing; admins and dispatchers can add, edit or delete sectors.
 - **Roster** – who flies each sector, linked to their account, with a duty (Captain, First Officer, Relief Pilot, Observer) and a report time. Everyone sees their own roster and the full roster, with short-crewed sectors flagged. Your own sectors carry the duty length and sign-off time, each seat has its own colour, and your breaks between sectors are drawn in as well. The cockpit tablets sign in to their own accounts and show the whole team's roster instead.
@@ -29,7 +29,7 @@ A WorldFlight operations app for a team flying one Boeing 737 on VATSIM. It runs
 - **Loadsheet** – load control sends the loadsheet up the datalink and it prints on the flight deck printer, unasked for, at a random moment between 20 and 7 minutes before departure – the figures off the imported OFP, for the crew to enter. Import a new flight plan after one has printed and a revision follows, 10 to 5 minutes out, or a minute or two after the import if there is no longer room for that. It never waits on the aeroplane. The sector's briefing page says where its sheet is up to, with **Resend loadsheet** to put it back in the queue on the same terms. If the printer jammed or the simulator PC was down when it went, ops and admins can force one out on the spot from the **Ops board**. Needs [`supabase/loadsheet.sql`](supabase/loadsheet.sql) and the ACARS tables; without it nothing is sent and both buttons leave themselves out.
 - **Stream** – on the flight deck tablets and for ops staff: a muted preview of the team's Twitch stream as the audience sees it, and a list of things worth talking about, half typed in by ops and half worked out from the flight itself. Chat sits in its own panel beside every page on a flight deck tablet.
 - **Ops chat** – a panel beside every page, for the flight deck tablets, Operations and admins: one thread between the cockpit and whichever operations controller is on shift, with that controller's name at the top of it so the crew know who is answering and the controllers know whose turn it is. Who is on comes from a shift roster kept in **Admin → Ops Desk**, which nobody else sees, and a controller stepping in off the roster can take the desk there. A **Call** button beside the thread puts the two sides on a voice call inside the app: the audio goes straight between the two devices, so nothing is recorded and nothing passes through a server. It rings whoever has the desk (or every controller when nobody has it), and both tablets when ops calls them. A message from the other side dings inside the app and notifies the phone of whoever it is for: the controller on shift when the flight deck asks something (all of them when nobody is on the desk), and both tablets when ops answers. At most one notification per half minute each, however much is being said, sent within about ten seconds, and each person can switch them off in Settings.
-- **Ops board** – for admins, dispatchers and operations: where the aeroplane is and how far behind the day is running, swaps and seat requests with the buttons to settle them, any defect grounding the aircraft, who reports next with live countdowns, which sectors are short of pilots, which still have no flight plan, and the weather at the airports coming up.
+- **Ops board** – for admins, dispatchers and operations: where the aeroplane is and how far behind the day is running, **report times a delay wants moved**, waiting for the controller to approve, retime by hand or leave alone, swaps and seat requests with the buttons to settle them, which roster changes each pilot has still to confirm, any defect grounding the aircraft, who reports next with live countdowns, which sectors are short of pilots, which still have no flight plan, and the weather at the airports coming up.
 - **Logbook** – the whole route around the world on one map, how far the team has got, and who has flown what, in hours, sectors and miles.
 
 For flight simulation use only.
@@ -87,6 +87,8 @@ Accounts, the schedule and the roster live in a Supabase database. Until this is
 15. In another query, paste in [`supabase/normal-checklists.sql`](supabase/normal-checklists.sql) and press **Run**. This lets an admin reword the normal checklists, reorder them and add their own, from the Checklists page in the app. It is optional; without it the whole team flies the checklists the app ships with and there is nothing to edit.
 16. In another query, paste in [`supabase/airport-docs.sql`](supabase/airport-docs.sql) and press **Run**. This lets the briefings show the official WorldFlight pilot briefing and charts for each airport. It is optional; without it the briefings say so and show everything else.
 17. In another query, paste in [`supabase/route-options.sql`](supabase/route-options.sql) and press **Run**, then run [`supabase/worldflight.sql`](supabase/worldflight.sql) again (or re-run `supabase/schedule.sql`) so the alternatives are read in. This is the handful of sectors WorldFlight publishes two ways round, with a button for an admin to choose which way the team flies. It is optional; without it the app shows the published route only.
+18. In another query, paste in [`supabase/crew-confirm.sql`](supabase/crew-confirm.sql) and press **Run**. This makes every change to somebody's roster something they have to read and confirm before they can use the app, and shows ops who has. It is optional; without it the app tells them and nothing is held.
+19. In another query, paste in [`supabase/report-shifts.sql`](supabase/report-shifts.sql) and press **Run**. It needs `notifications.sql` (below) to have been run first. This is how a delay asks for a report time to be moved instead of moving it: the proposals land on the Ops board for the controller on shift to decide. It is optional; without it report times only change when somebody edits the roster.
 18. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key into [`js/config.js`](js/config.js). (The anon key is meant to be public. Never use the `service_role` key.)
 19. Open **Authentication → URL Configuration** and set **Site URL** to your app's address from the section above, so password-reset emails link back to the app. Then open **Authentication → Sign In / Providers → Email** and turn off **Confirm email**: the team does not verify addresses, because an admin approves every new account anyway.
 20. Push the change to GitHub.
@@ -174,7 +176,7 @@ Pilots still read the whole tech log and the MEL on their own phones; they just 
 5. **Check the share.** **Admin → Balance** shows every pilot's sectors broken down by seat (CA, FO, relief pilot), their block hours and their back-of-clock sectors, with a chip saying whether the totals are even or how far apart they are.
 6. **Check and publish.** The rule check lists anyone whose roster breaks a rule (including people you pinned). **Publish roster** makes it visible to everyone.
 
-The duty rules are edited in **Admin → Settings** and apply to the whole team: minimum rest, sectors per duty (one, so everyone rests between sectors), longest duty, sectors per person, the length over which a sector also carries a relief pilot (six hours, so those sectors are rostered with three pilots instead of two; set it to 0 to turn it off), the back-of-clock window how many back-of-clock sectors each person may fly in the event (two) and how far apart they must be (one every two days, so never on consecutive nights), report times, and whether everyone counts as available unless they say otherwise (on by default, so a pilot only marks the sectors they want or cannot fly). Sectors with less than the minimum rest between them count as one duty.
+The duty rules are edited in **Admin → Settings** and apply to the whole team: minimum rest, sectors per duty (one, so everyone rests between sectors), longest duty, sectors per person, the length over which a sector also carries a relief pilot (six hours, so those sectors are rostered with three pilots instead of two; set it to 0 to turn it off), the back-of-clock window how many back-of-clock sectors each person may fly in the event (two) and how far apart they must be (one every two days, so never on consecutive nights), report times, how far a delay must move a report time before the Ops board asks about it, and whether everyone counts as available unless they say otherwise (on by default, so a pilot only marks the sectors they want or cannot fly). Sectors with less than the minimum rest between them count as one duty.
 
 Auto roster is a sensible-rules fill, not a perfect optimiser: it works through the sectors in order, evening out the number of sectors each person flies and the time they spend in each seat, favouring sectors people asked for and keeping a crew together on back-to-back sectors. Expect to adjust a few by hand.
 
@@ -231,6 +233,15 @@ moved the ACARS company message to the Ops Board, so run
 [`supabase/ops-call.sql`](supabase/ops-call.sql) again if you had them. Until
 you do, a dispatcher keeps being notified about a thread the app no longer
 gives them. All three are safe to re-run.
+
+This version stopped the app moving report times on its own. Run
+[`supabase/notifications.sql`](supabase/notifications.sql) again so it stops
+sending the old automatic notice, then
+[`supabase/crew-confirm.sql`](supabase/crew-confirm.sql) and
+[`supabase/report-shifts.sql`](supabase/report-shifts.sql), in that order, for
+the confirmations and the Ops board's report-time decisions. All three are safe
+to re-run. Until the last two have been run the app simply leaves both out:
+report times are the published ones and nothing is held.
 
 ### If the WorldFlight schedule changes
 
@@ -393,11 +404,31 @@ What you see:
 
 - a banner on the Dashboard — **Running 35m behind the published schedule · WF2601 lands about 1505Z**;
 - on the Schedule, the published time struck through with the real expected time under it;
-- on your own sector card, your report time moved by the delay, with the published one still shown underneath, keeping whatever lead you were given when you were rostered.
+- on your own sector card, a line saying what the delay suggests your report time should be, while the time you report to stays the published one.
 
 Nothing is shown until somebody stamps a time or the aircraft is being tracked, and estimates are rounded to five minutes, because a guess printed to the minute reads as more certain than it is. Stamped times are shown exactly. **Minimum turnaround** and **Taxi in** are in **Admin → Settings**, so the whole team works from the same numbers.
 
 The estimate takes the best source it has, in this order: a stamped time, the simulator API, the live VATSIM position, then the published block time. With nothing connected at all it is simply the published schedule, which is where you started.
+
+### Report times, and who moves them
+
+**A delay never moves a report time by itself.** It used to: the estimate was laid over whatever you were rostered with and that was the time on your card. It was never wrong, and it was never decided by anybody either — one stamped time in Jakarta quietly moved the moment somebody in another time zone would set an alarm for, and there was nobody to ask about it.
+
+So now it asks. A delay that would move a report time by more than the team's threshold (**Admin → Settings**, 20 minutes), on a sector whose crew report within the next few hours (6), is raised on the **Ops board** under **Report times to decide**, grouped by the sector the delay is on, with every seat it lands on. The controller on shift has three choices per seat, or for the whole sector at once:
+
+- **Move to 1215Z** — take the proposal. Each seat keeps the lead it was rostered with, so three pilots on one aeroplane move together but not onto the same minute.
+- **My own time** — type a report time in Zulu. The aeroplane is not the only thing a controller knows about.
+- **Leave it** — the published time stands. The proposal is remembered as the mark the next estimate is measured against, so waving twenty minutes away does not mean being asked about the same twenty minutes a minute later.
+
+Approving writes the new time onto the roster entry, which is the only report time anything in the app reads. The pilot is notified and has to confirm it (below) before they can carry on. Until then everybody reports at the time they were given, and the board, the roster and the Dashboard all say that one time.
+
+The ops controllers on shift are notified when proposals are raised — one message per sector, not one per seat — if they have turned notifications on. Needs [`supabase/report-shifts.sql`](supabase/report-shifts.sql).
+
+### Confirming a change to your roster
+
+A pilot reads the roster once, in the morning, and then flies the day from memory, so a change nobody acknowledged is worse than no roster at all. Anything that changes what one person is doing — put on a sector, taken off one, another seat, a new report time, or the sector itself moving — stops the app on a single page listing what changed, and nothing else works until they press **I have read this**.
+
+It counts changes they caused themselves: taking somebody's sector in a swap is exactly the moment a day is in somebody's head wrong. Ops staff are told the same way but never held, since locking the desk out of the board it is working would make a bad day worse; their own changes appear on the Ops board instead, under **Roster changes**, beside everybody else's — so the desk can see who has read a change and who has not before ringing anybody about it. Needs [`supabase/crew-confirm.sql`](supabase/crew-confirm.sql).
 
 ## Destination congestion forecast (holding and traffic fuel)
 
@@ -429,9 +460,9 @@ On a phone the navigation sits along the bottom under your thumb; from 900px it 
 The app can notify a phone even when it is closed. Four things are sent, and nothing else:
 
 - **the roster is published** — with how many sectors you have and when the first one is;
-- **your own sectors change** — added, taken off, duty or report time moved;
-- **a delay moves your report time** by more than the threshold in **Admin → Settings**;
-- **a reminder** a set time before you report, using the real time including the delay.
+- **your own sectors change** — added, taken off, duty or report time moved. Whatever it is, it is also waiting for you to confirm when you open the app;
+- **a delay needs a report time moved** — to the ops controllers only, one message per sector, because it is theirs to decide;
+- **a reminder** a set time before you report.
 
 Each person turns it on in **Settings → Notifications**, on each device they want told, and chooses which of the four they want and how early under **Notification settings** — those choices follow the person, so they are the same on their phone and their iPad. The numbers in **Admin → Settings** are only the starting point for somebody who has not chosen. Nobody is sent anything until they turn it on. On iPhone and iPad it only works once the app has been added to the Home Screen and opened from there; the app says so rather than failing silently.
 
@@ -543,7 +574,7 @@ These are still saved on each person's own device, not in the database. To share
 | Non-normal checklists | rebuild `js/data/non-normal.js` with `tools/build_qrh.py`; they are the QRH and are not editable in the app |
 | Colours and layout | `css/app.css` |
 | Callsign, aircraft type, custom airframe and team SimBrief | in the app: **Admin → SimBrief** |
-| Duty rules and report times | in the app: **Admin → Settings** (starting values are in `js/autoroster.js`) |
+| Duty rules, report times and the report-move threshold | in the app: **Admin → Settings** (starting values are in `js/autoroster.js`) |
 | Minimum pilots per sector (`MIN_PILOTS`) | `js/ops.js` |
 | MEL items | rebuild `js/data/mel.json` with `tools/build_mel.py` |
 | Database connection | `js/config.js` |

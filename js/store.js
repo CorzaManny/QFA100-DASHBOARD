@@ -37,6 +37,15 @@ function defaults() {
     loadsheets: [],
     loadsheetsOn: false,
     swaps: [], // sectors offered to the team: { id, roster_id, from_user, claimed_by, state, reason }
+    // Report-time moves the delay has proposed and ops have not decided yet:
+    // { roster_id, sector_id, proposed_at, published_at, est_off, delay_minutes }.
+    // null means supabase/report-shifts.sql has not been run.
+    reportShifts: null,
+    // What each pilot still has to confirm before they can use the app:
+    // { id, user_id, sector_id, flight, kind, headline, detail, created_at }.
+    // Ops see everyone's; a pilot sees their own. null means
+    // supabase/crew-confirm.sql has not been run.
+    crewChanges: null,
     official: [], // the official WorldFlight schedule, as the database last read it
     officialCheck: null, // { checked_at, ok, sectors, note } from that check
     history: [], // tech log history: { defect_id, at, by_name, event, detail }

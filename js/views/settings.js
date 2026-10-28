@@ -41,7 +41,7 @@ function notificationsCard() {
     <section class="card">
       <div class="card-head"><h2>Notifications</h2>
         <span class="badge ${on ? 'ok' : 'mute'}">${on ? 'ON FOR THIS DEVICE' : 'OFF'}</span></div>
-      <p class="note">Tells you when the roster is published, when your own sectors change, when a delay moves your report time, and when it is nearly time to report. ${
+      <p class="note">Tells you when the roster is published, when your own sectors change - including a report time the ops desk has moved - and when it is nearly time to report. ${
         on ? 'Turn it on separately on every device you want told.' : 'Nothing else is sent.'
       }</p>
       ${blocked ? `<p class="note warn">${icon('alert')} ${esc(blocked)}</p>` : ''}
@@ -69,14 +69,9 @@ function notificationChoices() {
     <form class="card form" data-form="notify">
       <h2>Notification settings</h2>
       ${myNotifyKinds().map(([key, label]) => box(key, label)).join('')}
-      <div class="grid2">
-        <label class="field">Remind me this long before I report (minutes)
-          <input type="number" name="reportMinutes" min="0" max="1440" step="5" required value="${esc(n.reportMinutes)}">
-          <span class="tiny">0 = no reminder</span></label>
-        <label class="field">Tell me about a delay over (minutes)
-          <input type="number" name="delayMinutes" min="0" max="1440" step="5" required value="${esc(n.delayMinutes)}">
-          <span class="tiny">How far my report time must move</span></label>
-      </div>
+      <label class="field">Remind me this long before I report (minutes)
+        <input type="number" name="reportMinutes" min="0" max="1440" step="5" required value="${esc(n.reportMinutes)}">
+        <span class="tiny">0 = no reminder</span></label>
       <div class="btn-row"><button class="btn primary" type="submit">Save what I am told</button></div>
     </form>`;
 }
@@ -168,7 +163,6 @@ export const forms = {
     const next = { ...(me().notify || {}) };
     for (const [key] of myNotifyKinds()) next[key] = data.get(key) === 'on';
     next.reportMinutes = minutes('reportMinutes');
-    next.delayMinutes = minutes('delayMinutes');
     return attempt(
       () => updateProfile(me().id, { notify: next }),
       'Saved. This applies on every device you are signed in on.',
