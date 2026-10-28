@@ -3344,6 +3344,12 @@ body.efb .tabs a[data-tab='ctwo'] {
   color: var(--bad);
 }
 
+/* The way to the day a flagged shift is on, under the warning at the top. */
+.os-jump {
+  flex-wrap: wrap;
+  margin: 0 16px 14px;
+}
+
 /* A shift rostered on somebody who is flying it. Red, named and with the
    alert icon, because the desk being unanswered at 0300 is not a detail. */
 .os-bar.clash {

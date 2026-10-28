@@ -71,24 +71,34 @@ const controllers = () => state.people.filter((p) => OPS_DESK_ROLES.includes(p.r
 const shiftsOf = (userId) => opsShifts().filter((s) => s.user_id === userId);
 const ms = (t) => new Date(t).getTime();
 
-// Every day the roster touches, plus today either way: a new roster has no
-// shifts to span, and the first one has to be draggable somewhere.
+// Every day the roster touches: the shifts themselves, and the sectors, so
+// the desk can be rostered against the flying before a single shift exists.
+// Today only when there is nothing at all to span - a roster has to start
+// somewhere, and until the schedule is loaded that is today.
+//
+// Today deliberately does not join the list otherwise. It used to, and days
+// before the event that put "Day 1" on an empty date nobody is flying, so
+// opening the page showed a blank grid and the roster somebody had built was
+// two taps away on a day they had no reason to look at.
 function shiftDays() {
   const offsetMs = timeMode === 'local' ? simOffsetMinutes() * MINUTE : 0;
   const times = opsShifts().flatMap((s) => [ms(s.starts_at), ms(s.ends_at) - MINUTE]);
-  // The sectors as well, so the shifts can be rostered against the flying
-  // before any of them exist.
   for (const s of state.sectors) times.push(ms(s.std));
-  times.push(Date.now());
   return daysSpanning(times, offsetMs);
 }
 
+// Before the event, its first day; after it, its last; otherwise the one
+// "now" falls in.
 function currentDayIndex(days) {
   if (dayIndex != null) return Math.min(Math.max(dayIndex, 0), days.length - 1);
   const now = Date.now();
   const idx = days.findIndex((d) => now < d + DAY);
   return idx === -1 ? days.length - 1 : Math.max(idx, 0);
 }
+
+// Which day of the list a moment falls on, so a shift somewhere else in the
+// event can be jumped to rather than hunted for.
+const dayOf = (t, days) => days.findIndex((d) => t >= d && t < d + DAY);
 
 function windowRange() {
   const days = shiftDays();
@@ -335,10 +345,15 @@ function editor() {
     </div>`;
 }
 
-function daySelect(days, idx) {
+function daySelect(days, idx, flagged) {
   const dateLabel = timeMode === 'local' ? localDateLabel : zdate;
   const options = days
-    .map((d, i) => `<option value="${i}" ${i === idx ? 'selected' : ''}>Day ${i + 1} · ${esc(dateLabel(d))}</option>`)
+    .map(
+      (d, i) =>
+        `<option value="${i}" ${i === idx ? 'selected' : ''}>Day ${i + 1} · ${esc(dateLabel(d))}${
+          flagged.has(i) ? ' ⚠' : ''
+        }</option>`,
+    )
     .join('');
   return `<select data-change="shiftDay" aria-label="Day">${options}</select>`;
 }
@@ -374,7 +389,7 @@ export function renderOpsTimeline() {
       <p class="note os-head-note">Who is answering the flight deck, and when. The crew see the name at the top of their ops chat; they never see this page.</p>
       <div class="lr-toolbar">
         <div class="btn-row">
-          ${daySelect(days, idx)}
+          ${daySelect(days, idx, new Set(clashing.map((sh) => dayOf(ms(sh.starts_at), days))))}
           <button class="btn ghost small" type="button" data-act="shiftToday">Today</button>
         </div>
         <div class="tiny">${esc(rangeText(start, end))}</div>
@@ -386,18 +401,22 @@ export function renderOpsTimeline() {
       ${error ? `<p class="note warn" style="margin:0 16px 14px">${icon('alert')} ${esc(error)}</p>` : ''}
       ${
         clashing.length
-          ? `<p class="note warn" style="margin:0 16px 14px">${icon('alert')} <strong>${
+          ? `<p class="note warn" style="margin:0 16px 10px">${icon('alert')} <strong>${
               clashing.length === 1 ? 'A shift is' : `${clashing.length} shifts are`
             } rostered on somebody who is flying ${
               clashing.length === 1 ? 'it' : 'them'
-            }.</strong> ${clashing
+            }.</strong> Somebody has to answer the flight deck, and it cannot be whoever is in it. Open one to see it:</p>
+            <div class="btn-row os-jump">${clashing
               .map(
                 (sh) =>
-                  `${esc(person(sh.user_id)?.display_name || 'Somebody')} ${esc(
-                    spanText(ms(sh.starts_at), ms(sh.ends_at)),
-                  )} on ${esc(zdate(sh.starts_at))}`,
+                  `<button class="btn ghost small" type="button" data-act="shiftGoDay" data-day="${dayOf(
+                    ms(sh.starts_at),
+                    days,
+                  )}">${esc(person(sh.user_id)?.display_name || 'Somebody')} · ${esc(
+                    zdate(sh.starts_at),
+                  )} ${esc(spanText(ms(sh.starts_at), ms(sh.ends_at)))}</button>`,
               )
-              .join(' · ')}. Marked in red below.</p>`
+              .join('')}</div>`
           : ''
       }
       <div class="lr-scroll" id="os-scroll">
@@ -410,6 +429,13 @@ export function renderOpsTimeline() {
           ${people.map((p) => row(p, start, end, run)).join('')}
         </div>
       </div>
+      ${
+        opsShifts().some((sh) => ms(sh.ends_at) > start && ms(sh.starts_at) < end)
+          ? ''
+          : `<p class="note" style="margin:10px 16px 0">Nothing is rostered on this day. Drag across a row to put a shift there${
+              days.length > 1 ? ', or pick another day above' : ''
+            }.</p>`
+      }
       <p class="tiny">Drag across an empty row to roster a shift, drag either end of a bar to change when it starts or finishes, and drag the middle to move it - onto another row to hand it over. Times land on the quarter hour, Escape gives up on a drag, and tapping a bar opens the exact times, a note and Remove. The faint blocks behind are the sectors being flown, so the desk can be rostered against the flying. On a touch screen a finger still scrolls the timeline, so drawing a new shift by dragging wants a mouse or a stylus - or type it in below.</p>
       <p class="tiny">A controller who also flies - an admin, usually - has their own duty periods hatched in red on their row, report time to on blocks. A shift drawn across one is flagged, because somebody has to answer the flight deck and it cannot be whoever is in it. It is a flag and not a refusal: you can roster it anyway, and the app will ask once.</p>
     </section>
@@ -438,6 +464,12 @@ const saveShift = (fields, id) => write(() => saveOpsShift(fields, id));
 export const opsTimelineActions = {
   shiftToday() {
     dayIndex = null;
+    rerender();
+  },
+  // Straight to the day a flagged shift is on, from the warning at the top.
+  shiftGoDay(el) {
+    const day = Number(el.dataset.day);
+    if (Number.isFinite(day) && day >= 0) dayIndex = day;
     rerender();
   },
   shiftZulu() {
@@ -493,6 +525,17 @@ export const opsTimelineForms = {
     );
   },
 };
+
+// How many shifts anywhere on the roster are rostered on somebody who is
+// flying them. Admin puts a mark on the Ops Desk tab when this is not zero, so
+// the one thing on this page nobody should have to go looking for is visible
+// from the rest of the section.
+export function opsClashCount() {
+  const run = running();
+  return opsShifts().filter(
+    (sh) => flyingBetween(sh.user_id, ms(sh.starts_at), ms(sh.ends_at), run).length,
+  ).length;
+}
 
 // True while a drag is in flight or a write is going out, so app.js's
 // background sync does not redraw the bar somebody is holding.

@@ -441,6 +441,8 @@ It counts changes they caused themselves: taking somebody's sector in a swap is 
 
 Everything lands on the quarter hour, nothing is written until you let go, and **Escape** gives up on a drag half way through. Pick the day from the list, and **UTC / Local** reads the hours in Zulu or in Sydney time — the roster is written in one and lived in the other.
 
+The day list is the event's own days, from the first shift or sector to the last, and the page opens on the day the event is in — its first day before it starts, the current one while it runs. A day with nothing rostered says so rather than leaving you to wonder whether the page is broken.
+
 Above the rows is the strip the page is really for: **Desk cover**, green where somebody has the desk and striped red where nobody does, with the open time counted in the margin. A gap at 0300 is what the roster is written to close, and reading that off a list of start and end times was the hard part. Behind the bars, faintly, are the sectors being flown, so the desk can be rostered against the flying rather than against the clock.
 
 ### Somebody rostered on the desk while they are flying
@@ -450,7 +452,8 @@ An **admin** is the one account that can both fly a sector and take the ops desk
 So the shift timeline draws that person's own duty periods on their own row, hatched in red, report time to on blocks, and flags any shift that lands on one:
 
 - the bar turns red and says which sector they are flying instead of its length;
-- their row is badged **FLYING**, and the card head counts every clash on the whole roster, not just the day showing;
+- their row is badged **FLYING**, the card head counts every clash on the whole roster rather than the day showing, and each one is a button that opens the day it is on — a clash three days out is no use flagged somewhere you are not looking;
+- the day list marks the days holding one with ⚠, and the **Ops Desk** tab itself is marked, so it is visible from the rest of Admin;
 - dragging a shift onto one asks first, naming the sector — once, and you can roster it anyway;
 - **On the desk now** turns red and says so when the person who has the desk this minute is on a flying duty, with whoever else is rostered on and on the ground.
 

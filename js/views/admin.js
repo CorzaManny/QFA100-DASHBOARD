@@ -92,6 +92,7 @@ import {
   opsTimelineChanges,
   opsTimelineForms,
   opsTimelineBusy,
+  opsClashCount,
 } from './opsroster.js';
 
 let error = '';
@@ -136,13 +137,17 @@ function tally(load) {
 function tabs(active) {
   const tab = (key, href, label) => `<a class="${active === key ? 'on' : ''}" href="${href}">${label}</a>`;
   const waiting = pendingPeople().length;
+  // Somebody rostered on the ops desk while they are flying. Marked on the tab
+  // because it is the one thing on that page nobody should have to go to the
+  // page to find out about.
+  const deskClash = opsDeskReady() ? opsClashCount() : 0;
   return `
     <div class="page-head"><h1>Admin</h1>
       <span class="badge ${isDraft() ? 'warn' : 'ok'}">ROSTER ${isDraft() ? 'DRAFT' : 'PUBLISHED'}</span></div>
     <nav class="seg on-card tabs5">
       ${tab('roster', '#/admin', 'Roster')}
       ${tab('balance', '#/admin/balance', 'Balance')}
-      ${tab('opsdesk', '#/admin/opsdesk', 'Ops Desk')}
+      ${tab('opsdesk', '#/admin/opsdesk', `Ops Desk${deskClash ? ' ⚠' : ''}`)}
       ${canSetSimbrief() ? tab('simbrief', '#/admin/simbrief', 'SimBrief') : ''}
       ${isAdmin() ? tab('rules', '#/admin/rules', 'Settings') : ''}
       ${isAdmin() ? tab('people', '#/admin/people', `People${waiting ? ` (${waiting})` : ''}`) : ''}
