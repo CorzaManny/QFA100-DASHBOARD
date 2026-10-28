@@ -9,7 +9,20 @@
 import { state } from '../store.js';
 import { saveRoster, deleteRoster } from '../api.js';
 import { problemList } from '../autoroster.js';
-import { esc, zulu, zdate, simClock, simLocal, SIM_TZ, icon, rerender } from '../ui.js';
+import { esc, zulu, zdate, simClock, simLocal, icon, rerender } from '../ui.js';
+import {
+  MINUTE,
+  HOUR,
+  DAY,
+  simOffsetMinutes,
+  localDateLabel,
+  dayStart,
+  daysSpanning,
+  left,
+  widthPx,
+  trackWidth,
+  hourTicks,
+} from './timeline.js';
 import {
   rosterable,
   running,
@@ -46,39 +59,12 @@ const cantFlyReason = (userId, sectorId) =>
 // The short form for a block's own label; the full sentence stays in the tooltip.
 const cantFlyShort = (userId, sectorId) => (prefOf(userId, sectorId) === 'unavailable' ? 'Unavailable' : 'No answer');
 
-// One screen's worth of the timeline: one calendar day of the event, picked
-// from a "Day 1", "Day 2"... list rather than today's date, since the
-// event's own days are what the schedule actually runs on.
-const PX_PER_HOUR = 100;
-const MINUTE = 60000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-
-// Sydney's current offset from UTC, in minutes: a short relay does not cross
-// a daylight-saving change, so one offset for the whole event is accurate
-// enough, and far simpler than redoing it per instant.
-const SIM_TZ_FORMAT = new Intl.DateTimeFormat('en-US', {
-  timeZone: SIM_TZ,
-  hourCycle: 'h23',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-});
-function simOffsetMinutes(t = Date.now()) {
-  const p = Object.fromEntries(SIM_TZ_FORMAT.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
-  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
-  return Math.round((asUTC - t) / MINUTE);
-}
-
-// "31 OCT" in Sydney's calendar, to label a day by the date it actually is
-// there - zdate's UTC date would be wrong once the day starts at local
-// midnight, which can fall on the previous UTC date.
-const SIM_DATE_LABEL = new Intl.DateTimeFormat('en-GB', { timeZone: SIM_TZ, day: '2-digit', month: 'short' });
-const localDateLabel = (t) => SIM_DATE_LABEL.format(new Date(t)).toUpperCase().replace(',', '');
-
+// One screen's worth of the timeline is one calendar day of the event, picked
+// from a "Day 1", "Day 2"... list rather than today's date, since the event's
+// own days are what the schedule actually runs on. The hours-to-pixels sums
+// and the clock arithmetic are in ./timeline.js, shared with the ops desk's
+// own shift timeline.
+//
 // Which event day is picked, by index into eventDays(). null means "whichever
 // day 'now' falls in", worked out fresh each time so it tracks the clock
 // until somebody picks a day by hand.
@@ -95,25 +81,14 @@ let error = '';
 let scrollAt = null;
 let scrollKey = '';
 
-// Midnight on or before t, in whichever clock is selected: UTC midnight for
-// Zulu, Sydney midnight for Local. Shift into that clock's frame, floor to a
-// day, then shift back - so the grid always starts right on midnight,
-// whichever one is showing, instead of UTC midnight relabelled.
-function dayStart(t, offsetMs) {
-  return Math.floor((t + offsetMs) / DAY) * DAY - offsetMs;
-}
-
-// Every calendar day the published schedule touches, earliest first, in
-// whichever clock is selected. With no sectors yet, today is the only day.
+// Every calendar day the published schedule touches, in whichever clock is
+// selected.
 function eventDays() {
   const offsetMs = timeMode === 'local' ? simOffsetMinutes() * MINUTE : 0;
-  if (!state.sectors.length) return [dayStart(Date.now(), offsetMs)];
-  const times = state.sectors.map((s) => new Date(s.std).getTime());
-  const first = dayStart(Math.min(...times), offsetMs);
-  const last = dayStart(Math.max(...times), offsetMs);
-  const days = [];
-  for (let t = first; t <= last; t += DAY) days.push(t);
-  return days;
+  return daysSpanning(
+    state.sectors.map((s) => new Date(s.std).getTime()),
+    offsetMs,
+  );
 }
 
 // Back-of-clock hours, in sim local time, as absolute spans clipped to
@@ -229,18 +204,6 @@ function hintBlocks(p, start, end, bars) {
       out.push({ p, sector: s, from, to, kind: 'prefer', reasons: ['Asked for this sector'], label: 'Prefers this' });
     }
   }
-  return out;
-}
-
-const left = (t, start) => Math.max(0, ((t - start) / HOUR) * PX_PER_HOUR);
-const widthPx = (from, to, start, end) =>
-  Math.max(6, ((Math.min(to, end) - Math.max(from, start)) / HOUR) * PX_PER_HOUR);
-const trackWidth = (start, end) => ((end - start) / HOUR) * PX_PER_HOUR;
-
-function hourTicks(start, end) {
-  const out = [];
-  const first = Math.ceil(start / HOUR) * HOUR;
-  for (let t = first; t < end; t += HOUR) out.push(t);
   return out;
 }
 

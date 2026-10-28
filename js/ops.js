@@ -496,6 +496,9 @@ export const opsDeskReady = () => configured && !!getSession() && state.opsShift
 const shiftsByStart = () =>
   [...(state.opsShifts || [])].sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
 
+// The whole roster in start order, for the shift timeline in Admin -> Ops Desk.
+export const opsShifts = shiftsByStart;
+
 // Who should be answering right now, as { userId, since, until, taken }, or
 // null if nobody is on. Somebody who has taken the desk off the roster holds
 // it until they hand it back - or until the next rostered shift begins, which

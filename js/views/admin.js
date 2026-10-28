@@ -83,6 +83,14 @@ import {
 import { renderRoster, mountedRoster, rosterActions, rosterChanges } from './liveroster.js';
 import { pushEnabled, pushProblem } from '../push.js';
 import { teamPage, mountTeam } from './team.js';
+import {
+  renderOpsTimeline,
+  mountedOpsTimeline,
+  opsTimelineActions,
+  opsTimelineChanges,
+  opsTimelineForms,
+  opsTimelineBusy,
+} from './opsroster.js';
 
 let error = '';
 let result = '';
@@ -91,8 +99,16 @@ let filter = 'all';
 // Which of the Roster tab's two views is showing: the sector list, or the
 // Landscape view timeline.
 let rosterView = 'list';
-// Wider main column while the timeline needs the room; app.js reads this.
-export const wide = (args) => rosterView === 'timeline' && (!args[0] || args[0] === 'auto');
+// Wider main column while a timeline needs the room; app.js reads this. The
+// ops desk's shift roster is one too, and it is the only thing on that page
+// worth the width.
+export const wide = (args) =>
+  args[0] === 'opsdesk' || (rosterView === 'timeline' && (!args[0] || args[0] === 'auto'));
+
+// Never redraw out from under a shift being dragged. app.js asks this before a
+// background sync replaces the page: true means "leave it alone", which is
+// exactly what a gesture in flight needs. See js/views/opsroster.js.
+export const liveUpdate = () => opsTimelineBusy();
 
 const when = (t) => `${zdate(t)} ${zulu(t)}`;
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -554,16 +570,17 @@ function opsDeskPage() {
   return `
     ${tabs('opsdesk')}
     ${deskNowCard()}
+    ${renderOpsTimeline()}
     <section class="card">
-      <div class="card-head"><h2>Shift roster</h2><span class="badge mute">${plural(
+      <div class="card-head"><h2>Every shift</h2><span class="badge mute">${plural(
         (state.opsShifts || []).length,
         'shift',
       )}</span></div>
-      <p class="note">Who is answering the flight deck, and when. The crew see the name at the top of their ops chat; they never see this page.</p>
       ${shiftRows()}
     </section>
     <form class="card form" data-form="opsShift">
-      <h2>Add a shift</h2>
+      <h2>Add a shift by typing it</h2>
+      <p class="note">The same thing dragging across a row does, for a shift that is easier to type than to draw.</p>
       <label class="field">Controller<select name="user" required>
         <option value="">Choose…</option>
         ${controllers()
@@ -1299,6 +1316,7 @@ export const changes = {
     return change(() => setRole(el.dataset.id, el.value));
   },
   ...rosterChanges,
+  ...opsTimelineChanges,
 };
 
 export const forms = {
@@ -1465,6 +1483,7 @@ export const forms = {
       }),
     );
   },
+  ...opsTimelineForms,
 };
 
 export const actions = {
@@ -1681,6 +1700,7 @@ export const actions = {
     rerender();
   },
   ...rosterActions,
+  ...opsTimelineActions,
 };
 
 // The Landscape view timeline needs its drag-and-drop wired up once it is in
@@ -1714,7 +1734,10 @@ function deskPushNote(root) {
 export function mounted(root, args = []) {
   if (args[0] === 'team' && isAdmin()) mountTeam(root);
   if (rosterView === 'timeline' && (!args[0] || args[0] === 'auto')) mountedRoster(root);
-  if (args[0] === 'opsdesk') deskPushNote(root);
+  if (args[0] === 'opsdesk') {
+    deskPushNote(root);
+    mountedOpsTimeline(root);
+  }
   // Read vPilot once on the way in and draw again. Not a watcher: app.js has
   // no hook for leaving a page, so a poll started here would outlive it.
   if (args[0] === 'rules' && isAdmin() && !vpilotKnown()) {
